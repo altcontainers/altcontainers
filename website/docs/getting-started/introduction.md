@@ -18,7 +18,7 @@ Altcontainers provides a programmatic Java API for Docker container lifecycle ma
 
 ## How Altcontainers compares to Testcontainers
 
-Altcontainers is a focused container lifecycle library. It does not provide database containers, Kafka containers, Selenium containers, or any other specialized module. It gives you the primitives — `ContainerManager`, `ContainerSpec`, `Container` — and you build on top of them.
+Altcontainers is a focused container lifecycle library. It does not provide database containers, Kafka containers, Selenium containers, or any other specialized module. It gives you the primitives — `Container`, `ContainerSpec`, `Network` — and you build on top of them.
 
 Key differences:
 

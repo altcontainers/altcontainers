@@ -27,6 +27,25 @@ try (Container container = ContainerManager.getInstance().createContainer(spec))
 - **Network management** — create and destroy Docker bridge networks
 - **Retry with backoff** — configurable startup attempts with linear backoff
 
-Altcontainers was originally developed as the container management layer for the [Paramixel](https://github.com/paramixel/paramixel) test orchestration framework.
+## Contributing
 
-Website: [https://www.altcontainers.org](https://www.altcontainers.org) (coming soon)
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+This project is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.
+
+# Support
+
+![YourKit logo](https://www.yourkit.com/images/yklogo.png)
+
+[YourKit](https://www.yourkit.com/) supports open source projects with innovative and intelligent tools for monitoring and profiling Java and .NET applications.
+
+YourKit is the creator of <a href="https://www.yourkit.com/java/profiler/">YourKit Java Profiler</a>,
+<a href="https://www.yourkit.com/dotnet-profiler/">YourKit .NET Profiler</a>,
+and <a href="https://www.yourkit.com/youmonitor/">YourKit YouMonitor</a>.
+
+---
+
+Copyright (c) 2026-present Douglas Hoard
+

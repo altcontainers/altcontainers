@@ -26,3 +26,8 @@ release.properties
 **/.flattened-pom.xml
 .pi/plans/
 .DS_Store
+
+# Docusaurus (website)
+website/.docusaurus/
+website/node_modules/
+website/build/

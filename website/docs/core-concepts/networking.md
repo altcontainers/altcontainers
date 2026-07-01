@@ -5,12 +5,12 @@ description: Managing Docker bridge networks for container-to-container communic
 
 # Networking
 
-Altcontainers provides `NetworkManager` and `Network` for creating ephemeral Docker bridge networks. Containers on the same network can resolve each other by alias.
+Altcontainers provides `Network` for creating ephemeral Docker bridge networks. Containers on the same network can resolve each other by alias.
 
 ## Create a network
 
 ```java
-try (Network network = NetworkManager.getInstance().createNetwork()) {
+try (Network network = Network.create()) {
     // Containers can join this network
 }
 ```
@@ -20,7 +20,7 @@ Networks implement `AutoCloseable` and should be used with try-with-resources fo
 ## Attach containers to a network
 
 ```java
-try (Network network = NetworkManager.getInstance().createNetwork()) {
+try (Network network = Network.create()) {
     ContainerSpec serverSpec = ContainerSpec.builder("my-server:latest")
         .exposePorts(8080)
         .network(network, "server")  // alias "server"
@@ -31,8 +31,8 @@ try (Network network = NetworkManager.getInstance().createNetwork()) {
         .network(network, "client")  // alias "client"
         .build();
 
-    try (Container server = ContainerManager.getInstance().createContainer(serverSpec);
-         Container client = ContainerManager.getInstance().createContainer(clientSpec)) {
+    try (Container server = Container.create(serverSpec);
+         Container client = Container.create(clientSpec)) {
         // client can reach server at http://server:8080
     }
 }
@@ -57,4 +57,4 @@ Networks are named with the pattern `altcontainers-<session-id>-<random>` where 
 
 - [Resource Limits](resource-limits)
 - [Cleanup](cleanup)
-- [API: NetworkManager](../api/network-manager)
+- [API: Network](../api/network)

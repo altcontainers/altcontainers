@@ -39,26 +39,16 @@ const sidebars = {
     },
     {
       type: 'category',
-      label: 'Integrations',
-      collapsed: true,
-      items: [
-        'integrations/maven',
-        'integrations/gradle',
-        'integrations/paramixel',
-      ],
-    },
-    {
-      type: 'category',
       label: 'API Reference',
       collapsed: true,
       items: [
         'api/intro',
-        'api/container-manager',
         'api/container-spec',
         'api/container',
-        'api/network-manager',
+        'api/bind-mount',
         'api/network',
         'api/wait-conditions',
+        'api/protocol',
         'api/prefix-consumer',
         'api/ulimit',
         'api/container-exception',

@@ -1,33 +1,33 @@
 /**
  * Custom CSS for Altcontainers documentation site
- * Teal/cyan color scheme — placeholder pending final branding decision
+ * Coral color scheme — primary color #FF7F50
  * Supports both light and dark modes
  */
 
 :root {
-  /* Teal color palette */
-  --ifm-color-primary: #00897b;
-  --ifm-color-primary-dark: #00796b;
-  --ifm-color-primary-darker: #00695c;
-  --ifm-color-primary-darkest: #004d40;
-  --ifm-color-primary-light: #26a69a;
-  --ifm-color-primary-lighter: #4db6ac;
-  --ifm-color-primary-lightest: #80cbc4;
+  /* Coral color palette */
+  --ifm-color-primary: #FF7F50;
+  --ifm-color-primary-dark: #e57248;
+  --ifm-color-primary-darker: #cc6640;
+  --ifm-color-primary-darkest: #994d30;
+  --ifm-color-primary-light: #ff8c62;
+  --ifm-color-primary-lighter: #ff9973;
+  --ifm-color-primary-lightest: #ffb39a;
 
   /* Navbar */
-  --ifm-navbar-background-color: #00897b;
+  --ifm-navbar-background-color: #FF7F50;
   --ifm-navbar-link-color: #ffffff;
-  --ifm-navbar-link-hover-color: #b2dfdb;
+  --ifm-navbar-link-hover-color: #ffe0d6;
 
   /* Sidebar */
-  --ifm-menu-color: #004d40;
-  --ifm-menu-color-active: #00897b;
+  --ifm-menu-color: #994d30;
+  --ifm-menu-color-active: #FF7F50;
 
   /* Code blocks */
-  --docusaurus-highlighted-code-line-bg: rgba(0, 137, 123, 0.1);
+  --docusaurus-highlighted-code-line-bg: rgba(255, 127, 80, 0.1);
 
   /* Footer */
-  --ifm-footer-background-color: #004d40;
+  --ifm-footer-background-color: #994d30;
   --ifm-footer-color: #ffffff;
 
   /* Border radius */
@@ -37,21 +37,21 @@
 
 [data-theme='dark'] {
   /* Dark theme adjustments */
-  --ifm-color-primary: #4db6ac;
-  --ifm-color-primary-dark: #26a69a;
-  --ifm-color-primary-darker: #00897b;
-  --ifm-color-primary-darkest: #00796b;
-  --ifm-color-primary-light: #80cbc4;
-  --ifm-color-primary-lighter: #b2dfdb;
-  --ifm-color-primary-lightest: #e0f2f1;
+  --ifm-color-primary: #ff9973;
+  --ifm-color-primary-dark: #ff8c62;
+  --ifm-color-primary-darker: #FF7F50;
+  --ifm-color-primary-darkest: #e57248;
+  --ifm-color-primary-light: #ffb39a;
+  --ifm-color-primary-lighter: #ffc6b3;
+  --ifm-color-primary-lightest: #ffe0d6;
 
-  --ifm-navbar-background-color: #004d40;
-  --ifm-menu-color: #e0f2f1;
-  --ifm-menu-color-active: #4db6ac;
+  --ifm-navbar-background-color: #994d30;
+  --ifm-menu-color: #ffe0d6;
+  --ifm-menu-color-active: #ff9973;
 
-  --ifm-footer-background-color: #00251a;
+  --ifm-footer-background-color: #662211;
 
-  --docusaurus-highlighted-code-line-bg: rgba(77, 182, 172, 0.2);
+  --docusaurus-highlighted-code-line-bg: rgba(255, 153, 115, 0.2);
 }
 
 /* Navbar styles */
@@ -59,16 +59,12 @@
   box-shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.2), 0 4px 5px 0 rgba(0, 0, 0, 0.14), 0 1px 10px 0 rgba(0, 0, 0, 0.12);
 }
 
-.navbar__logo img {
-  filter: brightness(0) invert(1);
-}
-
 .navbar__link {
   font-weight: 500;
 }
 
 .navbar__link--active {
-  color: #b2dfdb;
+  color: #ffe0d6;
 }
 
 /* Sidebar styles */
@@ -78,11 +74,11 @@
 }
 
 .menu__link:hover {
-  background-color: rgba(0, 137, 123, 0.08);
+  background-color: rgba(255, 127, 80, 0.08);
 }
 
 [data-theme='dark'] .menu__link:hover {
-  background-color: rgba(77, 182, 172, 0.15);
+  background-color: rgba(255, 153, 115, 0.15);
 }
 
 /* Table of contents */
@@ -96,7 +92,7 @@
 }
 
 .footer__link-item:hover {
-  color: #b2dfdb;
+  color: #ffe0d6;
 }
 
 /* Code blocks */
@@ -131,7 +127,7 @@
 /* Responsive adjustments */
 @media screen and (max-width: 996px) {
   :root {
-    --ifm-navbar-background-color: #00897b;
+    --ifm-navbar-background-color: #FF7F50;
   }
 
   .navbar__items {

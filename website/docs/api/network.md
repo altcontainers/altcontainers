@@ -11,27 +11,53 @@ description: Runtime handle to a Docker bridge network for container-to-containe
 package org.altcontainers.api;
 
 public final class Network implements AutoCloseable {
-    public Network(String name, String id);
+    public static Network create();
+    public static void destroy(Network network);
     public String id();
     public void destroy();
     public void close();
 }
 ```
 
-## Getting a network
+## Creating a network
 
-Networks are created via `NetworkManager.createNetwork()`:
+Networks are created via the static factory method `Network.create()`:
 
 ```java
-try (Network network = NetworkManager.getInstance().createNetwork()) {
+try (Network network = Network.create()) {
     // ... use network ...
 }
 ```
 
+Creates a new Docker bridge network with a unique name (`altcontainers-<session>-<random>`). The network is registered with the reaper for automatic cleanup.
+
+**Throws:** `ContainerException` if Docker fails to create the network.
+
+## Destroying a network
+
+```java
+Network.destroy(network);
+```
+
+Or use try-with-resources:
+
+```java
+try (Network network = Network.create()) {
+    // ... use network ...
+}
+```
+
+`destroy(network)`:
+- Removes the Docker network
+- Blocks until Docker confirms removal
+- Retries transient `endpoint still attached` failures
+- Idempotent
+- No-op if `network` is `null`
+
 ## Using networks with containers
 
 ```java
-try (Network network = NetworkManager.getInstance().createNetwork()) {
+try (Network network = Network.create()) {
     ContainerSpec serverSpec = ContainerSpec.builder("my-server:latest")
         .network(network, "server")
         .build();
@@ -40,8 +66,8 @@ try (Network network = NetworkManager.getInstance().createNetwork()) {
         .network(network, "client")
         .build();
 
-    try (Container server = ContainerManager.getInstance().createContainer(serverSpec);
-         Container client = ContainerManager.getInstance().createContainer(clientSpec)) {
+    try (Container server = Container.create(serverSpec);
+         Container client = Container.create(clientSpec)) {
         // "client" can reach "server" via the network
     }
 }
@@ -51,7 +77,7 @@ try (Network network = NetworkManager.getInstance().createNetwork()) {
 
 ### `id()`
 
-Returns the Docker-assigned network identifier. Package-private `name()` is used internally as the network mode string.
+Returns the Docker-assigned network identifier.
 
 ### `destroy()`
 
@@ -67,6 +93,6 @@ Delegates to `destroy()`. Implements `AutoCloseable`.
 
 ## Learn next
 
-- [NetworkManager](network-manager)
+- [Container](container)
 - [ContainerSpec](container-spec)
 - [Javadoc](javadocs)

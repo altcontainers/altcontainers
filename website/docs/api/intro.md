@@ -11,37 +11,37 @@ The Altcontainers public API lives in the `org.altcontainers.api` package.
 
 | Class | Role |
 |---|---|
-| `ContainerManager` | Singleton entry point for creating and destroying containers |
+| `Container` | Static factory for creating and destroying containers |
 | `ContainerSpec` / `ContainerSpec.Builder` | Immutable container configuration with fluent builder |
-| `Container` | Runtime handle to a started container |
-| `NetworkManager` | Singleton entry point for creating and destroying networks |
-| `Network` | Runtime handle to a Docker bridge network |
+| `Network` | Static factory for creating and destroying Docker bridge networks |
+| `WaitCondition` | Sealed class hierarchy for container readiness conditions |
 | `PrefixConsumer` | Formatted stdout log consumer |
 | `Ulimit` | Linux resource limit specification |
+| `BindMount` | Host-to-container bind mount specification |
 | `ContainerException` | Runtime exception for lifecycle failures |
 | `Version` | Library version information |
+| `Protocol` | HTTP protocol variant for readiness probes |
 
 ## Design patterns
 
-- **Singleton managers.** `ContainerManager.getInstance()` and `NetworkManager.getInstance()` are the only entry points.
+- **Static factory methods.** `Container.create(spec)` and `Network.create()` are the entry points for creating resources. `Container.destroy(container)` and `Network.destroy(network)` for destruction.
 - **Builder pattern.** `ContainerSpec.builder(image)` returns a mutable builder; `.build()` produces an immutable spec.
 - **Try-with-resources.** `Container` and `Network` implement `AutoCloseable` for deterministic cleanup.
-- **Shaded internals.** All implementation classes (Docker client, reaper, wait conditions) live under `nonapi.org.altcontainers` and are not part of the public API.
+- **Shaded internals.** All implementation classes (Docker client, reaper, container manager, network manager) live under `nonapi.org.altcontainers` and are not part of the public API.
 
 ## Package structure
 
 ```
-org.altcontainers.api          — public API (Container, ContainerManager, ContainerSpec, ...)
-nonapi.org.altcontainers       — internal implementation (DockerClient, WaitCondition, ...)
+org.altcontainers.api          — public API (Container, ContainerSpec, Network, ...)
+nonapi.org.altcontainers       — internal implementation (DockerClient, ContainerManager, NetworkManager, ...)
 nonapi.org.altcontainers.reaper — automatic cleanup infrastructure
-nonapi.org.altcontainers.logger — internal logging
 ```
 
 The `nonapi` prefix signals that these packages are internal and subject to change without notice.
 
 ## Learn next
 
-- [ContainerManager](container-manager)
 - [ContainerSpec](container-spec)
 - [Container](container)
+- [Network](network)
 - [Javadoc](javadocs)

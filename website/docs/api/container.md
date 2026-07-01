@@ -11,7 +11,8 @@ description: Runtime handle to a started Docker container.
 package org.altcontainers.api;
 
 public class Container implements AutoCloseable {
-    public Container(String id, String image);
+    public static Container create(ContainerSpec spec);
+    public static void destroy(Container container);
     public String id();
     public String image();
     public boolean isRunning();
@@ -21,15 +22,48 @@ public class Container implements AutoCloseable {
 }
 ```
 
-## Getting a container
+## Creating a container
 
-Containers are created via `ContainerManager.createContainer(spec)`, not constructed directly:
+Containers are created via the static factory method `Container.create(spec)`:
 
 ```java
-try (Container container = ContainerManager.getInstance().createContainer(spec)) {
+try (Container container = Container.create(spec)) {
     // ... use container ...
 }
 ```
+
+`create(spec)`:
+- Validates the specification (`startupAttempts >= 1`, `startupTimeout` is positive)
+- Pulls the Docker image if not cached
+- Creates and starts the container
+- Attaches a log stream
+- Waits for all configured wait conditions
+- Retries on failure if `startupAttempts > 1`
+
+**Throws:**
+- `IllegalArgumentException` if `startupAttempts < 1` or `startupTimeout` is not positive
+- `NullPointerException` if `spec` is `null`
+- `ContainerException` if the container cannot be started or does not become ready
+
+## Destroying a container
+
+```java
+Container.destroy(container);
+```
+
+Or use try-with-resources:
+
+```java
+try (Container container = Container.create(spec)) {
+    // ... use container ...
+}
+```
+
+`destroy(container)`:
+- Stops and removes the container
+- Blocks until Docker confirms removal
+- Idempotent — safe to call multiple times
+- No-op if `container` is `null`
 
 ## Methods
 
@@ -87,5 +121,5 @@ Delegates to `destroy()`. Implements `AutoCloseable`.
 ## Learn next
 
 - [ContainerSpec](container-spec)
-- [ContainerManager](container-manager)
+- [Network](network)
 - [Javadoc](javadocs)
