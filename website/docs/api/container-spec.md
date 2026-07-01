@@ -47,7 +47,7 @@ public final class ContainerSpec {
 ## Builder example
 
 ```java
-ContainerSpec spec = ContainerSpec.builder("nginx:1.27")
+ContainerSpec containerSpec = ContainerSpec.builder("nginx:1.27")
     .command("nginx", "-g", "daemon off;")
     .exposePorts(80, 443)
     .network(network, "nginx")

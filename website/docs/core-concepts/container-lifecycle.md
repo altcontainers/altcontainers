@@ -52,14 +52,14 @@ The container is stopped and removed. Destruction is:
 ## Example
 
 ```java
-ContainerSpec spec = ContainerSpec.builder("nginx:1.27")
+ContainerSpec containerSpec = ContainerSpec.builder("nginx:1.27")
     .exposePorts(80)
     .waitForHttpResponse(80, "/")
     .startupTimeout(Duration.ofSeconds(30))
     .startupAttempts(2)
     .build();
 
-try (Container container = Container.create(spec)) {
+try (Container container = Container.create(containerSpec)) {
     int port = container.hostPort(80);
     // ... use container ...
 } // container is destroyed here

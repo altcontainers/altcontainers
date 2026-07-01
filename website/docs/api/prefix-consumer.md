@@ -19,7 +19,7 @@ public final class PrefixConsumer implements Consumer<String> {
 ## Usage
 
 ```java
-ContainerSpec spec = ContainerSpec.builder("nginx:1.27")
+ContainerSpec containerSpec = ContainerSpec.builder("nginx:1.27")
     .logConsumer(PrefixConsumer.of("NGINX", "nginx:1.27"))
     .build();
 ```

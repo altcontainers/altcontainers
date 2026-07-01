@@ -8,12 +8,12 @@ Altcontainers is a lightweight Java 17+ Docker container lifecycle management li
 ## Quick Start
 
 ```java
-ContainerSpec spec = ContainerSpec.builder("nginx:1.27")
+ContainerSpec containerSpec = ContainerSpec.builder("nginx:1.27")
     .exposePorts(80)
     .waitForHttpResponse(80, "/")
     .build();
 
-try (Container container = ContainerManager.getInstance().createContainer(spec)) {
+try (Container container = Container.create(containerSpec)) {
     int port = container.hostPort(80);
     // use http://localhost:<port>
 }
