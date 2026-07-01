@@ -1,0 +1,27 @@
+{
+  "id": "guides/log-consumers",
+  "title": "Log Consumers",
+  "description": "Capturing and formatting Docker container log output with Altcontainers.",
+  "source": "@site/docs/guides/log-consumers.md",
+  "sourceDirName": "guides",
+  "slug": "/guides/log-consumers",
+  "permalink": "/guides/log-consumers",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/altcontainers/altcontainers/tree/main/website/docs/guides/log-consumers.md",
+  "tags": [],
+  "version": "current",
+  "frontMatter": {
+    "title": "Log Consumers",
+    "description": "Capturing and formatting Docker container log output with Altcontainers."
+  },
+  "sidebar": "docsSidebar",
+  "previous": {
+    "title": "Cleanup",
+    "permalink": "/core-concepts/cleanup"
+  },
+  "next": {
+    "title": "Retry and Backoff",
+    "permalink": "/guides/retry-and-backoff"
+  }
+}

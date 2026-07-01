@@ -1,0 +1,27 @@
+{
+  "id": "api/wait-conditions",
+  "title": "Wait Conditions",
+  "description": "Readiness conditions for container startup — port probes, HTTP checks, and log matching.",
+  "source": "@site/docs/api/wait-conditions.md",
+  "sourceDirName": "api",
+  "slug": "/api/wait-conditions",
+  "permalink": "/api/wait-conditions",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/altcontainers/altcontainers/tree/main/website/docs/api/wait-conditions.md",
+  "tags": [],
+  "version": "current",
+  "frontMatter": {
+    "title": "Wait Conditions",
+    "description": "Readiness conditions for container startup — port probes, HTTP checks, and log matching."
+  },
+  "sidebar": "docsSidebar",
+  "previous": {
+    "title": "Network",
+    "permalink": "/api/network"
+  },
+  "next": {
+    "title": "PrefixConsumer",
+    "permalink": "/api/prefix-consumer"
+  }
+}

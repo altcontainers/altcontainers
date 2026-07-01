@@ -1,0 +1,27 @@
+{
+  "id": "core-concepts/networking",
+  "title": "Networking",
+  "description": "Managing Docker bridge networks for container-to-container communication with Altcontainers.",
+  "source": "@site/docs/core-concepts/networking.md",
+  "sourceDirName": "core-concepts",
+  "slug": "/core-concepts/networking",
+  "permalink": "/core-concepts/networking",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/altcontainers/altcontainers/tree/main/website/docs/core-concepts/networking.md",
+  "tags": [],
+  "version": "current",
+  "frontMatter": {
+    "title": "Networking",
+    "description": "Managing Docker bridge networks for container-to-container communication with Altcontainers."
+  },
+  "sidebar": "docsSidebar",
+  "previous": {
+    "title": "Wait Conditions",
+    "permalink": "/core-concepts/wait-conditions"
+  },
+  "next": {
+    "title": "Resource Limits",
+    "permalink": "/core-concepts/resource-limits"
+  }
+}

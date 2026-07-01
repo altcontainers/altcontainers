@@ -1,0 +1,27 @@
+{
+  "id": "api/version",
+  "title": "Version",
+  "description": "Accessing the Altcontainers library version at runtime.",
+  "source": "@site/docs/api/version.md",
+  "sourceDirName": "api",
+  "slug": "/api/version",
+  "permalink": "/api/version",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/altcontainers/altcontainers/tree/main/website/docs/api/version.md",
+  "tags": [],
+  "version": "current",
+  "frontMatter": {
+    "title": "Version",
+    "description": "Accessing the Altcontainers library version at runtime."
+  },
+  "sidebar": "docsSidebar",
+  "previous": {
+    "title": "ContainerException",
+    "permalink": "/api/container-exception"
+  },
+  "next": {
+    "title": "Javadoc",
+    "permalink": "/api/javadocs"
+  }
+}

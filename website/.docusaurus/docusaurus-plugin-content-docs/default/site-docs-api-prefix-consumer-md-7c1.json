@@ -1,0 +1,27 @@
+{
+  "id": "api/prefix-consumer",
+  "title": "PrefixConsumer",
+  "description": "A log consumer that formats Docker container output for stdout display.",
+  "source": "@site/docs/api/prefix-consumer.md",
+  "sourceDirName": "api",
+  "slug": "/api/prefix-consumer",
+  "permalink": "/api/prefix-consumer",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/altcontainers/altcontainers/tree/main/website/docs/api/prefix-consumer.md",
+  "tags": [],
+  "version": "current",
+  "frontMatter": {
+    "title": "PrefixConsumer",
+    "description": "A log consumer that formats Docker container output for stdout display."
+  },
+  "sidebar": "docsSidebar",
+  "previous": {
+    "title": "Wait Conditions",
+    "permalink": "/api/wait-conditions"
+  },
+  "next": {
+    "title": "Ulimit",
+    "permalink": "/api/ulimit"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "id": "core-concepts/container-lifecycle",
+  "title": "Container Lifecycle",
+  "description": "Understanding the Altcontainers container lifecycle from creation to destruction.",
+  "source": "@site/docs/core-concepts/container-lifecycle.md",
+  "sourceDirName": "core-concepts",
+  "slug": "/core-concepts/container-lifecycle",
+  "permalink": "/core-concepts/container-lifecycle",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/altcontainers/altcontainers/tree/main/website/docs/core-concepts/container-lifecycle.md",
+  "tags": [],
+  "version": "current",
+  "frontMatter": {
+    "title": "Container Lifecycle",
+    "description": "Understanding the Altcontainers container lifecycle from creation to destruction."
+  },
+  "sidebar": "docsSidebar",
+  "previous": {
+    "title": "Project Setup",
+    "permalink": "/getting-started/project-setup"
+  },
+  "next": {
+    "title": "Wait Conditions",
+    "permalink": "/core-concepts/wait-conditions"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "id": "api/protocol",
+  "title": "Protocol",
+  "description": "HTTP protocol variant for container readiness probes.",
+  "source": "@site/docs/api/protocol.md",
+  "sourceDirName": "api",
+  "slug": "/api/protocol",
+  "permalink": "/api/protocol",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/altcontainers/altcontainers/tree/main/website/docs/api/protocol.md",
+  "tags": [],
+  "version": "current",
+  "frontMatter": {
+    "title": "Protocol",
+    "description": "HTTP protocol variant for container readiness probes."
+  },
+  "sidebar": "docsSidebar",
+  "previous": {
+    "title": "BindMount",
+    "permalink": "/api/bind-mount"
+  },
+  "next": {
+    "title": "ContainerException",
+    "permalink": "/api/container-exception"
+  }
+}

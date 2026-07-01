@@ -1,0 +1,27 @@
+{
+  "id": "integrations/gradle",
+  "title": "Gradle",
+  "description": "Using Altcontainers in Gradle projects.",
+  "source": "@site/docs/integrations/gradle.md",
+  "sourceDirName": "integrations",
+  "slug": "/integrations/gradle",
+  "permalink": "/integrations/gradle",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/altcontainers/altcontainers/tree/main/website/docs/integrations/gradle.md",
+  "tags": [],
+  "version": "current",
+  "frontMatter": {
+    "title": "Gradle",
+    "description": "Using Altcontainers in Gradle projects."
+  },
+  "sidebar": "docsSidebar",
+  "previous": {
+    "title": "Maven",
+    "permalink": "/integrations/maven"
+  },
+  "next": {
+    "title": "Paramixel Integration",
+    "permalink": "/integrations/paramixel"
+  }
+}

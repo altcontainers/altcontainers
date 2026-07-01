@@ -1,0 +1,27 @@
+{
+  "id": "getting-started/introduction",
+  "title": "Introduction",
+  "description": "What Altcontainers is and when to use it.",
+  "source": "@site/docs/getting-started/introduction.md",
+  "sourceDirName": "getting-started",
+  "slug": "/getting-started/introduction",
+  "permalink": "/getting-started/introduction",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/altcontainers/altcontainers/tree/main/website/docs/getting-started/introduction.md",
+  "tags": [],
+  "version": "current",
+  "frontMatter": {
+    "title": "Introduction",
+    "description": "What Altcontainers is and when to use it."
+  },
+  "sidebar": "docsSidebar",
+  "previous": {
+    "title": "Altcontainers",
+    "permalink": "/"
+  },
+  "next": {
+    "title": "Installation",
+    "permalink": "/getting-started/installation"
+  }
+}

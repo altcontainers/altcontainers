@@ -1,0 +1,27 @@
+{
+  "id": "core-concepts/resource-limits",
+  "title": "Resource Limits",
+  "description": "Configuring CPU, memory, and ulimit constraints for Altcontainers containers.",
+  "source": "@site/docs/core-concepts/resource-limits.md",
+  "sourceDirName": "core-concepts",
+  "slug": "/core-concepts/resource-limits",
+  "permalink": "/core-concepts/resource-limits",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/altcontainers/altcontainers/tree/main/website/docs/core-concepts/resource-limits.md",
+  "tags": [],
+  "version": "current",
+  "frontMatter": {
+    "title": "Resource Limits",
+    "description": "Configuring CPU, memory, and ulimit constraints for Altcontainers containers."
+  },
+  "sidebar": "docsSidebar",
+  "previous": {
+    "title": "Networking",
+    "permalink": "/core-concepts/networking"
+  },
+  "next": {
+    "title": "Cleanup",
+    "permalink": "/core-concepts/cleanup"
+  }
+}

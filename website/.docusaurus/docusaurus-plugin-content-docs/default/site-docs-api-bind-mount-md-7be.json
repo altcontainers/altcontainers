@@ -1,0 +1,27 @@
+{
+  "id": "api/bind-mount",
+  "title": "BindMount",
+  "description": "Immutable specification of a host-to-container bind mount for Docker containers.",
+  "source": "@site/docs/api/bind-mount.md",
+  "sourceDirName": "api",
+  "slug": "/api/bind-mount",
+  "permalink": "/api/bind-mount",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/altcontainers/altcontainers/tree/main/website/docs/api/bind-mount.md",
+  "tags": [],
+  "version": "current",
+  "frontMatter": {
+    "title": "BindMount",
+    "description": "Immutable specification of a host-to-container bind mount for Docker containers."
+  },
+  "sidebar": "docsSidebar",
+  "previous": {
+    "title": "Ulimit",
+    "permalink": "/api/ulimit"
+  },
+  "next": {
+    "title": "Protocol",
+    "permalink": "/api/protocol"
+  }
+}

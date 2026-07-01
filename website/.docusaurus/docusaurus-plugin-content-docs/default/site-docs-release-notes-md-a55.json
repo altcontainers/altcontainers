@@ -1,0 +1,23 @@
+{
+  "id": "release-notes",
+  "title": "Release Notes",
+  "description": "Altcontainers release history and changelog.",
+  "source": "@site/docs/release-notes.md",
+  "sourceDirName": ".",
+  "slug": "/release-notes",
+  "permalink": "/release-notes",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/altcontainers/altcontainers/tree/main/website/docs/release-notes.md",
+  "tags": [],
+  "version": "current",
+  "frontMatter": {
+    "title": "Release Notes",
+    "description": "Altcontainers release history and changelog."
+  },
+  "sidebar": "docsSidebar",
+  "previous": {
+    "title": "Javadoc",
+    "permalink": "/api/javadocs"
+  }
+}

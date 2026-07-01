@@ -1,0 +1,27 @@
+{
+  "id": "guides/retry-and-backoff",
+  "title": "Retry and Backoff",
+  "description": "Configuring startup retries and backoff for flaky containers.",
+  "source": "@site/docs/guides/retry-and-backoff.md",
+  "sourceDirName": "guides",
+  "slug": "/guides/retry-and-backoff",
+  "permalink": "/guides/retry-and-backoff",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/altcontainers/altcontainers/tree/main/website/docs/guides/retry-and-backoff.md",
+  "tags": [],
+  "version": "current",
+  "frontMatter": {
+    "title": "Retry and Backoff",
+    "description": "Configuring startup retries and backoff for flaky containers."
+  },
+  "sidebar": "docsSidebar",
+  "previous": {
+    "title": "Log Consumers",
+    "permalink": "/guides/log-consumers"
+  },
+  "next": {
+    "title": "Troubleshooting",
+    "permalink": "/guides/troubleshooting"
+  }
+}

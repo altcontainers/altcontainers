@@ -1,0 +1,27 @@
+{
+  "id": "integrations/maven",
+  "title": "Maven",
+  "description": "Using Altcontainers in Maven projects.",
+  "source": "@site/docs/integrations/maven.md",
+  "sourceDirName": "integrations",
+  "slug": "/integrations/maven",
+  "permalink": "/integrations/maven",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/altcontainers/altcontainers/tree/main/website/docs/integrations/maven.md",
+  "tags": [],
+  "version": "current",
+  "frontMatter": {
+    "title": "Maven",
+    "description": "Using Altcontainers in Maven projects."
+  },
+  "sidebar": "docsSidebar",
+  "previous": {
+    "title": "Troubleshooting",
+    "permalink": "/guides/troubleshooting"
+  },
+  "next": {
+    "title": "Gradle",
+    "permalink": "/integrations/gradle"
+  }
+}

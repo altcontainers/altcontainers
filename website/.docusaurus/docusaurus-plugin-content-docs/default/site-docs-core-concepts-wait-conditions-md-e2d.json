@@ -1,0 +1,27 @@
+{
+  "id": "core-concepts/wait-conditions",
+  "title": "Wait Conditions",
+  "description": "Configuring readiness conditions for Altcontainers containers.",
+  "source": "@site/docs/core-concepts/wait-conditions.md",
+  "sourceDirName": "core-concepts",
+  "slug": "/core-concepts/wait-conditions",
+  "permalink": "/core-concepts/wait-conditions",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/altcontainers/altcontainers/tree/main/website/docs/core-concepts/wait-conditions.md",
+  "tags": [],
+  "version": "current",
+  "frontMatter": {
+    "title": "Wait Conditions",
+    "description": "Configuring readiness conditions for Altcontainers containers."
+  },
+  "sidebar": "docsSidebar",
+  "previous": {
+    "title": "Container Lifecycle",
+    "permalink": "/core-concepts/container-lifecycle"
+  },
+  "next": {
+    "title": "Networking",
+    "permalink": "/core-concepts/networking"
+  }
+}
