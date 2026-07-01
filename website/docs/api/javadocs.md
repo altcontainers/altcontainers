@@ -28,4 +28,4 @@ Classes in `org.altcontainers.api` are the public API. Classes under `nonapi.org
 ## Learn next
 
 - [API Overview](intro)
-- [ContainerManager](container-manager)
+- [Container](container)

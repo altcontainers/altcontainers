@@ -11,7 +11,6 @@ This guide walks through starting an nginx container, verifying it serves HTTP, 
 
 ```java
 import org.altcontainers.api.Container;
-import org.altcontainers.api.ContainerManager;
 import org.altcontainers.api.ContainerSpec;
 
 ContainerSpec spec = ContainerSpec.builder("nginx:1.27")
@@ -19,7 +18,7 @@ ContainerSpec spec = ContainerSpec.builder("nginx:1.27")
     .waitForHttpResponse(80, "/")
     .build();
 
-try (Container container = ContainerManager.getInstance().createContainer(spec)) {
+try (Container container = Container.create(spec)) {
     // Container is running and ready
     int port = container.hostPort(80);
     System.out.println("Nginx is serving on port " + port);
@@ -32,7 +31,7 @@ try (Container container = ContainerManager.getInstance().createContainer(spec))
 2. `.exposePorts(80)` tells Docker to publish container port 80 to an ephemeral host port.
 3. `.waitForHttpResponse(80, "/")` tells Altcontainers to wait until an HTTP GET to `/` returns a 2xx or 3xx status.
 4. `.build()` produces an immutable `ContainerSpec`.
-5. `ContainerManager.getInstance().createContainer(spec)` pulls the image (if needed), creates the container, starts it, and blocks until the HTTP wait condition is satisfied.
+5. `Container.create(spec)` pulls the image (if needed), creates the container, starts it, and blocks until the HTTP wait condition is satisfied.
 6. The try-with-resources block ensures the container is destroyed when the block exits.
 
 ## Add log output

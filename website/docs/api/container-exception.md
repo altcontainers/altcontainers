@@ -31,7 +31,7 @@ It is an **unchecked exception** — callers are not required to catch it, but s
 
 ```java
 try {
-    Container container = ContainerManager.getInstance().createContainer(spec);
+    Container container = Container.create(spec);
 } catch (ContainerException e) {
     System.err.println("Failed to start container: " + e.getMessage());
     // e.getCause() may contain the underlying Docker error
@@ -40,5 +40,5 @@ try {
 
 ## Learn next
 
-- [ContainerManager](container-manager)
+- [Container](container)
 - [Guides: Troubleshooting](../guides/troubleshooting)

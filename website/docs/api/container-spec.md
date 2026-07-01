@@ -5,7 +5,7 @@ description: Immutable desired configuration for a Docker container, built with 
 
 # ContainerSpec
 
-`ContainerSpec` captures the desired configuration for a Docker container. It is built via `ContainerSpec.builder(image)` and consumed by `ContainerManager.createContainer(spec)`.
+`ContainerSpec` captures the desired configuration for a Docker container. It is built via `ContainerSpec.builder(image)` and consumed by `Container.create(spec)`.
 
 ```java
 package org.altcontainers.api;
@@ -74,6 +74,6 @@ ContainerSpec spec = ContainerSpec.builder("nginx:1.27")
 
 ## Learn next
 
-- [ContainerManager](container-manager)
+- [Container](container)
 - [Container](container)
 - [Javadoc](javadocs)

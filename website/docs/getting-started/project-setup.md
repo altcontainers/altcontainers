@@ -59,12 +59,12 @@ The `org.altcontainers:core` JAR is a shaded uber-JAR. All transitive dependenci
 ## Verify your setup
 
 ```java
-import org.altcontainers.api.ContainerManager;
+import org.altcontainers.api.Container;
 import org.altcontainers.api.ContainerSpec;
 
 class SetupVerification {
     public static void main(String[] args) {
-        try (var container = ContainerManager.getInstance().createContainer(
+        try (var container = Container.create(
                 ContainerSpec.builder("hello-world:latest").build())) {
             System.out.println("Container started: " + container.id());
         }
@@ -76,5 +76,5 @@ If this runs without errors, your setup is correct.
 
 ## Learn next
 
+- [Your First Container](first-container)
 - [Core Concepts: Container Lifecycle](../core-concepts/container-lifecycle)
-- [API Reference: ContainerManager](../api/container-manager)

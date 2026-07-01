@@ -12,13 +12,13 @@ Altcontainers provides multiple layers of cleanup to ensure containers and netwo
 `Container` and `Network` both implement `AutoCloseable`. The recommended pattern:
 
 ```java
-try (Network network = NetworkManager.getInstance().createNetwork()) {
+try (Network network = Network.create()) {
     ContainerSpec spec = ContainerSpec.builder("nginx:1.27")
         .exposePorts(80)
         .network(network, "nginx")
         .waitForHttpResponse(80, "/")
         .build();
-    try (Container container = ContainerManager.getInstance().createContainer(spec)) {
+    try (Container container = Container.create(spec)) {
         // ... use container and network ...
     }
 }
@@ -31,7 +31,7 @@ Resources are destroyed in reverse order (container first, then network).
 If try-with-resources is not suitable:
 
 ```java
-Container container = ContainerManager.getInstance().createContainer(spec);
+Container container = Container.create(spec);
 try {
     // ... use container ...
 } finally {
@@ -42,7 +42,7 @@ try {
 Or via the manager:
 
 ```java
-ContainerManager.getInstance().destroyContainer(container);
+Container.destroy(container);
 ```
 
 ## Idempotent destruction

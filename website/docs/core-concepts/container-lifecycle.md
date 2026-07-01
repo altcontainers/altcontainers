@@ -5,7 +5,7 @@ description: Understanding the Altcontainers container lifecycle from creation t
 
 # Container Lifecycle
 
-Altcontainers manages the full Docker container lifecycle through `ContainerManager`.
+Altcontainers manages the full Docker container lifecycle through `Container.create()` and `Container.destroy()`.
 
 ## Lifecycle stages
 
@@ -15,7 +15,7 @@ pull image → create container → start container → wait for readiness → u
 
 ### 1. Pull image
 
-`ContainerManager.createContainer(spec)` pulls the Docker image if it is not already cached locally. Image pulls are idempotent — if the image exists, the pull is skipped.
+`Container.create(spec)` pulls the Docker image if it is not already cached locally. Image pulls are idempotent — if the image exists, the pull is skipped.
 
 ### 2. Create container
 
@@ -59,7 +59,7 @@ ContainerSpec spec = ContainerSpec.builder("nginx:1.27")
     .startupAttempts(2)
     .build();
 
-try (Container container = ContainerManager.getInstance().createContainer(spec)) {
+try (Container container = Container.create(spec)) {
     int port = container.hostPort(80);
     // ... use container ...
 } // container is destroyed here
@@ -81,11 +81,11 @@ attempt 2: sleep 2s, then retry
 If try-with-resources is not suitable:
 
 ```java
-Container container = ContainerManager.getInstance().createContainer(spec);
+Container container = Container.create(spec);
 try {
     // ... use container ...
 } finally {
-    ContainerManager.getInstance().destroyContainer(container);
+    Container.destroy(container);
 }
 ```
 
