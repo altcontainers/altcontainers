@@ -25,7 +25,7 @@ Configured through `ContainerSpec.Builder`:
 ```java
 import org.altcontainers.api.Ulimit;
 
-ContainerSpec spec = ContainerSpec.builder("my-image")
+ContainerSpec containerSpec = ContainerSpec.builder("my-image")
     .ulimit("nofile", 65536, 65536)   // max open files
     .ulimit("nproc", 4096, 4096)      // max processes
     .build();

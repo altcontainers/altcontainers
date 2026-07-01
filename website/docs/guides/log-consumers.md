@@ -14,7 +14,7 @@ Altcontainers lets you capture container log output through a `Consumer<String>`
 ```java
 import org.altcontainers.api.PrefixConsumer;
 
-ContainerSpec spec = ContainerSpec.builder("nginx:1.27")
+ContainerSpec containerSpec = ContainerSpec.builder("nginx:1.27")
     .logConsumer(PrefixConsumer.of("NGINX", "nginx:1.27"))
     .build();
 ```
@@ -32,7 +32,7 @@ Null or blank log lines are silently ignored.
 Any `Consumer<String>` can be used:
 
 ```java
-ContainerSpec spec = ContainerSpec.builder("my-image")
+ContainerSpec containerSpec = ContainerSpec.builder("my-image")
     .logConsumer(line -> {
         if (line.contains("ERROR")) {
             System.err.println("Container error: " + line);

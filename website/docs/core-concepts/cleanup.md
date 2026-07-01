@@ -13,12 +13,12 @@ Altcontainers provides multiple layers of cleanup to ensure containers and netwo
 
 ```java
 try (Network network = Network.create()) {
-    ContainerSpec spec = ContainerSpec.builder("nginx:1.27")
+    ContainerSpec containerSpec = ContainerSpec.builder("nginx:1.27")
         .exposePorts(80)
         .network(network, "nginx")
         .waitForHttpResponse(80, "/")
         .build();
-    try (Container container = Container.create(spec)) {
+    try (Container container = Container.create(containerSpec)) {
         // ... use container and network ...
     }
 }

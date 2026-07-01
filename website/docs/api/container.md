@@ -11,7 +11,7 @@ description: Runtime handle to a started Docker container.
 package org.altcontainers.api;
 
 public class Container implements AutoCloseable {
-    public static Container create(ContainerSpec spec);
+    public static Container create(ContainerSpec containerSpec);
     public static void destroy(Container container);
     public String id();
     public String image();

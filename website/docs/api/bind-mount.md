@@ -19,7 +19,7 @@ public record BindMount(String hostPath, String containerPath) {
 Bind mounts are configured through `ContainerSpec.Builder.bindDirectory()`:
 
 ```java
-ContainerSpec spec = ContainerSpec.builder("my-image:latest")
+ContainerSpec containerSpec = ContainerSpec.builder("my-image:latest")
     .bindDirectory("/host/path", "/container/path")
     .build();
 ```
@@ -27,7 +27,7 @@ ContainerSpec spec = ContainerSpec.builder("my-image:latest")
 Access all configured bind mounts from a `ContainerSpec`:
 
 ```java
-List<BindMount> mounts = spec.bindMounts();
+List<BindMount> mounts = containerSpec.bindMounts();
 for (BindMount mount : mounts) {
     System.out.println(mount.hostPath() + " -> " + mount.containerPath());
 }

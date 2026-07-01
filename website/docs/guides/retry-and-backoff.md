@@ -10,7 +10,7 @@ Altcontainers supports retrying container startup with linear backoff.
 ## Configuring retries
 
 ```java
-ContainerSpec spec = ContainerSpec.builder("my-flaky-image")
+ContainerSpec containerSpec = ContainerSpec.builder("my-flaky-image")
     .exposePorts(8080)
     .waitForHttpResponse(8080, "/health")
     .startupAttempts(3)                        // try up to 3 times

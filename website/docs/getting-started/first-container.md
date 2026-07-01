@@ -13,12 +13,12 @@ This guide walks through starting an nginx container, verifying it serves HTTP, 
 import org.altcontainers.api.Container;
 import org.altcontainers.api.ContainerSpec;
 
-ContainerSpec spec = ContainerSpec.builder("nginx:1.27")
+ContainerSpec containerSpec = ContainerSpec.builder("nginx:1.27")
     .exposePorts(80)
     .waitForHttpResponse(80, "/")
     .build();
 
-try (Container container = Container.create(spec)) {
+try (Container container = Container.create(containerSpec)) {
     // Container is running and ready
     int port = container.hostPort(80);
     System.out.println("Nginx is serving on port " + port);
@@ -39,7 +39,7 @@ try (Container container = Container.create(spec)) {
 ```java
 import org.altcontainers.api.PrefixConsumer;
 
-ContainerSpec spec = ContainerSpec.builder("nginx:1.27")
+ContainerSpec containerSpec = ContainerSpec.builder("nginx:1.27")
     .exposePorts(80)
     .logConsumer(PrefixConsumer.of("NGINX", "nginx:1.27"))
     .waitForHttpResponse(80, "/")
@@ -51,7 +51,7 @@ Container logs are printed to stdout as `[NGINX] nginx:1.27 | <log line>`.
 ## Use a custom command
 
 ```java
-ContainerSpec spec = ContainerSpec.builder("nginx:1.27")
+ContainerSpec containerSpec = ContainerSpec.builder("nginx:1.27")
     .command("nginx", "-g", "daemon off;")
     .exposePorts(80)
     .waitForLogMessage(".*start worker process.*")
