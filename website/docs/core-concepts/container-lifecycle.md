@@ -97,6 +97,6 @@ Altcontainers registers a JVM shutdown hook (the "reaper") that destroys all con
 
 ## Learn next
 
-- [Wait Conditions](wait-conditions)
+- [Wait Strategies](wait-strategies)
 - [Networking](networking)
 - [Cleanup](cleanup)

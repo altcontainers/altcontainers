@@ -22,13 +22,19 @@
     </properties>
 
     <dependencies>
+
         <dependency>
-            <groupId>com.github.docker-java</groupId>
-            <artifactId>docker-java-core</artifactId>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.github.docker-java</groupId>
-            <artifactId>docker-java-transport-zerodep</artifactId>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp-jvm</artifactId>
+            <version>${okhttp.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
@@ -47,6 +53,11 @@
         <dependency>
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>mockwebserver3</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -82,48 +93,24 @@
                         <configuration>
                             <relocations>
                                 <relocation>
-                                    <pattern>com.github.dockerjava</pattern>
-                                    <shadedPattern>nonapi.org.altcontainers.dockerjava</shadedPattern>
+                                    <pattern>com.squareup.okhttp3</pattern>
+                                    <shadedPattern>nonapi.org.altcontainers.okhttp3</shadedPattern>
                                 </relocation>
                                 <relocation>
-                                    <pattern>com.fasterxml.jackson</pattern>
-                                    <shadedPattern>nonapi.org.altcontainers.jackson</shadedPattern>
+                                    <pattern>okhttp3</pattern>
+                                    <shadedPattern>nonapi.org.altcontainers.okhttp3</shadedPattern>
                                 </relocation>
                                 <relocation>
-                                    <pattern>com.google.common</pattern>
-                                    <shadedPattern>nonapi.org.altcontainers.guava</shadedPattern>
+                                    <pattern>okio</pattern>
+                                    <shadedPattern>nonapi.org.altcontainers.okio</shadedPattern>
                                 </relocation>
                                 <relocation>
-                                    <pattern>com.google.thirdparty</pattern>
-                                    <shadedPattern>nonapi.org.altcontainers.guava</shadedPattern>
+                                    <pattern>com.google.gson</pattern>
+                                    <shadedPattern>nonapi.org.altcontainers.gson</shadedPattern>
                                 </relocation>
                                 <relocation>
-                                    <pattern>com.google.errorprone</pattern>
-                                    <shadedPattern>nonapi.org.altcontainers.errorprone</shadedPattern>
-                                </relocation>
-                                <relocation>
-                                    <pattern>com.google.j2objc</pattern>
-                                    <shadedPattern>nonapi.org.altcontainers.j2objc</shadedPattern>
-                                </relocation>
-                                <relocation>
-                                    <pattern>org.apache.commons</pattern>
-                                    <shadedPattern>nonapi.org.altcontainers.commons</shadedPattern>
-                                </relocation>
-                                <relocation>
-                                    <pattern>org.apache.hc</pattern>
-                                    <shadedPattern>nonapi.org.altcontainers.http5</shadedPattern>
-                                </relocation>
-                                <relocation>
-                                    <pattern>org.bouncycastle</pattern>
-                                    <shadedPattern>nonapi.org.altcontainers.bouncycastle</shadedPattern>
-                                </relocation>
-                                <relocation>
-                                    <pattern>com.sun.jna</pattern>
-                                    <shadedPattern>nonapi.org.altcontainers.jna</shadedPattern>
-                                </relocation>
-                                <relocation>
-                                    <pattern>org.jspecify</pattern>
-                                    <shadedPattern>nonapi.org.altcontainers.jspecify</shadedPattern>
+                                    <pattern>kotlin</pattern>
+                                    <shadedPattern>nonapi.org.altcontainers.kotlin</shadedPattern>
                                 </relocation>
                                 <relocation>
                                     <pattern>org.slf4j</pattern>
@@ -148,94 +135,32 @@
                                         <exclude>module-info.class</exclude>
                                         <exclude>META-INF/versions/*/module-info.class</exclude>
                                         <exclude>META-INF/versions/*/OSGI-INF/**</exclude>
+                                        <exclude>META-INF/kotlin-project-structure-metadata.json</exclude>
                                     </excludes>
                                 </filter>
                                 <filter>
-                                    <artifact>com.fasterxml.jackson.core:*</artifact>
+                                    <artifact>com.google.code.gson:gson</artifact>
                                     <excludes>
                                         <exclude>META-INF/LICENSE*</exclude>
                                         <exclude>META-INF/NOTICE*</exclude>
                                     </excludes>
                                 </filter>
                                 <filter>
-                                    <artifact>com.github.docker-java:*</artifact>
+                                    <artifact>com.squareup.okhttp3:*</artifact>
                                     <excludes>
                                         <exclude>META-INF/LICENSE*</exclude>
                                         <exclude>META-INF/NOTICE*</exclude>
                                     </excludes>
                                 </filter>
                                 <filter>
-                                    <artifact>com.google.errorprone:*</artifact>
+                                    <artifact>com.squareup.okio:*</artifact>
                                     <excludes>
                                         <exclude>META-INF/LICENSE*</exclude>
                                         <exclude>META-INF/NOTICE*</exclude>
                                     </excludes>
                                 </filter>
                                 <filter>
-                                    <artifact>com.google.guava:*</artifact>
-                                    <excludes>
-                                        <exclude>META-INF/LICENSE*</exclude>
-                                        <exclude>META-INF/NOTICE*</exclude>
-                                    </excludes>
-                                </filter>
-                                <filter>
-                                    <artifact>com.google.j2objc:*</artifact>
-                                    <excludes>
-                                        <exclude>META-INF/LICENSE*</exclude>
-                                        <exclude>META-INF/NOTICE*</exclude>
-                                    </excludes>
-                                </filter>
-                                <filter>
-                                    <artifact>commons-codec:*</artifact>
-                                    <excludes>
-                                        <exclude>META-INF/LICENSE*</exclude>
-                                        <exclude>META-INF/NOTICE*</exclude>
-                                    </excludes>
-                                </filter>
-                                <filter>
-                                    <artifact>commons-io:*</artifact>
-                                    <excludes>
-                                        <exclude>META-INF/LICENSE*</exclude>
-                                        <exclude>META-INF/NOTICE*</exclude>
-                                    </excludes>
-                                </filter>
-                                <filter>
-                                    <artifact>net.java.dev.jna:*</artifact>
-                                    <excludes>
-                                        <exclude>META-INF/LICENSE*</exclude>
-                                        <exclude>META-INF/NOTICE*</exclude>
-                                    </excludes>
-                                </filter>
-                                <filter>
-                                    <artifact>org.apache.commons:*</artifact>
-                                    <excludes>
-                                        <exclude>META-INF/LICENSE*</exclude>
-                                        <exclude>META-INF/NOTICE*</exclude>
-                                    </excludes>
-                                </filter>
-                                <filter>
-                                    <artifact>org.apache.httpcomponents.client5:*</artifact>
-                                    <excludes>
-                                        <exclude>META-INF/LICENSE*</exclude>
-                                        <exclude>META-INF/NOTICE*</exclude>
-                                    </excludes>
-                                </filter>
-                                <filter>
-                                    <artifact>org.apache.httpcomponents.core5:*</artifact>
-                                    <excludes>
-                                        <exclude>META-INF/LICENSE*</exclude>
-                                        <exclude>META-INF/NOTICE*</exclude>
-                                    </excludes>
-                                </filter>
-                                <filter>
-                                    <artifact>org.bouncycastle:*</artifact>
-                                    <excludes>
-                                        <exclude>META-INF/LICENSE*</exclude>
-                                        <exclude>META-INF/NOTICE*</exclude>
-                                    </excludes>
-                                </filter>
-                                <filter>
-                                    <artifact>org.jspecify:*</artifact>
+                                    <artifact>org.jetbrains.kotlin:*</artifact>
                                     <excludes>
                                         <exclude>META-INF/LICENSE*</exclude>
                                         <exclude>META-INF/NOTICE*</exclude>
@@ -243,6 +168,13 @@
                                 </filter>
                                 <filter>
                                     <artifact>ch.qos.logback:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/LICENSE*</exclude>
+                                        <exclude>META-INF/NOTICE*</exclude>
+                                    </excludes>
+                                </filter>
+                                <filter>
+                                    <artifact>org.slf4j:slf4j-api</artifact>
                                     <excludes>
                                         <exclude>META-INF/LICENSE*</exclude>
                                         <exclude>META-INF/NOTICE*</exclude>

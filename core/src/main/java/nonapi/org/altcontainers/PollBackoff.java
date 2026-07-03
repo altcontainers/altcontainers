@@ -50,7 +50,9 @@ public final class PollBackoff {
     /**
      * Private constructor; utility class.
      */
-    private PollBackoff() {}
+    private PollBackoff() {
+        // Intentionally empty
+    }
 
     /**
      * Sleeps with exponential backoff, bounded by the given deadline.
@@ -75,7 +77,19 @@ public final class PollBackoff {
         long sleepMs = sleepMsRef.get();
         long jitter = ThreadLocalRandom.current().nextLong(-JITTER_MS, JITTER_MS + 1);
         long effectiveMs = Math.max(1, sleepMs + jitter - elapsedNanos / 1_000_000L);
-        effectiveMs = Math.min(effectiveMs, remainingNanos / 1_000_000L);
+        if (effectiveMs * 1_000_000L > remainingNanos) {
+            if (remainingNanos < 1_000_000L) {
+                // Sleep the remaining sub-millisecond time to avoid a tight spin loop.
+                // After sleeping, the deadline has passed (or is within ns of passing).
+                try {
+                    Thread.sleep(remainingNanos / 1_000_000L, (int) (remainingNanos % 1_000_000L));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                return false;
+            }
+            effectiveMs = remainingNanos / 1_000_000L;
+        }
         try {
             Thread.sleep(effectiveMs);
         } catch (InterruptedException e) {

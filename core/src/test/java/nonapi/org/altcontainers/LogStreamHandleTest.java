@@ -21,6 +21,8 @@ import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -116,5 +118,120 @@ class LogStreamHandleTest {
         public void close() throws IOException {
             throw new IOException("boom");
         }
+    }
+
+    @Test
+    void shouldSwallowRuntimeExceptionFromUnderlyingClose() {
+        Closeable throwingCloseable = () -> {
+            throw new IllegalStateException("okhttp internal error");
+        };
+        LogStreamHandle handle = new LogStreamHandle(throwingCloseable);
+        handle.close(); // must not propagate
+        handle.close(); // idempotent re-close also silent
+    }
+
+    @Test
+    void shouldDispatchBlankLineToRawConsumerButNotDisplayConsumer() throws Exception {
+        Class<?> lineBufferClass = Class.forName("nonapi.org.altcontainers.LogOperations$LineBuffer");
+        Object buffer = lineBufferClass.getDeclaredConstructor().newInstance();
+
+        java.lang.reflect.Method append = lineBufferClass.getDeclaredMethod("append", byte[].class);
+        append.setAccessible(true);
+        append.invoke(buffer, (Object) "\n".getBytes());
+
+        List<String> displayLines = new ArrayList<>();
+        List<String> rawLines = new ArrayList<>();
+
+        java.lang.reflect.Method drainLines = lineBufferClass.getDeclaredMethod(
+                "drainLines", java.util.function.Consumer.class, java.util.function.Consumer.class);
+        drainLines.setAccessible(true);
+        drainLines.invoke(
+                buffer, (java.util.function.Consumer<String>) displayLines::add, (java.util.function.Consumer<String>)
+                        rawLines::add);
+
+        assertThat(rawLines).contains("\n");
+        assertThat(displayLines).isEmpty();
+    }
+
+    @Test
+    void shouldDiscardBufferWhenExceedingMaxSize() throws Exception {
+        Class<?> lineBufferClass = Class.forName("nonapi.org.altcontainers.LogOperations$LineBuffer");
+        Object buffer = lineBufferClass.getDeclaredConstructor().newInstance();
+
+        java.lang.reflect.Method append = lineBufferClass.getDeclaredMethod("append", byte[].class);
+        append.setAccessible(true);
+
+        // Append 10 MB + 1 byte of data without newline — this exceeds MAX_BUFFER_SIZE
+        // and should cause the buffer to reset.
+        byte[] largePayload = new byte[10 * 1024 * 1024 + 1];
+        append.invoke(buffer, (Object) largePayload);
+
+        // Next append should work normally on a fresh buffer.
+        append.invoke(buffer, (Object) "hello\n".getBytes());
+
+        List<String> rawLines = new ArrayList<>();
+        java.lang.reflect.Method drainLines = lineBufferClass.getDeclaredMethod(
+                "drainLines", java.util.function.Consumer.class, java.util.function.Consumer.class);
+        drainLines.setAccessible(true);
+        drainLines.invoke(
+                buffer, (java.util.function.Consumer<String>) line -> {}, (java.util.function.Consumer<String>)
+                        rawLines::add);
+
+        assertThat(rawLines).contains("hello\n");
+    }
+
+    @Test
+    void shouldAcceptDataAtExactMaxBufferSize() throws Exception {
+        Class<?> lineBufferClass = Class.forName("nonapi.org.altcontainers.LogOperations$LineBuffer");
+        Object buffer = lineBufferClass.getDeclaredConstructor().newInstance();
+
+        java.lang.reflect.Method append = lineBufferClass.getDeclaredMethod("append", byte[].class);
+        append.setAccessible(true);
+
+        // Append just under 10 MB, then one byte, then a newline.
+        // Total is exactly 10 MB which is within the limit.
+        byte[] almostFull = new byte[10 * 1024 * 1024 - 2];
+        append.invoke(buffer, (Object) almostFull);
+        append.invoke(buffer, (Object) "x".getBytes());
+        append.invoke(buffer, (Object) "\n".getBytes());
+
+        List<String> rawLines = new ArrayList<>();
+        java.lang.reflect.Method drainLines = lineBufferClass.getDeclaredMethod(
+                "drainLines", java.util.function.Consumer.class, java.util.function.Consumer.class);
+        drainLines.setAccessible(true);
+        drainLines.invoke(
+                buffer, (java.util.function.Consumer<String>) line -> {}, (java.util.function.Consumer<String>)
+                        rawLines::add);
+
+        assertThat(rawLines).isNotEmpty();
+        assertThat(rawLines.get(0)).endsWith("x\n");
+    }
+
+    @Test
+    void shouldDispatchRawLineWhenDisplayConsumerThrows() throws Exception {
+        // Access private inner class LineBuffer via reflection
+        Class<?> lineBufferClass = Class.forName("nonapi.org.altcontainers.LogOperations$LineBuffer");
+        Object buffer = lineBufferClass.getDeclaredConstructor().newInstance();
+
+        // Append "hello\n" bytes
+        java.lang.reflect.Method append = lineBufferClass.getDeclaredMethod("append", byte[].class);
+        append.setAccessible(true);
+        append.invoke(buffer, (Object) "hello\n".getBytes());
+
+        // Raw consumer records lines
+        List<String> rawLines = new ArrayList<>();
+        java.util.function.Consumer<String> display = line -> {
+            throw new RuntimeException("display fail");
+        };
+        java.util.function.Consumer<String> raw = rawLines::add;
+
+        // Call drainLines — should NOT throw despite display consumer exception
+        java.lang.reflect.Method drainLines = lineBufferClass.getDeclaredMethod(
+                "drainLines", java.util.function.Consumer.class, java.util.function.Consumer.class);
+        drainLines.setAccessible(true);
+        drainLines.invoke(buffer, display, raw);
+
+        // Raw consumer must have received the line
+        assertThat(rawLines).contains("hello\n");
     }
 }

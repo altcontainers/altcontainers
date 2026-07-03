@@ -117,7 +117,7 @@ The following rules are specific to the Altcontainers repository and its build s
 
 ## Critical Rules
 
-- Before any Maven or Gradle validation/build command (`test`, `check`, `package`, `install`, `verify`, `javadoc`, etc.), run `./mvnw spotless:apply`. The only exception is an explicitly requested read-only formatting check with `./mvnw spotless:check`.
+- Before any Maven validation/build command (`test`, `check`, `package`, `install`, `verify`, `javadoc`, etc.), run `./mvnw spotless:apply`. The only exception is an explicitly requested read-only formatting check with `./mvnw spotless:check`.
 - Preserve Java 17 compatibility and existing public API/exception semantics unless the user explicitly asks for a breaking change.
 - Do not weaken Spotless, strict Javadoc, PMD, test, or build configuration to make validation pass.
 - Prefer the smallest safe change and report the commands run with pass/fail results.
@@ -126,7 +126,7 @@ The following rules are specific to the Altcontainers repository and its build s
 
 1. Inspect the relevant source, tests, build files, and repository guidance before changing files.
 2. Make the smallest focused change that satisfies the request.
-3. Run `./mvnw spotless:apply` before Maven or Gradle validation.
+3. Run `./mvnw spotless:apply` before Maven validation.
 4. Run the narrowest relevant validation command from the table below.
 5. Prefer `./mvnw clean verify` when touching shared/core behavior or build configuration.
 6. Summarize changed files, validation commands, results, and any remaining risks.
@@ -148,9 +148,7 @@ Run `./mvnw spotless:apply` first for validation/build commands unless the task 
 | Build without running any tests | `./mvnw clean install -DskipTests` |
 | Check formatting only | `./mvnw spotless:check` |
 | Check Javadoc only (Maven) | `./mvnw javadoc:javadoc` |
-| Check Javadoc only (Gradle) | `./gradlew javadoc --no-daemon` |
 | Build Maven project | `./mvnw clean install` |
-| Build Gradle project | `./gradlew clean check --no-daemon` |
 
 `-DskipTests` skips Surefire JUnit tests in standard test sources.
 
@@ -175,9 +173,8 @@ Run `./mvnw spotless:apply` first for validation/build commands unless the task 
 
 ## Javadoc
 
-- Strict Javadoc is enforced in both Maven and Gradle builds.
+- Strict Javadoc is enforced in the Maven build.
 - Maven: `doclint:all` + `-Werror` on `maven-javadoc-plugin` (runs during `package` phase).
-- Gradle: `Xdoclint:all` + `Werror` on `javadoc` task (runs during `check`).
 - Record compact constructors require their own `@param` tags, separate from record component `@param` tags.
 - Missing `@param`, `@return`, or `@throws` tags will fail the build.
 - The `examples/` module skips Javadoc generation entirely (`maven.javadoc.skip=true`).

@@ -37,11 +37,9 @@ try (Container container = Container.create(containerSpec)) {
 ## Add log output
 
 ```java
-import org.altcontainers.api.PrefixConsumer;
-
 ContainerSpec containerSpec = ContainerSpec.builder("nginx:1.27")
     .exposePorts(80)
-    .logConsumer(PrefixConsumer.of("NGINX", "nginx:1.27"))
+    .logConsumer(line -> System.out.println("[NGINX] nginx:1.27 | " + line))
     .waitForHttpResponse(80, "/")
     .build();
 ```
@@ -64,4 +62,4 @@ The `.command()` method appends arguments to the container's entrypoint.
 
 - [Project Setup](project-setup)
 - [Core Concepts: Container Lifecycle](../core-concepts/container-lifecycle)
-- [Core Concepts: Wait Conditions](../core-concepts/wait-conditions)
+- [Core Concepts: Wait Strategies](../core-concepts/wait-strategies)

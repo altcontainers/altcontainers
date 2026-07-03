@@ -18,6 +18,8 @@ package nonapi.org.altcontainers;
 
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Semaphore;
 import nonapi.org.altcontainers.reaper.ResourceController;
 import org.altcontainers.api.ContainerException;
 import org.altcontainers.api.Network;
@@ -26,7 +28,7 @@ import org.altcontainers.api.Network;
  * Public lifecycle facade for creating and destroying Docker networks.
  *
  * <p>{@code NetworkManager} is the primary entry point for network lifecycle operations. The singleton
- * delegates to {@link DockerClient} for all Docker daemon communication.
+ * delegates to static operation utilities backed by {@link DockerClient} for all Docker daemon communication.
  *
  * <h2>Usage</h2>
  *
@@ -51,15 +53,49 @@ public final class NetworkManager {
     /**
      * The Docker execution backend.
      */
-    private final DockerClient dockerClient;
+    private final DockerClient client;
+
+    /**
+     * Limits the number of concurrently active Docker bridge networks.
+     * <p>A value of 0 means unlimited (no gating). Positive values bound
+     * the number of simultaneous {@link #createNetwork()} calls that can
+     * proceed before callers block. Initialized from the
+     * {@code altcontainers.environments.parallelism} system property.
+     * <p>{@code null} when the parallelism property is 0 or unset.
+     */
+    private final Semaphore networkSemaphore;
+
+    /**
+     * Tracks which network ids have already had their semaphore permit released.
+     * Prevents double-release when {@link #destroyNetwork(Network)} is called
+     * idempotently on the same network. Only populated when {@code networkSemaphore}
+     * is non-null.
+     */
+    private final ConcurrentHashMap<String, Boolean> releasedSemaphoreNetworkIds = new ConcurrentHashMap<>();
 
     /**
      * Creates a network manager backed by the given Docker client.
      *
-     * @param dockerClient the Docker client; must not be {@code null}
+     * <p>Reads the {@code altcontainers.environments.parallelism} system property
+     * to initialize the network semaphore.
+     *
+     * @param client the Docker client; must not be {@code null}
      */
-    private NetworkManager(DockerClient dockerClient) {
-        this.dockerClient = Objects.requireNonNull(dockerClient);
+    NetworkManager(DockerClient client) {
+        this.client = Objects.requireNonNull(client, "client must not be null");
+        int networkParallelism = readNetworkParallelism(System.getProperty("altcontainers.environments.parallelism"));
+        this.networkSemaphore = networkParallelism > 0 ? new Semaphore(networkParallelism) : null;
+    }
+
+    /**
+     * Package-private constructor for tests that need a predetermined semaphore.
+     *
+     * @param client the Docker client; must not be null
+     * @param networkSemaphore the semaphore to use; may be null for unlimited
+     */
+    NetworkManager(DockerClient client, Semaphore networkSemaphore) {
+        this.client = Objects.requireNonNull(client, "client must not be null");
+        this.networkSemaphore = networkSemaphore;
     }
 
     /**
@@ -78,14 +114,29 @@ public final class NetworkManager {
      * @throws ContainerException if Docker fails to create the network or the reaper is unavailable
      */
     public Network createNetwork() {
-        var controller = ResourceController.instance();
-        var session = controller.ensureReady();
-        var labels = session.labelsForNewResource();
-        String sessionPart = session.sessionId().substring(0, 8);
-        String randomPart = UUID.randomUUID().toString().substring(0, 8);
-        String name = "altcontainers-" + sessionPart + "-" + randomPart;
-        String id = dockerClient.createNetwork(name, labels);
-        return new Network(name, id);
+        if (networkSemaphore != null) {
+            try {
+                networkSemaphore.acquire();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new ContainerException("Interrupted while waiting for network creation permit", e);
+            }
+        }
+        try {
+            var controller = ResourceController.instance();
+            var session = controller.ensureReady();
+            var labels = session.labelsForNewResource();
+            String sessionPart = session.sessionId().substring(0, 8);
+            String randomPart = UUID.randomUUID().toString().substring(0, 8);
+            String name = "altcontainers-" + sessionPart + "-" + randomPart;
+            String id = NetworkOperations.createNetwork(client, name, labels);
+            return new Network(name, id);
+        } catch (Throwable t) {
+            if (networkSemaphore != null) {
+                networkSemaphore.release();
+            }
+            throw t;
+        }
     }
 
     /**
@@ -101,6 +152,43 @@ public final class NetworkManager {
         if (network == null) {
             return;
         }
-        dockerClient.destroyNetwork(network.id());
+        try {
+            client.destroyNetwork(network.id());
+        } finally {
+            if (networkSemaphore != null
+                    && releasedSemaphoreNetworkIds.putIfAbsent(network.id(), Boolean.TRUE) == null) {
+                networkSemaphore.release();
+            }
+        }
+    }
+
+    /**
+     * Package-private for testing. Parses the raw system-property value.
+     *
+     * @param raw the raw property value from {@code System.getProperty}, may be null
+     * @return the parallelism level; 0 means unlimited
+     * @throws ContainerException if the value is present and non-blank but not a
+     *     non-negative integer
+     */
+    static int readNetworkParallelism(String raw) {
+        if (raw == null) {
+            return 0;
+        }
+        String trimmed = raw.trim();
+        if (trimmed.isEmpty()) {
+            return 0;
+        }
+        int value;
+        try {
+            value = Integer.parseInt(trimmed);
+        } catch (NumberFormatException e) {
+            throw new ContainerException(
+                    "altcontainers.environments.parallelism must be a non-negative integer, was: " + raw, e);
+        }
+        if (value < 0) {
+            throw new ContainerException(
+                    "altcontainers.environments.parallelism must be a non-negative integer, was: " + raw);
+        }
+        return value;
     }
 }

@@ -8,7 +8,7 @@ description: Set up a Java project with Altcontainers for container-based integr
 ## Requirements
 
 - Java 17 or newer
-- Maven 3.9+ or Gradle 8+
+- Maven 3.9+
 - Docker daemon running and accessible
 
 ## Maven project
@@ -26,23 +26,18 @@ Add the Altcontainers dependency to your `pom.xml`:
 
 Altcontainers is typically a test-scoped dependency since container management is used in integration tests.
 
-## Gradle project
-
-Add to `build.gradle`:
-
-```groovy
-dependencies {
-    testImplementation 'org.altcontainers:core:0.0.1'
-}
-```
-
 ## Docker configuration
 
-Altcontainers uses the `docker-java` library, which auto-detects the Docker daemon:
+Altcontainers uses a minimal internal OkHttp Docker Engine client. Docker host
+configuration uses the following precedence:
 
-- **Linux/macOS:** Connects via the default Unix socket (`/var/run/docker.sock`)
-- **Windows:** Connects via named pipe
-- **Override:** Set the `DOCKER_HOST` environment variable for remote Docker daemons
+1. Java system property `altcontainers.docker.host` (e.g., `-Daltcontainers.docker.host=tcp://localhost:2375`)
+2. Environment variable `DOCKER_HOST`
+3. Default `unix:///var/run/docker.sock`
+
+Supported schemes: `unix://`, `tcp://`, `http://`, `https://` (with JVM default SSL).
+Windows/named pipes, Docker context discovery, TLS cert envs, and private registry
+ auth are not currently supported.
 
 Verify Docker is accessible:
 
@@ -54,7 +49,9 @@ If this command succeeds, Altcontainers will be able to communicate with the dae
 
 ## Altcontainers has no dependencies
 
-The `org.altcontainers:core` JAR is a shaded uber-JAR. All transitive dependencies (docker-java, Jackson, Guava, Apache HttpClient, BouncyCastle, JNA, JSpecify) are relocated into the `nonapi.org.altcontainers.*` namespace. You do not need to add them to your project.
+The `org.altcontainers:core` JAR is a shaded uber-JAR. All transitive dependencies
+(OkHttp, Gson, Okio, Kotlin stdlib) are relocated into the `nonapi.org.altcontainers.*`
+namespace. You do not need to add them to your project.
 
 ## Verify your setup
 

@@ -16,6 +16,7 @@ Language-specific prompts (Java) are marked below.
 | `create-implementation-spec.md` | Implementation specification | You have a design plan and need step-by-step implementation instructions |
 | `implement-spec.md` | Execute an implementation spec | You have a complete implementation specification and are ready to write code |
 | `analyze-code.md` | Correctness and bug analysis | You need a focused bug-hunt on a module without writing any code |
+| `fix-code-loop.md` | Full analysis-to-implementation loop | You want to find and fix correctness issues in one end-to-end pass |
 | `java-code-review.md` | Java code review (`{java}` specific) | You need a comprehensive engineering review of Java code |
 | `java-code-coverage.md` | Java coverage improvement (`{java}` specific) | You want one safe, deterministic iteration to improve test coverage |
 | `java-performance-review.md` | Java performance review (`{java}` specific) | You have profile or benchmark data and need performance recommendations |

@@ -26,6 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import nonapi.org.altcontainers.DockerClient;
+import org.altcontainers.api.Version;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,11 +48,13 @@ public final class Handler implements Runnable {
 
     private final DockerClient dockerClient;
 
-    private final Configuration config;
+    private final Configuration configuration;
 
     private final ConcurrentHashMap<String, SessionState> sessions;
 
     private final AtomicInteger sessionCount;
+
+    private final AtomicInteger pendingConnections;
 
     private String sessionId;
 
@@ -60,23 +63,27 @@ public final class Handler implements Runnable {
      *
      * @param socket the accepted socket
      * @param dockerClient the Docker client
-     * @param config the reaper configuration
+     * @param configuration the reaper configuration
      * @param sessions the shared session map
-     * @param sessionCount the shared session counter for idle timeout
+     * @param sessionCount the shared connected-session counter for idle timeout
+     * @param pendingConnections the shared accepted-but-not-yet-handshaked counter for idle timeout;
+     *     decremented exactly once when this handler terminates
      * @throws IOException if the socket streams cannot be obtained
      */
     public Handler(
             Socket socket,
             DockerClient dockerClient,
-            Configuration config,
+            Configuration configuration,
             ConcurrentHashMap<String, SessionState> sessions,
-            AtomicInteger sessionCount)
+            AtomicInteger sessionCount,
+            AtomicInteger pendingConnections)
             throws IOException {
         this.socket = socket;
         this.dockerClient = dockerClient;
-        this.config = config;
+        this.configuration = configuration;
         this.sessions = sessions;
         this.sessionCount = sessionCount;
+        this.pendingConnections = pendingConnections;
         this.reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
         this.writer = new PrintWriter(socket.getOutputStream(), true);
     }
@@ -84,14 +91,20 @@ public final class Handler implements Runnable {
     @Override
     public void run() {
         try {
+            socket.setSoTimeout(toSoTimeoutMs(configuration.connectionTimeoutMilliseconds()));
             if (!doHandshake()) {
                 return;
             }
+            socket.setSoTimeout(0);
             serveLoop();
         } catch (IOException e) {
             // Connection closed or I/O error; scanner handles cleanup.
         } finally {
             onDisconnect();
+            // A connection was counted as pending on accept; release it now regardless of whether
+            // the handshake completed. (On success sessionCount was already incremented in
+            // doHandshake; the transient overlap is harmless because the idle timer only acts at 0.)
+            pendingConnections.decrementAndGet();
         }
     }
 
@@ -113,7 +126,7 @@ public final class Handler implements Runnable {
             sendError("unsupported version");
             return false;
         }
-        sendOk("VERSION " + Protocol.VERSION + " " + org.altcontainers.api.Version.version());
+        sendOk("VERSION " + Protocol.VERSION + " " + Version.version());
 
         line = reader.readLine();
         cmd = Protocol.parse(line);
@@ -149,13 +162,13 @@ public final class Handler implements Runnable {
             return false;
         }
 
-        if (sessions.containsKey(sid)) {
+        SessionState candidate = new SessionState(sid, heartbeatTimeoutMs, new AtomicLong(System.nanoTime()), socket);
+        if (sessions.putIfAbsent(sid, candidate) != null) {
             sendError("session already connected");
             return false;
         }
 
         sessionId = sid;
-        sessions.put(sid, new SessionState(sid, heartbeatTimeoutMs, new AtomicLong(System.nanoTime()), socket));
         sessionCount.incrementAndGet();
         sendOk();
         logger.info("Session connected " + sessionId);
@@ -186,11 +199,14 @@ public final class Handler implements Runnable {
                     sendOk();
                 }
                 case Protocol.CMD_TERMINATE -> {
-                    sessions.remove(sessionId);
-                    sessionCount.decrementAndGet();
+                    SessionState removed = sessions.remove(sessionId);
+                    if (removed != null) {
+                        sessionCount.decrementAndGet();
+                    }
                     logger.info("Cleaning up session " + sessionId);
                     try {
-                        ResourceCleaner.cleanupSession(dockerClient, sessionId, config.cleanupTimeoutMilliseconds());
+                        ResourceCleaner.cleanupSession(
+                                dockerClient, sessionId, configuration.cleanupTimeoutMilliseconds());
                         logger.info("Session " + sessionId + " cleaned up");
                     } catch (RuntimeException e) {
                         logger.error("Cleanup failed for session " + sessionId + ": " + e.getMessage());
@@ -231,6 +247,10 @@ public final class Handler implements Runnable {
         } catch (IOException ignored) {
             // Best-effort.
         }
+    }
+
+    private static int toSoTimeoutMs(long millis) {
+        return (int) Math.min(millis, Integer.MAX_VALUE);
     }
 
     private void sendOk() {

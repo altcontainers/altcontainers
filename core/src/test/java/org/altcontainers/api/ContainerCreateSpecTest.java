@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import nonapi.org.altcontainers.ContainerCreateSpec;
@@ -32,7 +33,7 @@ class ContainerCreateSpecTest {
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> new ContainerCreateSpec(
                         "", List.of(), List.of(), List.of(), null, List.of(), null, List.of(), 0, 0, 0, 0, 0, 0,
-                        Map.of()));
+                        Map.of(), Map.of(), Map.of()));
     }
 
     @Test
@@ -40,7 +41,7 @@ class ContainerCreateSpecTest {
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> new ContainerCreateSpec(
                         null, List.of(), List.of(), List.of(), null, List.of(), null, List.of(), 0, 0, 0, 0, 0, 0,
-                        Map.of()))
+                        Map.of(), Map.of(), Map.of()))
                 .withMessage("image must not be blank");
     }
 
@@ -48,40 +49,40 @@ class ContainerCreateSpecTest {
     void shouldRejectNullCommand() {
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> new ContainerCreateSpec(
-                        "img", null, List.of(), List.of(), null, List.of(), null, List.of(), 0, 0, 0, 0, 0, 0,
-                        Map.of()));
+                        "img", null, List.of(), List.of(), null, List.of(), null, List.of(), 0, 0, 0, 0, 0, 0, Map.of(),
+                        Map.of(), Map.of()));
     }
 
     @Test
     void shouldRejectNullExposedPorts() {
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> new ContainerCreateSpec(
-                        "img", List.of(), null, List.of(), null, List.of(), null, List.of(), 0, 0, 0, 0, 0, 0,
-                        Map.of()));
+                        "img", List.of(), null, List.of(), null, List.of(), null, List.of(), 0, 0, 0, 0, 0, 0, Map.of(),
+                        Map.of(), Map.of()));
     }
 
     @Test
     void shouldRejectNullBindMounts() {
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> new ContainerCreateSpec(
-                        "img", List.of(), List.of(), null, null, List.of(), null, List.of(), 0, 0, 0, 0, 0, 0,
-                        Map.of()));
+                        "img", List.of(), List.of(), null, null, List.of(), null, List.of(), 0, 0, 0, 0, 0, 0, Map.of(),
+                        Map.of(), Map.of()));
     }
 
     @Test
     void shouldRejectNullNetworkAliases() {
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> new ContainerCreateSpec(
-                        "img", List.of(), List.of(), List.of(), null, null, null, List.of(), 0, 0, 0, 0, 0, 0,
-                        Map.of()));
+                        "img", List.of(), List.of(), List.of(), null, null, null, List.of(), 0, 0, 0, 0, 0, 0, Map.of(),
+                        Map.of(), Map.of()));
     }
 
     @Test
     void shouldRejectNullUlimits() {
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> new ContainerCreateSpec(
-                        "img", List.of(), List.of(), List.of(), null, List.of(), null, null, 0, 0, 0, 0, 0, 0,
-                        Map.of()))
+                        "img", List.of(), List.of(), List.of(), null, List.of(), null, null, 0, 0, 0, 0, 0, 0, Map.of(),
+                        Map.of(), Map.of()))
                 .withMessage("ulimits must not be null");
     }
 
@@ -103,6 +104,8 @@ class ContainerCreateSpecTest {
                         0,
                         0,
                         0,
+                        Map.of(),
+                        Map.of(),
                         Map.of()))
                 .withMessage("ulimits must not contain null elements");
     }
@@ -125,6 +128,8 @@ class ContainerCreateSpecTest {
                         0,
                         0,
                         0,
+                        Map.of(),
+                        Map.of(),
                         Map.of()));
     }
 
@@ -146,6 +151,8 @@ class ContainerCreateSpecTest {
                         0,
                         0,
                         0,
+                        Map.of(),
+                        Map.of(),
                         Map.of()));
 
         assertThatIllegalArgumentException()
@@ -164,6 +171,8 @@ class ContainerCreateSpecTest {
                         0,
                         0,
                         0,
+                        Map.of(),
+                        Map.of(),
                         Map.of()));
     }
 
@@ -185,6 +194,8 @@ class ContainerCreateSpecTest {
                         0,
                         0,
                         0,
+                        Map.of(),
+                        Map.of(),
                         Map.of()))
                 .withMessage("exposedPorts must not contain null elements");
     }
@@ -207,6 +218,8 @@ class ContainerCreateSpecTest {
                         0,
                         0,
                         0,
+                        Map.of(),
+                        Map.of(),
                         Map.of()));
     }
 
@@ -228,6 +241,8 @@ class ContainerCreateSpecTest {
                         0,
                         0,
                         0,
+                        Map.of(),
+                        Map.of(),
                         Map.of()));
     }
 
@@ -249,6 +264,8 @@ class ContainerCreateSpecTest {
                         0,
                         0,
                         0,
+                        Map.of(),
+                        Map.of(),
                         Map.of()));
     }
 
@@ -270,6 +287,8 @@ class ContainerCreateSpecTest {
                         0,
                         0,
                         0,
+                        Map.of(),
+                        Map.of(),
                         Map.of()));
     }
 
@@ -278,6 +297,49 @@ class ContainerCreateSpecTest {
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> new ContainerCreateSpec(
                         "img", List.of(), List.of(), List.of(), "", List.of(), null, List.of(), 0, 0, 0, 0, 0, 0,
+                        Map.of(), Map.of(), Map.of()));
+    }
+
+    @Test
+    void shouldRejectInvalidNetworkModeFormat() {
+        // Docker network names must match [a-zA-Z0-9][a-zA-Z0-9_.-]{0,255}
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> new ContainerCreateSpec(
+                        "img",
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        "invalid name!",
+                        List.of(),
+                        null,
+                        List.of(),
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        Map.of(),
+                        Map.of(),
+                        Map.of()));
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> new ContainerCreateSpec(
+                        "img",
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        "-badstart",
+                        List.of(),
+                        null,
+                        List.of(),
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        Map.of(),
+                        Map.of(),
                         Map.of()));
     }
 
@@ -286,20 +348,22 @@ class ContainerCreateSpecTest {
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> new ContainerCreateSpec(
                         "img", List.of(), List.of(), List.of(), null, List.of(), "", List.of(), 0, 0, 0, 0, 0, 0,
-                        Map.of()));
+                        Map.of(), Map.of(), Map.of()));
     }
 
     @Test
     void shouldAcceptNullWorkingDirectory() {
         ContainerCreateSpec spec = new ContainerCreateSpec(
-                "img", List.of(), List.of(), List.of(), null, List.of(), null, List.of(), 0, 0, 0, 0, 0, 0, Map.of());
+                "img", List.of(), List.of(), List.of(), null, List.of(), null, List.of(), 0, 0, 0, 0, 0, 0, Map.of(),
+                Map.of(), Map.of());
         assertThat(spec.workingDirectory()).isNull();
     }
 
     @Test
     void shouldAcceptNullNetworkMode() {
         ContainerCreateSpec spec = new ContainerCreateSpec(
-                "img", List.of(), List.of(), List.of(), null, List.of(), null, List.of(), 0, 0, 0, 0, 0, 0, Map.of());
+                "img", List.of(), List.of(), List.of(), null, List.of(), null, List.of(), 0, 0, 0, 0, 0, 0, Map.of(),
+                Map.of(), Map.of());
         assertThat(spec.networkMode()).isNull();
     }
 
@@ -307,7 +371,8 @@ class ContainerCreateSpecTest {
     void shouldAcceptValidUlimits() {
         List<Ulimit> ulimits = List.of(new Ulimit("nofile", 65536, 65536));
         ContainerCreateSpec spec = new ContainerCreateSpec(
-                "img", List.of(), List.of(), List.of(), null, List.of(), null, ulimits, 0, 0, 0, 0, 0, 0, Map.of());
+                "img", List.of(), List.of(), List.of(), null, List.of(), null, ulimits, 0, 0, 0, 0, 0, 0, Map.of(),
+                Map.of(), Map.of());
         assertThat(spec.ulimits()).hasSize(1);
         assertThat(spec.ulimits().get(0).name()).isEqualTo("nofile");
     }
@@ -317,7 +382,8 @@ class ContainerCreateSpecTest {
         List<Ulimit> original = new ArrayList<>();
         original.add(new Ulimit("nofile", 65536, 65536));
         ContainerCreateSpec spec = new ContainerCreateSpec(
-                "img", List.of(), List.of(), List.of(), null, List.of(), null, original, 0, 0, 0, 0, 0, 0, Map.of());
+                "img", List.of(), List.of(), List.of(), null, List.of(), null, original, 0, 0, 0, 0, 0, 0, Map.of(),
+                Map.of(), Map.of());
         original.add(new Ulimit("nproc", 4096, 4096));
         assertThat(spec.ulimits()).hasSize(1);
     }
@@ -340,6 +406,8 @@ class ContainerCreateSpecTest {
                 512,
                 100000L,
                 50000L,
+                Map.of(),
+                Map.of(),
                 Map.of());
 
         assertThat(spec.image()).isEqualTo("alpine:latest");
@@ -377,7 +445,9 @@ class ContainerCreateSpecTest {
                 0,
                 0,
                 0,
-                Map.of("k", "v"));
+                Map.of("k", "v"),
+                Map.of(),
+                Map.of());
         assertThat(spec.labels()).containsEntry("k", "v");
     }
 
@@ -386,16 +456,17 @@ class ContainerCreateSpecTest {
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> new ContainerCreateSpec(
                         "img", List.of(), List.of(), List.of(), null, List.of(), null, List.of(), 0, 0, 0, 0, 0, 0,
-                        null))
+                        null, Map.of(), Map.of()))
                 .withMessage("labels must not be null");
     }
 
     @Test
     void shouldDefensivelyCopyLabels() {
-        Map<String, String> original = new java.util.HashMap<>();
+        Map<String, String> original = new HashMap<>();
         original.put("k", "v");
         ContainerCreateSpec spec = new ContainerCreateSpec(
-                "img", List.of(), List.of(), List.of(), null, List.of(), null, List.of(), 0, 0, 0, 0, 0, 0, original);
+                "img", List.of(), List.of(), List.of(), null, List.of(), null, List.of(), 0, 0, 0, 0, 0, 0, original,
+                Map.of(), Map.of());
         original.put("k2", "v2");
         assertThat(spec.labels()).hasSize(1);
         assertThat(spec.labels()).containsEntry("k", "v");
@@ -405,7 +476,122 @@ class ContainerCreateSpecTest {
     @Test
     void shouldBuildWithDefaultEmptyLabels() {
         ContainerCreateSpec spec = new ContainerCreateSpec(
-                "img", List.of(), List.of(), List.of(), null, List.of(), null, List.of(), 0, 0, 0, 0, 0, 0, Map.of());
+                "img", List.of(), List.of(), List.of(), null, List.of(), null, List.of(), 0, 0, 0, 0, 0, 0, Map.of(),
+                Map.of(), Map.of());
         assertThat(spec.labels()).isEmpty();
+    }
+
+    @Test
+    void shouldAcceptPortBindingsComponent() {
+        ContainerCreateSpec spec = new ContainerCreateSpec(
+                "img",
+                List.of(),
+                List.of(9092),
+                List.of(),
+                null,
+                List.of(),
+                null,
+                List.of(),
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                Map.of(),
+                Map.of(),
+                Map.of(9092, 9092));
+        assertThat(spec.portBindings()).containsExactly(Map.entry(9092, 9092));
+    }
+
+    @Test
+    void shouldRejectNullPortBindings() {
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> new ContainerCreateSpec(
+                        "img", List.of(), List.of(), List.of(), null, List.of(), null, List.of(), 0, 0, 0, 0, 0, 0,
+                        Map.of(), Map.of(), null))
+                .withMessage("portBindings must not be null");
+    }
+
+    @Test
+    void shouldDefensivelyCopyPortBindings() {
+        Map<Integer, Integer> original = new HashMap<>();
+        original.put(9092, 9092);
+        ContainerCreateSpec spec = new ContainerCreateSpec(
+                "img",
+                List.of(),
+                List.of(9092),
+                List.of(),
+                null,
+                List.of(),
+                null,
+                List.of(),
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                Map.of(),
+                Map.of(),
+                original);
+        original.put(9093, 9093);
+        assertThat(spec.portBindings()).hasSize(1);
+        assertThat(spec.portBindings()).containsEntry(9092, 9092);
+    }
+
+    @Test
+    void shouldBuildWithDefaultEmptyPortBindings() {
+        ContainerCreateSpec spec = new ContainerCreateSpec(
+                "img", List.of(), List.of(), List.of(), null, List.of(), null, List.of(), 0, 0, 0, 0, 0, 0, Map.of(),
+                Map.of(), Map.of());
+        assertThat(spec.portBindings()).isEmpty();
+    }
+
+    @Test
+    void shouldRejectPortBindingNotInExposedPorts() {
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> new ContainerCreateSpec(
+                        "img",
+                        List.of(),
+                        List.of(80),
+                        List.of(),
+                        null,
+                        List.of(),
+                        null,
+                        List.of(),
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        Map.of(),
+                        Map.of(),
+                        Map.of(8080, 19080)))
+                .withMessageContaining("portBindings key 8080 must also be present in exposedPorts");
+    }
+
+    @Test
+    void shouldAcceptPortBindingInExposedPorts() {
+        ContainerCreateSpec spec = new ContainerCreateSpec(
+                "img",
+                List.of(),
+                List.of(8080, 9092),
+                List.of(),
+                null,
+                List.of(),
+                null,
+                List.of(),
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                Map.of(),
+                Map.of(),
+                Map.of(8080, 19080, 9092, 9092));
+        assertThat(spec.portBindings()).containsExactlyInAnyOrderEntriesOf(Map.of(8080, 19080, 9092, 9092));
     }
 }

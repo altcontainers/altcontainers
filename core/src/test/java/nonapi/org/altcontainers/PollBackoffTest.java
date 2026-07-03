@@ -66,4 +66,27 @@ class PollBackoffTest {
         PollBackoff.sleepWithBackoff(deadline, sleepMs, 0);
         assertThat(sleepMs.get()).isEqualTo(400L); // doubled
     }
+
+    @Test
+    void shouldSleepBeforeReturnFalseWhenRemainingUnderOneMillisecond() {
+        AtomicLong sleepMs = new AtomicLong(1L);
+        long deadline = System.nanoTime() + 500_000L; // 500µs in the future
+        long start = System.nanoTime();
+        boolean result = PollBackoff.sleepWithBackoff(deadline, sleepMs, 0);
+        long elapsed = System.nanoTime() - start;
+        assertThat(result).isFalse(); // deadline passed after micro-sleep
+        assertThat(elapsed).isGreaterThanOrEqualTo(400_000L); // must have slept, not spun
+        assertThat(sleepMs.get()).isEqualTo(1L); // sleepMs unchanged (no backoff on <1ms)
+    }
+
+    @Test
+    void shouldNotSpinWhenRemainingApproachesDeadline() {
+        AtomicLong sleepMs = new AtomicLong(1L);
+        long deadline = System.nanoTime() + 900_000L; // 900µs in the future
+        long start = System.nanoTime();
+        boolean result = PollBackoff.sleepWithBackoff(deadline, sleepMs, 0);
+        long elapsed = System.nanoTime() - start;
+        assertThat(result).isFalse(); // deadline passed after sleep
+        assertThat(elapsed).isGreaterThanOrEqualTo(500_000L); // must have slept, not spun
+    }
 }

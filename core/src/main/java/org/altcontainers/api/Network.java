@@ -24,7 +24,7 @@ import nonapi.org.altcontainers.NetworkManager;
  *
  * <p>Networks are created via {@link #create()} and must be released via
  * {@link #destroy()} or {@link #close()} once the associated containers have stopped. Containers join
- * the network through {@link ContainerSpec.Builder#network(Network, String...)}, using {@link #name()}
+ * the network through {@link GenericContainerSpec.Builder#network(Network, String...)}, using {@link #name()}
  * as the network mode, so that peers on the same network can resolve each other by alias.
  *
  * <p>{@code Network} is a thin, immutable facade: it holds only the network name and identifier and
@@ -67,8 +67,8 @@ public final class Network implements AutoCloseable {
      * @throws NullPointerException if either argument is {@code null}
      */
     public Network(String name, String id) {
-        this.name = Objects.requireNonNull(name);
-        this.id = Objects.requireNonNull(id);
+        this.name = Objects.requireNonNull(name, "name must not be null");
+        this.id = Objects.requireNonNull(id, "id must not be null");
     }
 
     /**
@@ -94,7 +94,7 @@ public final class Network implements AutoCloseable {
 
     /**
      * Returns the Docker network name that containers join. Package-private: used by
-     * {@link ContainerSpec.Builder#network(Network, String...)} as the network mode.
+     * {@link GenericContainerSpec.Builder#network(Network, String...)} as the network mode.
      *
      * @return the network name
      */

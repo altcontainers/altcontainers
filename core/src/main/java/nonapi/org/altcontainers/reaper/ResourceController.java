@@ -47,24 +47,39 @@ public final class ResourceController {
 
     private static final long DISCOVERY_POLL_TIMEOUT_MS = 10_000L;
 
-    private final Configuration config;
+    private final Configuration configuration;
 
     private final DockerClient dockerClient;
 
     private ResourceSession session;
 
-    private Socket socket;
+    private volatile Socket socket;
 
-    private BufferedReader reader;
+    private volatile BufferedReader reader;
 
-    private PrintWriter writer;
+    private volatile PrintWriter writer;
 
     private volatile boolean connected;
 
-    private Thread heartbeatThread;
+    private volatile Thread heartbeatThread;
 
-    private ResourceController(Configuration config, DockerClient dockerClient) {
-        this.config = config;
+    private volatile SessionHeartbeat heartbeat;
+
+    /**
+     * Lock for the discovery/launch phase, separate from the instance monitor.
+     * Prevents concurrent discovery attempts while keeping the fast-path check
+     * O(1) under the instance monitor.
+     */
+    private final Object connectLock = new Object();
+
+    /**
+     * The registered shutdown hook Thread, or {@code null} if none is registered.
+     * Managed exclusively by {@link #registerShutdownHook()} under the instance monitor.
+     */
+    private Thread shutdownHook;
+
+    private ResourceController(Configuration configuration, DockerClient dockerClient) {
+        this.configuration = configuration;
         this.dockerClient = dockerClient;
     }
 
@@ -93,38 +108,58 @@ public final class ResourceController {
     /**
      * Ensures the reaper daemon is connected and returns the current session.
      *
-     * <p>On first call, discovers (or auto-launches) the global reaper daemon. On subsequent
-     * calls, returns the existing session. If the connection is lost (detected by the heartbeat
-     * thread), the next call will create a fresh session and reconnect.
+     * <p>The instance monitor guards only the fast-path read/write of
+     * {@code session} and {@code connected}. The discovery/launch loop
+     * (which may sleep up to {@link #DISCOVERY_POLL_TIMEOUT_MS}) runs
+     * under {@code connectLock} so that concurrent callers are not
+     * serialized behind the discovery sleep.
      *
      * @return the current resource session
      */
-    public synchronized ResourceSession ensureReady() {
-        if (session != null && connected) {
-            return session;
-        }
-        session = new ResourceSession();
-
-        if (config.disabled()) {
-            logger.info("Reaper daemon disabled." + FALLBACK_SUFFIX);
-            return session;
-        }
-
-        try {
-            if (!discoverOrLaunch()) {
-                logger.info("Reaper daemon unavailable." + FALLBACK_SUFFIX);
+    public ResourceSession ensureReady() {
+        // Fast path: already connected. O(1) under instance monitor.
+        synchronized (this) {
+            if (session != null && connected) {
                 return session;
             }
-            handshake();
-            startHeartbeat();
-            registerShutdownHook();
-            connected = true;
-        } catch (ContainerException | IOException e) {
-            logger.info("Reaper daemon unavailable: " + e.getMessage() + "." + FALLBACK_SUFFIX);
-            closeSocket();
+            if (session == null) {
+                session = new ResourceSession();
+            }
         }
 
-        return session;
+        // Slow path: discover or launch. Serialized under connectLock so
+        // only one thread performs discovery.
+        synchronized (connectLock) {
+            // Re-check: another thread may have connected while we waited for connectLock.
+            synchronized (this) {
+                if (connected) {
+                    return session;
+                }
+            }
+
+            if (configuration.disabled()) {
+                logger.info("Reaper daemon disabled." + FALLBACK_SUFFIX);
+                return session;
+            }
+
+            try {
+                if (!discoverOrLaunch()) {
+                    logger.info("Reaper daemon unavailable." + FALLBACK_SUFFIX);
+                    return session;
+                }
+                handshake();
+                startHeartbeat();
+                registerShutdownHook();
+                synchronized (this) {
+                    connected = true;
+                }
+            } catch (ContainerException | IOException e) {
+                logger.info("Reaper daemon unavailable: " + e.getMessage() + "." + FALLBACK_SUFFIX);
+                closeSocket();
+            }
+
+            return session;
+        }
     }
 
     private boolean discoverOrLaunch() throws IOException {
@@ -148,7 +183,7 @@ public final class ResourceController {
             }
         }
 
-        Launcher.launch(config);
+        Launcher.launch(configuration);
 
         long deadline = System.currentTimeMillis() + DISCOVERY_POLL_TIMEOUT_MS;
         while (System.currentTimeMillis() < deadline) {
@@ -172,7 +207,7 @@ public final class ResourceController {
     }
 
     private void handshake() throws IOException {
-        socket.setSoTimeout(toSoTimeout(config.connectionTimeoutMilliseconds()));
+        socket.setSoTimeout(toSoTimeout(configuration.connectionTimeoutMilliseconds()));
         reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
         writer = new PrintWriter(socket.getOutputStream(), true);
 
@@ -183,7 +218,8 @@ public final class ResourceController {
             throw new ContainerException("VERSION handshake failed: " + response);
         }
 
-        writer.println(Protocol.CMD_CONNECT + " " + session.sessionId() + " " + config.sessionTimeoutMilliseconds());
+        writer.println(
+                Protocol.CMD_CONNECT + " " + session.sessionId() + " " + configuration.sessionTimeoutMilliseconds());
         response = reader.readLine();
         if (response == null || !Protocol.RSP_OK.equals(response)) {
             closeSocket();
@@ -192,39 +228,56 @@ public final class ResourceController {
     }
 
     private void startHeartbeat() {
-        SessionHeart heart = new SessionHeart(writer, config.heartbeatIntervalMilliseconds(), () -> connected = false);
-        heartbeatThread = new Thread(heart, "altcontainers-reaper-heartbeat");
+        heartbeat = new SessionHeartbeat(
+                writer, reader, configuration.heartbeatIntervalMilliseconds(), () -> connected = false);
+        heartbeatThread = new Thread(heartbeat, "altcontainers-reaper-heartbeat");
         heartbeatThread.setDaemon(true);
         heartbeatThread.start();
     }
 
     private void registerShutdownHook() {
-        Runtime.getRuntime()
-                .addShutdownHook(new Thread(
-                        () -> {
-                            if (heartbeatThread != null) {
-                                heartbeatThread.interrupt();
+        if (shutdownHook != null) {
+            try {
+                Runtime.getRuntime().removeShutdownHook(shutdownHook);
+            } catch (IllegalStateException ignored) {
+                // Shutdown in progress; the existing hook will run. Skip adding a new one.
+                return;
+            }
+        }
+        shutdownHook = new Thread(
+                () -> {
+                    if (heartbeatThread != null) {
+                        heartbeat.stop();
+                        heartbeatThread.interrupt();
+                    }
+                    if (writer != null) {
+                        synchronized (writer) {
+                            try {
+                                writer.println(Protocol.CMD_TERMINATE);
+                                writer.flush();
+                            } catch (RuntimeException ignored) {
+                                // Best-effort.
                             }
-                            if (writer != null) {
-                                synchronized (writer) {
-                                    try {
-                                        writer.println(Protocol.CMD_TERMINATE);
-                                        writer.flush();
-                                    } catch (RuntimeException ignored) {
-                                        // Best-effort.
-                                    }
-                                }
-                            }
-                            if (reader != null) {
-                                try {
-                                    reader.readLine();
-                                } catch (IOException ignored) {
-                                    // Best-effort.
-                                }
-                            }
-                            closeSocket();
-                        },
-                        "altcontainers-reaper-shutdown"));
+                        }
+                    }
+                    if (reader != null) {
+                        try {
+                            reader.readLine();
+                        } catch (IOException ignored) {
+                            // Best-effort.
+                        }
+                    }
+                    closeSocket();
+                },
+                "altcontainers-reaper-shutdown");
+        try {
+            Runtime.getRuntime().addShutdownHook(shutdownHook);
+        } catch (IllegalStateException e) {
+            // Shutdown in progress; the reaper daemon's own lifecycle
+            // (heartbeat scanner, idle timer) handles cleanup.
+            logger.info("Shutdown in progress, skipping shutdown-hook registration");
+            return;
+        }
     }
 
     private void closeSocket() {

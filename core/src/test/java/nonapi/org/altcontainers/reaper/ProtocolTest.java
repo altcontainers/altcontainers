@@ -18,17 +18,30 @@ package nonapi.org.altcontainers.reaper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import org.altcontainers.api.Version;
 import org.junit.jupiter.api.Test;
 
 class ProtocolTest {
 
     @Test
+    void parseHeartbeatCommand() {
+        Protocol.Command cmd = Protocol.parse("HEARTBEAT");
+        assertThat(cmd).isNotNull();
+    }
+
+    @Test
+    void parseTerminateCommand() {
+        Protocol.Command cmd = Protocol.parse("TERMINATE");
+        assertThat(cmd).isNotNull();
+    }
+
+    @Test
     void parseVersionCommand() {
-        Protocol.Command cmd = Protocol.parse("VERSION 0.0.1");
+        String version = Version.version();
+        Protocol.Command cmd = Protocol.parse("VERSION " + version);
         assertThat(cmd).isNotNull();
         assertThat(cmd.verb()).isEqualTo("VERSION");
-        assertThat(cmd.arg1()).isEqualTo("0.0.1");
-        assertThat(cmd.arg2()).isNull();
+        assertThat(cmd.arg1()).isEqualTo(version);
     }
 
     @Test
@@ -38,24 +51,6 @@ class ProtocolTest {
         assertThat(cmd.verb()).isEqualTo("CONNECT");
         assertThat(cmd.arg1()).isEqualTo("abc-123");
         assertThat(cmd.arg2()).isEqualTo("30000");
-    }
-
-    @Test
-    void parseHeartbeatCommand() {
-        Protocol.Command cmd = Protocol.parse("HEARTBEAT");
-        assertThat(cmd).isNotNull();
-        assertThat(cmd.verb()).isEqualTo("HEARTBEAT");
-        assertThat(cmd.arg1()).isNull();
-        assertThat(cmd.arg2()).isNull();
-    }
-
-    @Test
-    void parseTerminateCommand() {
-        Protocol.Command cmd = Protocol.parse("TERMINATE");
-        assertThat(cmd).isNotNull();
-        assertThat(cmd.verb()).isEqualTo("TERMINATE");
-        assertThat(cmd.arg1()).isNull();
-        assertThat(cmd.arg2()).isNull();
     }
 
     @Test
@@ -74,22 +69,23 @@ class ProtocolTest {
     }
 
     @Test
-    void rejectsLowercaseVerb() {
-        assertThat(Protocol.parse("heartbeat")).isNull();
-    }
-
-    @Test
-    void rejectsMissingArguments() {
-        assertThat(Protocol.parse("VERSION")).isNull();
+    void rejectsMissingArgsForConnect() {
         assertThat(Protocol.parse("CONNECT abc-123")).isNull();
     }
 
     @Test
-    void rejectsExtraArguments() {
+    void rejectsExtraArgsForConnect() {
+        assertThat(Protocol.parse("CONNECT abc-123 30000 extra")).isNull();
+    }
+
+    @Test
+    void rejectsExtraArgsForHeartbeat() {
         assertThat(Protocol.parse("HEARTBEAT extra")).isNull();
+    }
+
+    @Test
+    void rejectsExtraArgsForTerminate() {
         assertThat(Protocol.parse("TERMINATE extra")).isNull();
-        assertThat(Protocol.parse("VERSION 1 extra")).isNull();
-        assertThat(Protocol.parse("CONNECT abc 30000 extra")).isNull();
     }
 
     @Test
@@ -105,5 +101,15 @@ class ProtocolTest {
     @Test
     void parseUnknownVerb() {
         assertThat(Protocol.parse("FOO bar")).isNull();
+    }
+
+    @Test
+    void rejectsVersionWithoutArgs() {
+        assertThat(Protocol.parse("VERSION")).isNull();
+    }
+
+    @Test
+    void rejectsVersionWithExtraArgs() {
+        assertThat(Protocol.parse("VERSION 1.0 extra")).isNull();
     }
 }

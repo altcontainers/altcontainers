@@ -34,7 +34,9 @@ import org.altcontainers.api.Version;
  */
 final class ReaperDiscovery {
 
-    private ReaperDiscovery() {}
+    private ReaperDiscovery() {
+        // Intentionally empty
+    }
 
     /**
      * Returns the versioned discovery file path.

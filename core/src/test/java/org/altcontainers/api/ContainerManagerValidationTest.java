@@ -34,29 +34,24 @@ class ContainerManagerValidationTest {
 
     @Test
     void shouldRejectZeroStartupAttempts() {
-        ContainerSpec containerSpec =
-                ContainerSpec.builder("img").startupAttempts(0).build();
         assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerManager.getInstance().createContainer(containerSpec))
+                .isThrownBy(() -> ContainerSpec.builder("img").startupAttempts(0))
                 .withMessageContaining("startupAttempts must be >= 1");
     }
 
     @Test
     void shouldRejectNegativeStartupAttempts() {
-        ContainerSpec containerSpec =
-                ContainerSpec.builder("img").startupAttempts(-1).build();
         assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerManager.getInstance().createContainer(containerSpec))
+                .isThrownBy(() -> ContainerSpec.builder("img").startupAttempts(-1))
                 .withMessageContaining("startupAttempts must be >= 1");
     }
 
     @Test
     void shouldRejectNullStartupTimeout() {
-        ContainerSpec containerSpec =
-                ContainerSpec.builder("img").startupTimeout(null).build();
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerManager.getInstance().createContainer(containerSpec))
-                .withMessageContaining("startupTimeout must be positive");
+        // Builder rejects null immediately with NullPointerException.
+        assertThatNullPointerException()
+                .isThrownBy(() -> ContainerSpec.builder("img").startupTimeout(null))
+                .withMessageContaining("startupTimeout must not be null");
     }
 
     @Test

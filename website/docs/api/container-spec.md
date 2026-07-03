@@ -5,44 +5,7 @@ description: Immutable desired configuration for a Docker container, built with 
 
 # ContainerSpec
 
-`ContainerSpec` captures the desired configuration for a Docker container. It is built via `ContainerSpec.builder(image)` and consumed by `Container.create(spec)`.
-
-```java
-package org.altcontainers.api;
-
-public final class ContainerSpec {
-    public static Builder builder(String image);
-
-    public String image();
-
-    public static final class Builder {
-        public Builder command(String... parts);
-        public Builder exposePorts(int... ports);
-        public Builder network(Network network, String... aliases);
-        public Builder workingDirectory(String directory);
-        public Builder bindDirectory(String hostPath, String containerPath);
-        public Builder logConsumer(Consumer<String> logger);
-        public Builder startupTimeout(Duration duration);
-        public Builder startupAttempts(int attempts);
-        public Builder waitForContainerPort(int containerPort);
-        public Builder waitForHttpResponse(int containerPort, String path);
-        public Builder waitForHttpResponse(int containerPort, String path, int minStatus, int maxStatus);
-        public Builder waitForHttpsResponse(int containerPort, String path);
-        public Builder waitForHttpsResponse(int containerPort, String path, int minStatus, int maxStatus);
-        public Builder waitForLogMessage(String regex);
-        public Builder waitForLogMessage(String regex, int times);
-        public Builder ulimit(String name, long soft, long hard);
-        public Builder clearUlimits();
-        public Builder memory(long bytes);
-        public Builder memorySwap(long bytes);
-        public Builder shmSize(long bytes);
-        public Builder cpuShares(int shares);
-        public Builder cpuPeriod(long period);
-        public Builder cpuQuota(long quota);
-        public ContainerSpec build();
-    }
-}
-```
+`ContainerSpec` captures the desired configuration for a Docker container. It is an interface with a static `builder(String)` factory that returns a `GenericContainerSpec.Builder`. Specs are consumed by `Container.create(spec)`.
 
 ## Builder example
 
@@ -54,9 +17,31 @@ ContainerSpec containerSpec = ContainerSpec.builder("nginx:1.27")
     .waitForHttpResponse(80, "/")
     .startupTimeout(Duration.ofSeconds(30))
     .startupAttempts(2)
-    .logConsumer(PrefixConsumer.of("NGINX", "nginx:1.27"))
+    .logConsumer(line -> System.out.println("[NGINX] nginx:1.27 | " + line))
     .memory(256 * 1024 * 1024)
     .build();
+```
+
+## Custom wait strategies
+
+`waitForStrategy` accepts any `WaitStrategy` implementation: lambdas, directly constructed
+built-in strategies, or composed strategies.
+
+```java
+// Direct construction
+builder.waitForStrategy(HttpWaitStrategy.builder().port(8080).path("/health").build());
+
+// Factory convenience
+builder.waitForStrategy(Wait.forListeningPort(8080));
+
+// Composition
+builder.waitForStrategy(Wait.allOf(
+    PortWaitStrategy.builder().port(8080).build(),
+    LogWaitStrategy.builder().pattern(".*started.*").build()
+));
+
+// Custom lambda
+builder.waitForStrategy(container -> container.hostPort(8080) > 0);
 ```
 
 ## Defaults
@@ -70,7 +55,7 @@ ContainerSpec containerSpec = ContainerSpec.builder("nginx:1.27")
 
 ## Immutability
 
-`ContainerSpec` instances are immutable and safe to share between threads. The `Builder` is mutable and not thread-safe.
+`ContainerSpec` instances are immutable and safe to share between threads. The `GenericContainerSpec.Builder` is mutable and not thread-safe.
 
 ## Learn next
 

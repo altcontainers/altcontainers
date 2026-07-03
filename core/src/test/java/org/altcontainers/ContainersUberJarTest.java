@@ -41,16 +41,8 @@ import org.junit.jupiter.api.Test;
 @Tag("integration")
 class ContainersUberJarTest {
 
-    private static final List<String> UNRELOCATED_THIRD_PARTY_ROOTS = List.of(
-            "com/fasterxml/",
-            "com/google/",
-            "com/github/dockerjava/",
-            "com/sun/jna/",
-            "org/apache/",
-            "org/bouncycastle/",
-            "org/jspecify/",
-            "org/slf4j/",
-            "ch/qos/logback/");
+    private static final List<String> UNRELOCATED_THIRD_PARTY_ROOTS =
+            List.of("okhttp3/", "okio/", "com/google/gson/", "kotlin/", "org/slf4j/", "ch/qos/logback/");
 
     @Test
     void resolvesExactlyOneUberJar() throws IOException {

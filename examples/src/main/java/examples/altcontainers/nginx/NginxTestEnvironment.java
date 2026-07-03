@@ -16,15 +16,13 @@
 
 package examples.altcontainers.nginx;
 
+import examples.altcontainers.support.ContainerConsumer;
 import examples.support.Resource;
 import java.io.IOException;
-import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import org.altcontainers.api.Container;
-import org.altcontainers.api.ContainerSpec;
 import org.altcontainers.api.Network;
-import org.altcontainers.api.PrefixConsumer;
 
 /**
  * Manages the lifecycle of an Nginx container for parameterized integration tests.
@@ -75,20 +73,15 @@ public class NginxTestEnvironment implements AutoCloseable {
      * @param network the Docker network to attach the container to
      */
     public void initialize(final Network network) {
-        Objects.requireNonNull(network, "network is null");
+        Objects.requireNonNull(network, "network must not be null");
 
-        ContainerSpec containerSpec = ContainerSpec.builder(dockerImageName)
-                .command("nginx", "-g", "daemon off;")
-                .exposePorts(80)
+        NginxContainerSpec spec = NginxContainerSpec.builder(dockerImageName)
                 .network(network, "nginx2")
-                .startupAttempts(3)
-                .logConsumer(PrefixConsumer.of(getClass().getSimpleName(), argumentName))
-                .startupTimeout(Duration.ofSeconds(30))
-                .waitForHttpResponse(80, "/")
+                .logConsumer(ContainerConsumer.of(getClass().getSimpleName(), argumentName))
                 .build();
 
         try {
-            container = Container.create(containerSpec);
+            container = Container.create(spec);
         } catch (Exception e) {
             stopQuietly();
             throw e;

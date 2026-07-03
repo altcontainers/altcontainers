@@ -10,100 +10,29 @@ to prevent class-loading collisions. Their original packages are not present.
 
 The following third-party components are included:
 
-== Bouncy Castle (bcprov / bcpkix / bcutil jdk18on) 1.82 ==
-  Website: https://www.bouncycastle.org/
-  License: Bouncy Castle Licence (MIT-style)
-  Copyright (c) 2000-2023 The Legion of the Bouncy Castle Inc.
-
-  Copyright (c) 2000-2023 The Legion of the Bouncy Castle Inc. (https://www.bouncycastle.org)
-
-  Permission is hereby granted, free of charge, to any person obtaining a copy of this software
-  and associated documentation files (the "Software"), to deal in the Software without restriction,
-  including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
-  and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so,
-  subject to the following conditions:
-
-  The above copyright notice and this permission notice shall be included in all copies or substantial
-  portions of the Software.
-
-  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
-  INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
-  PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
-  LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-  OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-  DEALINGS IN THE SOFTWARE.
-
-== Java Native Access (JNA) 5.18.1 ==
-  Website: https://github.com/java-native-access/jna
-  License: Apache License 2.0 OR LGPL-2.1-or-later (dual-licensed)
-  Altcontainers elects the Apache License, Version 2.0.
+== OkHttp (okhttp, okhttp-jvm) 5.4.0 ==
+  Website: https://square.github.io/okhttp/
+  License: Apache License 2.0
+  Copyright (c) Square, Inc.
   Licensed under the Apache License, Version 2.0; see META-INF/LICENSE.
 
-== Apache Commons Compress 1.28.0 ==
-  Website: https://commons.apache.org/proper/commons-compress/
+== Okio 3.17.0 ==
+  Website: https://github.com/square/okio
   License: Apache License 2.0
-  Copyright (c) The Apache Software Foundation.
-  Licensed under the Apache License, Version 2.0.
+  Copyright (c) Square, Inc.
+  Licensed under the Apache License, Version 2.0; see META-INF/LICENSE.
 
-== Apache Commons Lang 3.19.0 ==
-  Website: https://commons.apache.org/proper/commons-lang/
+== Gson 2.12.1 ==
+  Website: https://github.com/google/gson
   License: Apache License 2.0
-  Copyright (c) The Apache Software Foundation.
-  Licensed under the Apache License, Version 2.0.
+  Copyright (c) Google Inc.
+  Licensed under the Apache License, Version 2.0; see META-INF/LICENSE.
 
-== Apache Commons Codec 1.19.0 ==
-  Website: https://commons.apache.org/proper/commons-codec/
+== Kotlin Standard Library 2.1.21 ==
+  Website: https://kotlinlang.org/
   License: Apache License 2.0
-  Copyright (c) The Apache Software Foundation.
-  Licensed under the Apache License, Version 2.0.
-
-== Apache Commons IO 2.21.0 ==
-  Website: https://commons.apache.org/proper/commons-io/
-  License: Apache License 2.0
-  Copyright (c) The Apache Software Foundation.
-  Licensed under the Apache License, Version 2.0.
-
-== Apache HttpClient 5 (httpclient5 5.5.1, httpcore5 / httpcore5-h2 5.3.6) ==
-  Website: https://hc.apache.org/httpcomponents-client-5.4.x/
-  License: Apache License 2.0
-  Copyright (c) 1999-2025 The Apache Software Foundation.
-  Licensed under the Apache License, Version 2.0.
-
-== Docker Java (api / core / transport / transport-httpclient5 / transport-zerodep) 3.7.1 ==
-  Website: https://github.com/docker-java/docker-java
-  License: Apache License 2.0
-  Copyright (c) The Docker Java contributors.
-  Licensed under the Apache License, Version 2.0.
-
-== Jackson (annotations 2.20, core / databind 2.20.1) ==
-  Website: https://github.com/FasterXML/jackson
-  License: Apache License 2.0
-  Copyright (c) 2007- Tatu Saloranta and contributors.
-  Licensed under the Apache License, Version 2.0.
-
-== Guava 33.4.8-jre and FailureAccess 1.0.3 ==
-  Website: https://github.com/google/guava
-  License: Apache License 2.0
-  Copyright (c) The Guava Authors.
-  Licensed under the Apache License, Version 2.0.
-
-== Error Prone Annotations 2.36.0 ==
-  Website: https://github.com/google/error-prone
-  License: Apache License 2.0
-  Copyright (c) The Error Prone Authors.
-  Licensed under the Apache License, Version 2.0.
-
-== J2ObjC Annotations 3.0.0 ==
-  Website: https://github.com/google/j2objc
-  License: Apache License 2.0
-  Copyright (c) The J2ObjC Authors.
-  Licensed under the Apache License, Version 2.0.
-
-== JSpecify 1.0.0 ==
-  Website: https://jspecify.dev/
-  License: Apache License 2.0
-  Copyright (c) The JSpecify Authors.
-  Licensed under the Apache License, Version 2.0.
+  Copyright (c) JetBrains s.r.o.
+  Licensed under the Apache License, Version 2.0; see META-INF/LICENSE.
 
 Note: org.slf4j:slf4j-api is a declared dependency of this artifact but is NOT
 bundled or relocated in this JAR; it is resolved from the consuming application's

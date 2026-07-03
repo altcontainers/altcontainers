@@ -74,6 +74,16 @@ class VersionTest {
         }
 
         @Test
+        @DisplayName("logs warning when resource provider returns null")
+        void logsWarningWhenResourceAbsent() {
+            // Verify loadVersion returns UNKNOWN and does not throw when
+            // the resource is absent. The SLF4J logger is configured to
+            // WARN-level output; the test validates the return value.
+            var result = Version.loadVersion(name -> null);
+            assertThat(result).isEqualTo("UNKNOWN");
+        }
+
+        @Test
         @DisplayName("returns UNKNOWN when InputStream throws IOException on load")
         void returnsUnknownWhenIOExceptionOnLoad() {
             var broken = new InputStream() {
@@ -113,7 +123,9 @@ class VersionTest {
         @Test
         @DisplayName("throws NullPointerException when resourceProvider is null")
         void throwsForNullProvider() {
-            assertThatThrownBy(() -> Version.loadVersion(null)).isInstanceOf(NullPointerException.class);
+            assertThatThrownBy(() -> Version.loadVersion(null))
+                    .isInstanceOf(NullPointerException.class)
+                    .hasMessageContaining("resourceProvider must not be null");
         }
     }
 

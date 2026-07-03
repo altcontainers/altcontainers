@@ -19,17 +19,18 @@ package nonapi.org.altcontainers;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 /**
  * A closeable handle to a Docker container log follow-stream opened by
- * {@link DockerClient#attachLogStream(String, java.util.function.Consumer, java.util.function.Consumer)}.
+ * {@link DockerClient#attachLogStream(String, Consumer, Consumer)}.
  *
- * <p>Closing the handle releases the underlying docker-java follow-stream callback. Close is idempotent
+ * <p>Closing the handle releases the underlying log follow-stream. Close is idempotent
  * and thread-safe: concurrent calls from multiple threads will invoke {@code callback.close()} at most
  * once. {@link DockerClient} tracks active handles and also closes them when the associated container is
  * destroyed, so callers are not required to close handles explicitly, although doing so is harmless.
  *
- * <p>{@link IOException} thrown by the underlying callback is intentionally swallowed during teardown,
+ * <p>Any exception thrown by the underlying closeable is intentionally swallowed during teardown,
  * since the container is being destroyed and the stream may already be closed.
  */
 public final class LogStreamHandle implements Closeable {
@@ -38,9 +39,9 @@ public final class LogStreamHandle implements Closeable {
     private final AtomicBoolean closed;
 
     /**
-     * Creates a handle wrapping the given closeable docker-java result callback.
+     * Creates a handle wrapping the given closeable log stream.
      *
-     * @param callback the docker-java result callback returned by {@code logContainerCmd(...).exec(...)};
+     * @param callback the closeable returned by the log follow operation;
      *     must not be {@code null}
      * @throws IllegalArgumentException if {@code callback} is {@code null}
      */
@@ -64,7 +65,7 @@ public final class LogStreamHandle implements Closeable {
         if (closed.compareAndSet(false, true)) {
             try {
                 callback.close();
-            } catch (IOException ignored) {
+            } catch (Exception ignored) {
                 // Best-effort: the container is being destroyed and the stream may already be closed.
             }
         }

@@ -61,9 +61,6 @@ The script is **idempotent** — each step detects if it has already been comple
 # Execute the release
 ./scripts/release.sh 1.2.3 --execute
 
-# Skip Gradle validation
-./scripts/release.sh 1.2.3 --execute --skip-gradle
-
 # Skip documentation build (use if docs already built)
 ./scripts/release.sh 1.2.3 --execute --skip-docs-build
 ```
@@ -73,7 +70,6 @@ The script is **idempotent** — each step detects if it has already been comple
 | Option | Description |
 | ------ | ----------- |
 | `--execute` | Execute the release (default is dry-run) |
-| `--skip-gradle` | Skip Gradle build validation |
 | `--skip-docs-build` | Skip documentation build (pass `--skip-build` to publish script) |
 | `-h`, `--help` | Show help text |
 
@@ -103,7 +99,6 @@ git checkout -b release/<VERSION>
 ./mvnw versions:set-property -Dproperty=revision -DnewVersion=<VERSION> -DgenerateBackupPoms=false
 ./mvnw spotless:apply
 ./mvnw clean install
-./gradlew clean check --no-daemon
 ./scripts/build-documentation.sh
 git add -A
 git commit -s -m "release: Release <VERSION>"
@@ -157,7 +152,6 @@ git pull --ff-only
 ./mvnw versions:set-property -Dproperty=revision -DnewVersion=<VERSION>-POST -DgenerateBackupPoms=false
 ./mvnw spotless:apply
 ./mvnw clean install
-./gradlew clean check --no-daemon
 git add -A
 git commit -s -m "chore: Prepare for development"
 git push
@@ -188,7 +182,6 @@ git checkout -b release/<VERSION>
 
 ./mvnw spotless:apply
 ./mvnw clean install
-./gradlew clean check --no-daemon
 ./scripts/build-documentation.sh
 
 git add -A
@@ -284,7 +277,6 @@ git pull
 
 ./mvnw spotless:apply
 ./mvnw clean install
-./gradlew clean check --no-daemon
 
 git add -A
 git commit -s -m "chore: Prepare for development"

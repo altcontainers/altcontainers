@@ -8,7 +8,7 @@ slug: /
 
 Altcontainers is a lightweight Java 17+ library for Docker container lifecycle management.
 
-It handles image pulling, container creation, startup, readiness waiting, and cleanup — with automatic reaper-based resource reclamation when the JVM exits. The library ships as a shaded uber-JAR, so all dependencies (docker-java, Jackson, Guava, and others) are relocated to prevent classpath conflicts.
+It handles image pulling, container creation, startup, readiness waiting, and cleanup — with automatic reaper-based resource reclamation when the JVM exits. The library ships as a shaded uber-JAR, so all dependencies (OkHttp, Gson, Okio, and others) are relocated to prevent classpath conflicts.
 
 ```java
 ContainerSpec containerSpec = ContainerSpec.builder("nginx:1.27")
@@ -24,7 +24,7 @@ try (Container container = Container.create(containerSpec)) {
 
 ## Features
 
-- **Shaded uber-JAR** — docker-java, Jackson, Guava, and other dependencies are relocated to prevent classpath conflicts
+- **Shaded uber-JAR** — OkHttp, Gson, Okio, and other dependencies are relocated to prevent classpath conflicts
 - **Automatic cleanup** — integrated reaper destroys containers and networks when the JVM exits
 - **Readiness waiting** — port probes, HTTP response checks, log message matching, and custom conditions
 - **Network management** — create and destroy Docker bridge networks
@@ -35,7 +35,6 @@ try (Container container = Container.create(containerSpec)) {
 - `org.altcontainers.api.Container` — create and destroy containers; runtime handle with `hostPort()`, `isRunning()`, `destroy()`
 - `org.altcontainers.api.ContainerSpec` / `ContainerSpec.Builder` — immutable container configuration
 - `org.altcontainers.api.Network` — create and destroy bridge networks; network handle for container-to-container communication
-- `org.altcontainers.api.PrefixConsumer` — formatted log output consumer
 - `org.altcontainers.api.Ulimit` — Linux resource limit specification
 - `org.altcontainers.api.ContainerException` — runtime exception for lifecycle failures
 - `org.altcontainers.api.Version` — library version information

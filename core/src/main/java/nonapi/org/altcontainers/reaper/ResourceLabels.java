@@ -55,7 +55,9 @@ final class ResourceLabels {
     /**
      * Private constructor; utility class.
      */
-    private ResourceLabels() {}
+    private ResourceLabels() {
+        // Intentionally empty
+    }
 
     /**
      * Builds a label filter map that matches all managed resources for the given session.

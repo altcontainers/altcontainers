@@ -18,6 +18,7 @@ package nonapi.org.altcontainers;
 
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 import org.altcontainers.api.BindMount;
 import org.altcontainers.api.Ulimit;
 
@@ -50,6 +51,8 @@ import org.altcontainers.api.Ulimit;
  * @param cpuPeriod the CPU CFS period in microseconds, or 0 for no explicit limit
  * @param cpuQuota the CPU CFS quota in microseconds, or 0 for no explicit limit
  * @param labels the Docker labels to apply to the container; never {@code null}, may be empty
+ * @param environment the container environment variables; never {@code null}, may be empty
+ * @param portBindings the fixed host port bindings (containerPort → hostPort); never {@code null}, may be empty
  */
 public record ContainerCreateSpec(
         String image,
@@ -66,7 +69,9 @@ public record ContainerCreateSpec(
         int cpuShares,
         long cpuPeriod,
         long cpuQuota,
-        Map<String, String> labels) {
+        Map<String, String> labels,
+        Map<String, String> environment,
+        Map<Integer, Integer> portBindings) {
 
     /**
      * Minimum valid port number.
@@ -77,6 +82,12 @@ public record ContainerCreateSpec(
      * Maximum valid port number.
      */
     private static final int MAX_PORT = 65535;
+
+    /**
+     * Docker network name validation pattern: must start with an alphanumeric,
+     * followed by up to 255 more alphanumerics, underscores, dots, or hyphens.
+     */
+    private static final Pattern NETWORK_NAME_PATTERN = Pattern.compile("[a-zA-Z0-9][a-zA-Z0-9_.-]{0,255}");
 
     /**
      * Compact canonical constructor that enforces invariants and applies defensive immutable copies.
@@ -96,6 +107,8 @@ public record ContainerCreateSpec(
      * @param cpuPeriod the CPU CFS period in microseconds
      * @param cpuQuota the CPU CFS quota in microseconds
      * @param labels the Docker labels; must not be {@code null}
+     * @param environment the container environment variables; must not be {@code null}
+     * @param portBindings the fixed host port bindings (containerPort → hostPort)
      * @throws IllegalArgumentException if any invariant is violated
      */
     public ContainerCreateSpec {
@@ -145,10 +158,23 @@ public record ContainerCreateSpec(
         if (networkMode != null && networkMode.isBlank()) {
             throw new IllegalArgumentException("networkMode must not be blank");
         }
+        if (networkMode != null && !NETWORK_NAME_PATTERN.matcher(networkMode).matches()) {
+            throw new IllegalArgumentException(
+                    "networkMode must match [a-zA-Z0-9][a-zA-Z0-9_.-]{0,255}, was '" + networkMode + "'");
+        }
         if (workingDirectory != null && workingDirectory.isBlank()) {
             throw new IllegalArgumentException("workingDirectory must not be blank");
         }
         requireNonNull(labels, "labels");
+        requireNonNull(environment, "environment");
+        requireNonNull(portBindings, "portBindings");
+
+        for (Integer port : portBindings.keySet()) {
+            if (!exposedPorts.contains(port)) {
+                throw new IllegalArgumentException(
+                        "portBindings key " + port + " must also be present in exposedPorts");
+            }
+        }
 
         command = List.copyOf(command);
         exposedPorts = List.copyOf(exposedPorts);
@@ -156,6 +182,8 @@ public record ContainerCreateSpec(
         networkAliases = List.copyOf(networkAliases);
         ulimits = List.copyOf(ulimits);
         labels = Map.copyOf(labels);
+        environment = Map.copyOf(environment);
+        portBindings = Map.copyOf(portBindings);
     }
 
     /**

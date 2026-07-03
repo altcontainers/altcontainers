@@ -39,13 +39,13 @@ record SessionState(String sessionId, long heartbeatTimeoutMs, AtomicLong lastHe
      * @param connection the TCP connection; may be {@code null}
      */
     SessionState {
-        Objects.requireNonNull(sessionId, "sessionId");
+        Objects.requireNonNull(sessionId, "sessionId must not be null");
         if (sessionId.isBlank()) {
             throw new IllegalArgumentException("sessionId must not be blank");
         }
         if (heartbeatTimeoutMs <= 0) {
             throw new IllegalArgumentException("heartbeatTimeoutMs must be positive, was " + heartbeatTimeoutMs);
         }
-        Objects.requireNonNull(lastHeartbeatNanos, "lastHeartbeatNanos");
+        Objects.requireNonNull(lastHeartbeatNanos, "lastHeartbeatNanos must not be null");
     }
 }

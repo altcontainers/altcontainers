@@ -44,30 +44,30 @@ class ConfigurationTest {
 
     @Test
     void loadsDefaultsWhenNoPropertiesOrEnv() {
-        Configuration config = Configuration.from(Map.of());
-        assertThat(config.disabled()).isFalse();
-        assertThat(config.connectionTimeoutMilliseconds()).isEqualTo(10_000L);
-        assertThat(config.cleanupTimeoutMilliseconds()).isEqualTo(30_000L);
-        assertThat(config.heartbeatIntervalMilliseconds()).isEqualTo(5_000L);
-        assertThat(config.sessionTimeoutMilliseconds()).isEqualTo(30_000L);
-        assertThat(config.idleTimeoutMilliseconds()).isEqualTo(180_000L);
-        assertThat(config.logLevel()).isEqualTo("INFO");
-        assertThat(config.daemonLogDirectory()).isNotBlank();
+        Configuration configuration = Configuration.from(Map.of());
+        assertThat(configuration.disabled()).isFalse();
+        assertThat(configuration.connectionTimeoutMilliseconds()).isEqualTo(10_000L);
+        assertThat(configuration.cleanupTimeoutMilliseconds()).isEqualTo(30_000L);
+        assertThat(configuration.heartbeatIntervalMilliseconds()).isEqualTo(5_000L);
+        assertThat(configuration.sessionTimeoutMilliseconds()).isEqualTo(30_000L);
+        assertThat(configuration.idleTimeoutMilliseconds()).isEqualTo(180_000L);
+        assertThat(configuration.logLevel()).isEqualTo("INFO");
+        assertThat(configuration.daemonLogDirectory()).isNotBlank();
     }
 
     @Test
     void systemPropertiesOverrideClasspathProperties() {
         System.setProperty("altcontainers.reaper.cleanup.timeout.milliseconds", "9999");
         System.setProperty("altcontainers.reaper.log.level", "ERROR");
-        Configuration config = Configuration.load(getClass().getClassLoader());
-        assertThat(config.cleanupTimeoutMilliseconds()).isEqualTo(9999L);
-        assertThat(config.logLevel()).isEqualTo("ERROR");
+        Configuration configuration = Configuration.load(getClass().getClassLoader());
+        assertThat(configuration.cleanupTimeoutMilliseconds()).isEqualTo(9999L);
+        assertThat(configuration.logLevel()).isEqualTo("ERROR");
     }
 
     @Test
     void classpathPropertiesAreLoadedFromAltcontainersProperties() {
-        Configuration config = Configuration.from(classpathProperties);
-        assertThat(config.disabled()).isFalse();
+        Configuration configuration = Configuration.from(classpathProperties);
+        assertThat(configuration.disabled()).isFalse();
     }
 
     @Test
@@ -97,19 +97,19 @@ class ConfigurationTest {
 
     @Test
     void acceptsZeroIdleTimeout() {
-        Configuration config = Configuration.from(Map.of("altcontainers.reaper.idle.timeout.milliseconds", "0"));
-        assertThat(config.idleTimeoutMilliseconds()).isEqualTo(0L);
+        Configuration configuration = Configuration.from(Map.of("altcontainers.reaper.idle.timeout.milliseconds", "0"));
+        assertThat(configuration.idleTimeoutMilliseconds()).isEqualTo(0L);
     }
 
     @Test
     void acceptsValidLogLevelsCaseInsensitive() {
         for (String level : new String[] {"OFF", "ERROR", "INFO", "TRACE"}) {
-            Configuration config = Configuration.from(Map.of("altcontainers.reaper.log.level", level));
-            assertThat(config.logLevel()).isEqualTo(level);
+            Configuration configuration = Configuration.from(Map.of("altcontainers.reaper.log.level", level));
+            assertThat(configuration.logLevel()).isEqualTo(level);
         }
         for (String level : new String[] {"off", "error", "info", "trace"}) {
-            Configuration config = Configuration.from(Map.of("altcontainers.reaper.log.level", level));
-            assertThat(config.logLevel()).isEqualTo(level.toUpperCase());
+            Configuration configuration = Configuration.from(Map.of("altcontainers.reaper.log.level", level));
+            assertThat(configuration.logLevel()).isEqualTo(level.toUpperCase());
         }
     }
 
@@ -122,28 +122,28 @@ class ConfigurationTest {
 
     @Test
     void disabledAndPrivilegedBooleansAreParsed() {
-        Configuration config = Configuration.from(Map.of("altcontainers.reaper.disabled", "true"));
-        assertThat(config.disabled()).isTrue();
+        Configuration configuration = Configuration.from(Map.of("altcontainers.reaper.disabled", "true"));
+        assertThat(configuration.disabled()).isTrue();
     }
 
     @Test
     void rejectsNullLogLevel() {
         assertThatThrownBy(() -> new Configuration(
-                        false, 1_000L, 1_000L, 5_000L, 5_000L, 0L, null, System.getProperty("java.io.tmpdir")))
+                        false, 1_000L, 1_000L, 3_000L, 5_000L, 0L, null, System.getProperty("java.io.tmpdir")))
                 .isInstanceOf(ContainerException.class)
                 .hasMessageContaining("log.level");
     }
 
     @Test
     void rejectsNullDaemonLogDirectory() {
-        assertThatThrownBy(() -> new Configuration(false, 1_000L, 1_000L, 5_000L, 5_000L, 0L, "INFO", null))
+        assertThatThrownBy(() -> new Configuration(false, 1_000L, 1_000L, 3_000L, 5_000L, 0L, "INFO", null))
                 .isInstanceOf(ContainerException.class)
                 .hasMessageContaining("log.directory");
     }
 
     @Test
     void rejectsBlankDaemonLogDirectory() {
-        assertThatThrownBy(() -> new Configuration(false, 1_000L, 1_000L, 5_000L, 5_000L, 0L, "INFO", "   "))
+        assertThatThrownBy(() -> new Configuration(false, 1_000L, 1_000L, 3_000L, 5_000L, 0L, "INFO", "   "))
                 .isInstanceOf(ContainerException.class)
                 .hasMessageContaining("log.directory");
     }
@@ -159,21 +159,21 @@ class ConfigurationTest {
 
     @Test
     void treatsBlankTimeoutAsDefault() {
-        Configuration config =
+        Configuration configuration =
                 Configuration.from(Map.of("altcontainers.reaper.connection.timeout.milliseconds", "   "));
-        assertThat(config.connectionTimeoutMilliseconds()).isEqualTo(10_000L);
+        assertThat(configuration.connectionTimeoutMilliseconds()).isEqualTo(10_000L);
     }
 
     @Test
     void treatsBlankDisabledFlagAsDefault() {
-        Configuration config = Configuration.from(Map.of("altcontainers.reaper.disabled", "   "));
-        assertThat(config.disabled()).isFalse();
+        Configuration configuration = Configuration.from(Map.of("altcontainers.reaper.disabled", "   "));
+        assertThat(configuration.disabled()).isFalse();
     }
 
     @Test
     void parsesExplicitDisabledFalseFlag() {
-        Configuration config = Configuration.from(Map.of("altcontainers.reaper.disabled", "false"));
-        assertThat(config.disabled()).isFalse();
+        Configuration configuration = Configuration.from(Map.of("altcontainers.reaper.disabled", "false"));
+        assertThat(configuration.disabled()).isFalse();
     }
 
     @Test
@@ -181,21 +181,21 @@ class ConfigurationTest {
         String content = "altcontainers.reaper.disabled=true\n" + "altcontainers.reaper.log.level=TRACE\n";
         ClassLoader loader = classLoaderServingProperties(content);
 
-        Configuration config = Configuration.load(loader);
+        Configuration configuration = Configuration.load(loader);
 
-        assertThat(config.disabled()).isTrue();
-        assertThat(config.logLevel()).isEqualTo("TRACE");
+        assertThat(configuration.disabled()).isTrue();
+        assertThat(configuration.logLevel()).isEqualTo("TRACE");
     }
 
     @Test
     void ignoresClasspathPropertiesWhenResourceIsUnreadable() {
         ClassLoader loader = classLoaderServingUnreadableProperties();
 
-        Configuration config = Configuration.load(loader);
+        Configuration configuration = Configuration.load(loader);
 
         // IOException during load is swallowed -> defaults apply even though the resource "exists".
-        assertThat(config.disabled()).isFalse();
-        assertThat(config.logLevel()).isEqualTo("INFO");
+        assertThat(configuration.disabled()).isFalse();
+        assertThat(configuration.logLevel()).isEqualTo("INFO");
     }
 
     @Test
@@ -204,9 +204,9 @@ class ConfigurationTest {
         ClassLoader saved = thread.getContextClassLoader();
         thread.setContextClassLoader(null);
         try {
-            Configuration config = Configuration.load();
+            Configuration configuration = Configuration.load();
 
-            assertThat(config.daemonLogDirectory()).isNotBlank();
+            assertThat(configuration.daemonLogDirectory()).isNotBlank();
         } finally {
             thread.setContextClassLoader(saved);
         }
@@ -215,9 +215,9 @@ class ConfigurationTest {
     @Test
     void loadToleratesNullClassLoaderArgument() {
         // Explicit null arg exercises the defining-classloader fallback in loadClasspathProperties.
-        Configuration config = Configuration.load((ClassLoader) null);
+        Configuration configuration = Configuration.load((ClassLoader) null);
 
-        assertThat(config.daemonLogDirectory()).isNotBlank();
+        assertThat(configuration.daemonLogDirectory()).isNotBlank();
     }
 
     private static ClassLoader classLoaderServingProperties(String content) {
@@ -249,5 +249,27 @@ class ConfigurationTest {
                 return super.getResourceAsStream(name);
             }
         };
+    }
+
+    @Test
+    void rejectsSessionTimeoutShorterThanHeartbeatInterval() {
+        Map<String, String> props = Map.of(
+                "altcontainers.reaper.session.timeout.milliseconds", "3000",
+                "altcontainers.reaper.heartbeat.interval.milliseconds", "5000");
+
+        assertThatThrownBy(() -> Configuration.from(props))
+                .isInstanceOf(ContainerException.class)
+                .hasMessageContaining("must be greater than");
+    }
+
+    @Test
+    void rejectsSessionTimeoutEqualToHeartbeatInterval() {
+        Map<String, String> props = Map.of(
+                "altcontainers.reaper.session.timeout.milliseconds", "5000",
+                "altcontainers.reaper.heartbeat.interval.milliseconds", "5000");
+
+        assertThatThrownBy(() -> Configuration.from(props))
+                .isInstanceOf(ContainerException.class)
+                .hasMessageContaining("must be greater than");
     }
 }

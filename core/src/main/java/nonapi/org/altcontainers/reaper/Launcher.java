@@ -26,41 +26,68 @@ import java.util.List;
 import org.altcontainers.api.ContainerException;
 
 /**
- * Launches the global reaper daemon as a detached host process via {@code setsid}.
+ * Launches the global reaper daemon as a detached host process via {@code setsid} (Linux) or
+ * {@code nohup} (macOS).
  *
  * <p>The daemon binds its own port and writes the discovery file. No port is allocated or
  * passed by the launcher.
  */
 public final class Launcher {
 
-    private Launcher() {}
+    private Launcher() {
+        // Intentionally empty
+    }
+
+    /**
+     * Returns whether the host operating system is Linux.
+     *
+     * <p>Package-private for testability.
+     *
+     * @return {@code true} if {@code os.name} contains "linux" (case-insensitive)
+     */
+    static boolean isLinux() {
+        return System.getProperty("os.name", "").toLowerCase().contains("linux");
+    }
 
     /**
      * Launches the global reaper daemon as a detached process.
      *
+     * <p>Uses {@code setsid} on Linux and {@code nohup} on macOS and other platforms.
+     *
      * @param config the reaper configuration
-     * @throws ContainerException if {@code setsid} is unavailable or the daemon cannot be started
+     * @throws ContainerException if the daemon cannot be started
      */
-    public static void launch(Configuration config) {
-        if (!isSetsidAvailable()) {
-            throw new ContainerException("setsid is unavailable; cannot detach reaper daemon");
+    public static void launch(Configuration configuration) {
+        if (isLinux()) {
+            launchWithSetsid(configuration);
+        } else {
+            launchWithNohup(configuration);
         }
+    }
 
+    /**
+     * Launches the reaper daemon via {@code nohup} on non-Linux platforms.
+     *
+     * @param configuration the reaper configuration
+     * @throws ContainerException if the daemon cannot be started
+     */
+    private static void launchWithNohup(Configuration configuration) {
         String javaExecutable = resolveJavaExecutable();
         String classpath = buildClasspath();
 
         String logDirectory = ReaperDiscovery.discoveryPath().getParent().toString();
 
         List<String> command = new ArrayList<>();
-        command.add("setsid");
+        command.add("nohup");
         command.add(javaExecutable);
         command.add("-cp");
         command.add(classpath);
         command.add("-Daltcontainers.reaper.daemon=true");
         command.add("-Daltcontainers.reaper.log.directory=" + logDirectory);
-        command.add("-Daltcontainers.reaper.cleanup.timeout.milliseconds=" + config.cleanupTimeoutMilliseconds());
-        command.add("-Daltcontainers.reaper.idle.timeout.milliseconds=" + config.idleTimeoutMilliseconds());
-        command.add("-Daltcontainers.reaper.log.level=" + config.logLevel());
+        command.add(
+                "-Daltcontainers.reaper.cleanup.timeout.milliseconds=" + configuration.cleanupTimeoutMilliseconds());
+        command.add("-Daltcontainers.reaper.idle.timeout.milliseconds=" + configuration.idleTimeoutMilliseconds());
+        command.add("-Daltcontainers.reaper.log.level=" + configuration.logLevel());
         command.add(Reaper.class.getName());
 
         try {
@@ -79,7 +106,52 @@ public final class Launcher {
         }
     }
 
-    private static boolean isSetsidAvailable() {
+    /**
+     * Launches the reaper daemon via {@code setsid} on Linux.
+     *
+     * @param configuration the reaper configuration
+     * @throws ContainerException if {@code setsid} is unavailable or the daemon cannot be started
+     */
+    private static void launchWithSetsid(Configuration configuration) {
+        if (!isSetsidAvailable()) {
+            throw new ContainerException("setsid is unavailable; cannot detach reaper daemon");
+        }
+
+        String javaExecutable = resolveJavaExecutable();
+        String classpath = buildClasspath();
+
+        String logDirectory = ReaperDiscovery.discoveryPath().getParent().toString();
+
+        List<String> command = new ArrayList<>();
+        command.add("setsid");
+        command.add(javaExecutable);
+        command.add("-cp");
+        command.add(classpath);
+        command.add("-Daltcontainers.reaper.daemon=true");
+        command.add("-Daltcontainers.reaper.log.directory=" + logDirectory);
+        command.add(
+                "-Daltcontainers.reaper.cleanup.timeout.milliseconds=" + configuration.cleanupTimeoutMilliseconds());
+        command.add("-Daltcontainers.reaper.idle.timeout.milliseconds=" + configuration.idleTimeoutMilliseconds());
+        command.add("-Daltcontainers.reaper.log.level=" + configuration.logLevel());
+        command.add(Reaper.class.getName());
+
+        try {
+            ProcessBuilder pb = new ProcessBuilder(command);
+            pb.redirectInput(ProcessBuilder.Redirect.PIPE);
+            pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
+            pb.redirectError(ProcessBuilder.Redirect.DISCARD);
+            Process process = pb.start();
+            try {
+                process.getOutputStream().close();
+            } catch (IOException ignored) {
+                // Best-effort.
+            }
+        } catch (IOException e) {
+            throw new ContainerException("Failed to launch reaper daemon", e);
+        }
+    }
+
+    static boolean isSetsidAvailable() {
         try {
             Process process = new ProcessBuilder("setsid", "true")
                     .redirectOutput(ProcessBuilder.Redirect.DISCARD)
@@ -87,7 +159,10 @@ public final class Launcher {
                     .start();
             int exitCode = process.waitFor();
             return exitCode == 0;
-        } catch (IOException | InterruptedException e) {
+        } catch (IOException e) {
+            return false;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             return false;
         }
     }
