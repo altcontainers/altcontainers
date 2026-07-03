@@ -21,12 +21,10 @@ readonly SCRIPT_DIR
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 readonly PROJECT_DIR
 readonly MVNW="${PROJECT_DIR}/mvnw"
-readonly GRADLEW="${PROJECT_DIR}/gradlew"
 
 readonly VERSION_REGEX='^[0-9]+\.[0-9]+\.[0-9]+$'
 
 EXECUTE="false"
-SKIP_GRADLE="false"
 SKIP_DOCS_BUILD="false"
 VERSION=""
 
@@ -48,14 +46,12 @@ Arguments:
 
 Options:
   --execute              Execute the release (default is dry-run)
-  --skip-gradle          Skip Gradle build validation
   --skip-docs-build      Skip documentation build (use if docs already built)
   -h, --help             Show this help text
 
 Examples:
   ./scripts/release.sh 1.2.3                    # Dry run
   ./scripts/release.sh 1.2.3 --execute          # Execute release
-  ./scripts/release.sh 1.2.3 --execute --skip-gradle
 EOF
 }
 
@@ -106,9 +102,6 @@ parse_args() {
         case "$1" in
             --execute)
                 EXECUTE="true"
-                ;;
-            --skip-gradle)
-                SKIP_GRADLE="true"
                 ;;
             --skip-docs-build)
                 SKIP_DOCS_BUILD="true"
@@ -186,10 +179,6 @@ preflight_checks() {
 
     [[ -x "${MVNW}" ]] || fail "mvnw not found or not executable: ${MVNW}"
 
-    if [[ "${SKIP_GRADLE}" == "false" ]]; then
-        [[ -x "${GRADLEW}" ]] || fail "gradlew not found or not executable: ${GRADLEW} (use --skip-gradle to skip)"
-    fi
-
     local current_branch
     current_branch=$(get_current_branch)
     [[ "${current_branch}" == "main" ]] || fail "Must be on main branch. Currently on: ${current_branch}"
@@ -259,20 +248,10 @@ step1_prepare_release_branch() {
     if [[ "${EXECUTE}" == "true" ]]; then
         run_cmd "Applying code formatting" "${MVNW}" spotless:apply
         run_cmd "Building with Maven" "${MVNW}" clean install
-
-        if [[ "${SKIP_GRADLE}" == "false" ]]; then
-            run_cmd "Building with Gradle" "${GRADLEW}" clean check --no-daemon
-        else
-            log "Skipping Gradle build (--skip-gradle)"
-        fi
-
         run_cmd "Building documentation" "${SCRIPT_DIR}/build-documentation.sh"
     else
         log "[DRY-RUN] ${MVNW} spotless:apply"
         log "[DRY-RUN] ${MVNW} clean install"
-        if [[ "${SKIP_GRADLE}" == "false" ]]; then
-            log "[DRY-RUN] ${GRADLEW} clean check --no-daemon"
-        fi
         log "[DRY-RUN] ${SCRIPT_DIR}/build-documentation.sh"
     fi
 
@@ -489,12 +468,6 @@ step7_bump_dev_version() {
         run_cmd "Applying code formatting" "${MVNW}" spotless:apply
         run_cmd "Building with Maven" "${MVNW}" clean install
 
-        if [[ "${SKIP_GRADLE}" == "false" ]]; then
-            run_cmd "Building with Gradle" "${GRADLEW}" clean check --no-daemon
-        else
-            log "Skipping Gradle build (--skip-gradle)"
-        fi
-
         if git -C "${PROJECT_DIR}" diff --cached --quiet 2>/dev/null && git -C "${PROJECT_DIR}" diff --quiet 2>/dev/null; then
             log "No changes to commit"
         else
@@ -521,9 +494,6 @@ step7_bump_dev_version() {
         log "[DRY-RUN] ${MVNW} versions:set-property -Dproperty=revision -DnewVersion=${dev_version} -DgenerateBackupPoms=false"
         log "[DRY-RUN] ${MVNW} spotless:apply"
         log "[DRY-RUN] ${MVNW} clean install"
-        if [[ "${SKIP_GRADLE}" == "false" ]]; then
-            log "[DRY-RUN] ${GRADLEW} clean check --no-daemon"
-        fi
         log "[DRY-RUN] git add -A"
         log "[DRY-RUN] git commit -s -m \"chore: Prepare for development\""
         log "[DRY-RUN] git push"

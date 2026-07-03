@@ -30,10 +30,8 @@ class ContainerFacadeTest {
 
     @Test
     void createRejectsInvalidSpec() {
-        ContainerSpec containerSpec =
-                ContainerSpec.builder("img").startupAttempts(0).build();
         assertThatIllegalArgumentException()
-                .isThrownBy(() -> Container.create(containerSpec))
+                .isThrownBy(() -> ContainerSpec.builder("img").startupAttempts(0))
                 .withMessageContaining("startupAttempts must be >= 1");
     }
 

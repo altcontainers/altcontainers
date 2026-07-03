@@ -118,8 +118,8 @@ class ReaperLogRollingTest {
         LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
         ch.qos.logback.classic.Logger rootLogger = context.getLogger(ch.qos.logback.classic.Logger.ROOT_LOGGER_NAME);
 
-        Configuration config = Configuration.load();
-        Level expectedLevel = Level.toLevel(config.logLevel(), Level.INFO);
+        Configuration configuration = Configuration.load();
+        Level expectedLevel = Level.toLevel(configuration.logLevel(), Level.INFO);
 
         assertThat(rootLogger.getLevel())
                 .describedAs("root logger level must match Configuration.logLevel()")

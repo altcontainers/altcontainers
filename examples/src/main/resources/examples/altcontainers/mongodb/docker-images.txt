@@ -1,0 +1,2 @@
+mongo:7.0
+mongo:8.0

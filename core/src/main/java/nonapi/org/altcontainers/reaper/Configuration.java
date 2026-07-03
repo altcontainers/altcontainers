@@ -123,6 +123,11 @@ public record Configuration(
         if (sessionTimeoutMilliseconds <= 0) {
             throw new ContainerException(KEY_SESSION_TIMEOUT + " must be positive, was " + sessionTimeoutMilliseconds);
         }
+        if (sessionTimeoutMilliseconds <= heartbeatIntervalMilliseconds) {
+            throw new ContainerException(KEY_SESSION_TIMEOUT + " (" + sessionTimeoutMilliseconds
+                    + ") must be greater than " + KEY_HEARTBEAT_INTERVAL
+                    + " (" + heartbeatIntervalMilliseconds + ")");
+        }
         if (idleTimeoutMilliseconds < 0) {
             throw new ContainerException(KEY_IDLE_TIMEOUT + " must be >= 0, was " + idleTimeoutMilliseconds);
         }

@@ -16,6 +16,8 @@
 
 package nonapi.org.altcontainers.reaper;
 
+import org.altcontainers.api.Version;
+
 /**
  * Protocol constants and command parsing for the reaper TCP protocol.
  *
@@ -39,9 +41,9 @@ package nonapi.org.altcontainers.reaper;
 public final class Protocol {
 
     /**
-     * Protocol version. Matches the Altcontainers build version from {@link org.altcontainers.api.Version}.
+     * Protocol version. Matches the Altcontainers build version from {@link Version}.
      */
-    public static final String VERSION = org.altcontainers.api.Version.version();
+    public static final String VERSION = Version.version();
 
     /**
      * Command verbs.
@@ -63,7 +65,9 @@ public final class Protocol {
     /**
      * Private constructor; utility class.
      */
-    private Protocol() {}
+    private Protocol() {
+        // Intentionally empty
+    }
 
     /**
      * Parses a protocol line into a command.

@@ -24,7 +24,7 @@ The container started but the wait conditions were not satisfied within the `sta
   ```
 - Enable log output to see what the container is doing:
   ```java
-  .logConsumer(PrefixConsumer.of("APP", "my-image"))
+  .logConsumer(line -> System.out.println("[APP] my-image | " + line))
   ```
 - Verify the wait condition matches the service behavior
 
@@ -32,12 +32,12 @@ The container started but the wait conditions were not satisfied within the `sta
 
 **Causes:**
 - Docker daemon is not running
-- `DOCKER_HOST` is misconfigured
+- `DOCKER_HOST` or `altcontainers.docker.host` is misconfigured
 - Permission denied on the Docker socket
 
 **Solutions:**
 - Verify Docker is running: `docker info`
-- Check `DOCKER_HOST` environment variable
+- Check `DOCKER_HOST` environment variable or `altcontainers.docker.host` system property
 - Ensure the current user has permission to access the Docker socket
 
 ### "Image pull failed"

@@ -55,10 +55,13 @@
         <project.reporting.sourceEncoding>UTF-8</project.reporting.sourceEncoding>
         <!-- Dependency versions -->
         <assertj-core.version>3.27.7</assertj-core.version>
-        <docker-java.version>3.7.1</docker-java.version>
+        <gson.version>2.12.1</gson.version>
+        <okhttp.version>5.4.0</okhttp.version>
         <junit.version>6.1.1</junit.version>
         <slf4j.version>2.0.18</slf4j.version>
         <paramixel.version>6.2.1</paramixel.version>
+        <kafka-clients.version>3.9.0</kafka-clients.version>
+        <mongodb-driver.version>5.4.0</mongodb-driver.version>
         <palantir-java-format.version>2.91.0</palantir-java-format.version>
         <pmd.version>7.25.0</pmd.version>
         <!-- Plugin versions -->
@@ -112,14 +115,34 @@
                 <version>${assertj-core.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.github.docker-java</groupId>
-                <artifactId>docker-java-core</artifactId>
-                <version>${docker-java.version}</version>
+                <groupId>com.squareup.okhttp3</groupId>
+                <artifactId>okhttp</artifactId>
+                <version>${okhttp.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.github.docker-java</groupId>
-                <artifactId>docker-java-transport-zerodep</artifactId>
-                <version>${docker-java.version}</version>
+                <groupId>com.squareup.okhttp3</groupId>
+                <artifactId>okhttp-jvm</artifactId>
+                <version>${okhttp.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.google.code.gson</groupId>
+                <artifactId>gson</artifactId>
+                <version>${gson.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.squareup.okhttp3</groupId>
+                <artifactId>mockwebserver3</artifactId>
+                <version>${okhttp.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kafka</groupId>
+                <artifactId>kafka-clients</artifactId>
+                <version>${kafka-clients.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.mongodb</groupId>
+                <artifactId>mongodb-driver-sync</artifactId>
+                <version>${mongodb-driver.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -236,11 +259,43 @@
                             </goals>
                         </execution>
                         <execution>
+                            <id>jacoco-prepare-agent-integration</id>
+                            <phase>pre-integration-test</phase>
+                            <goals>
+                                <goal>prepare-agent-integration</goal>
+                            </goals>
+                            <configuration>
+                                <destFile>${project.build.directory}/jacoco-it.exec</destFile>
+                            </configuration>
+                        </execution>
+                        <execution>
+                            <id>jacoco-merge</id>
+                            <phase>post-integration-test</phase>
+                            <goals>
+                                <goal>merge</goal>
+                            </goals>
+                            <configuration>
+                                <fileSets>
+                                    <fileSet>
+                                        <directory>${project.build.directory}</directory>
+                                        <includes>
+                                            <include>jacoco.exec</include>
+                                            <include>jacoco-it.exec</include>
+                                        </includes>
+                                    </fileSet>
+                                </fileSets>
+                                <destFile>${project.build.directory}/jacoco-merged.exec</destFile>
+                            </configuration>
+                        </execution>
+                        <execution>
                             <id>jacoco-report</id>
                             <phase>verify</phase>
                             <goals>
                                 <goal>report</goal>
                             </goals>
+                            <configuration>
+                                <dataFile>${project.build.directory}/jacoco-merged.exec</dataFile>
+                            </configuration>
                         </execution>
                     </executions>
                 </plugin>
@@ -248,6 +303,9 @@
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-resources-plugin</artifactId>
                     <version>${maven-resources-plugin.version}</version>
+                    <configuration>
+                        <propertiesEncoding>UTF-8</propertiesEncoding>
+                    </configuration>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>

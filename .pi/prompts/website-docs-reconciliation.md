@@ -42,7 +42,7 @@ Inspect the current implementation to determine:
 - Annotations
 - Configuration structures
 - YAML schemas
-- Maven and Gradle coordinates
+- Maven coordinates
 - Recommended usage patterns
 - Framework architecture
 - Integration points
@@ -200,7 +200,7 @@ Where practical:
 - Verified Quick Start tutorial
 - Migration notes for deprecated concepts
 - Broken link cleanup
-- Validated Maven and Gradle snippets
+- Validated Maven snippets
 - API reference integration strategy
 - Documentation gap analysis for undocumented features
 

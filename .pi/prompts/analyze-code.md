@@ -3,6 +3,8 @@
 Analyze the target module for correctness issues and potential bugs.
 Produce findings only. Do not write or modify any code.
 
+$ARGUMENTS
+
 ## Objective
 
 Identify runtime bugs, logic errors, race conditions, resource leaks,

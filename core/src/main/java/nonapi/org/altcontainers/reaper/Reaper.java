@@ -60,7 +60,9 @@ public final class Reaper {
     private static final int MAX_LOG_FILE_INDEX = 9;
     private static final int MIN_LOG_FILE_INDEX = 1;
 
-    private Reaper() {}
+    private Reaper() {
+        // Intentionally empty
+    }
 
     /**
      * Entry point. Requires {@code -Daltcontainers.reaper.daemon=true}.
@@ -92,7 +94,7 @@ public final class Reaper {
     }
 
     private static void runServer() {
-        Configuration config = Configuration.load();
+        Configuration configuration = Configuration.load();
 
         DockerClient client;
         try {
@@ -129,9 +131,11 @@ public final class Reaper {
 
         ConcurrentHashMap<String, SessionState> sessions = new ConcurrentHashMap<>();
         AtomicInteger sessionCount = new AtomicInteger(0);
+        AtomicInteger pendingConnections = new AtomicInteger(0);
 
-        Thread scannerThread = startScanner(sessions, sessionCount, client, config);
-        Thread idleThread = startIdleTimer(sessionCount, config, serverSocket, sessions, client);
+        Thread scannerThread = startScanner(sessions, sessionCount, client, configuration);
+        Thread idleThread =
+                startIdleTimer(sessionCount, pendingConnections, configuration, serverSocket, sessions, client);
 
         Runtime.getRuntime()
                 .addShutdownHook(new Thread(
@@ -146,7 +150,7 @@ public final class Reaper {
                             for (SessionState s : sessions.values()) {
                                 try {
                                     ResourceCleaner.cleanupSession(
-                                            client, s.sessionId(), config.cleanupTimeoutMilliseconds());
+                                            client, s.sessionId(), configuration.cleanupTimeoutMilliseconds());
                                 } catch (RuntimeException e) {
                                     logger.error("Cleanup failed for session " + s.sessionId() + ": " + e.getMessage());
                                 }
@@ -157,12 +161,17 @@ public final class Reaper {
         try {
             while (true) {
                 Socket socket = serverSocket.accept();
+                pendingConnections.incrementAndGet();
                 try {
-                    Handler handler = new Handler(socket, client, config, sessions, sessionCount);
+                    Handler handler =
+                            new Handler(socket, client, configuration, sessions, sessionCount, pendingConnections);
                     Thread handlerThread = new Thread(handler, "altcontainers-reaper-handler");
                     handlerThread.setDaemon(true);
                     handlerThread.start();
                 } catch (IOException e) {
+                    // Handler construction failed (e.g. socket streams unreadable); release the
+                    // pending count so the idle timer does not see a phantom in-flight connection.
+                    pendingConnections.decrementAndGet();
                     logger.error("Failed to create handler: " + e.getMessage());
                     try {
                         socket.close();
@@ -182,7 +191,7 @@ public final class Reaper {
             ConcurrentHashMap<String, SessionState> sessions,
             AtomicInteger sessionCount,
             DockerClient client,
-            Configuration config) {
+            Configuration configuration) {
         Thread scanner = new Thread(
                 () -> {
                     while (!Thread.currentThread().isInterrupted()) {
@@ -197,18 +206,35 @@ public final class Reaper {
                             long elapsedNs = now - s.lastHeartbeatNanos().get();
                             long timeoutNs = s.heartbeatTimeoutMs() * 1_000_000L;
                             if (elapsedNs > timeoutNs) {
-                                sessions.remove(s.sessionId());
-                                sessionCount.decrementAndGet();
-                                logger.info("Session " + s.sessionId() + " timed out after " + (elapsedNs / 1_000_000L)
-                                        + "ms");
-                                try {
-                                    ResourceCleaner.cleanupSession(
-                                            client, s.sessionId(), config.cleanupTimeoutMilliseconds());
-                                    logger.info("Session " + s.sessionId() + " cleaned up");
-                                } catch (RuntimeException e) {
-                                    logger.error("Cleanup failed for session " + s.sessionId() + ": " + e.getMessage());
+                                // Re-read lastHeartbeatNanos to close the race window.
+                                // A heartbeat arriving between the snapshot read above
+                                // and the remove below would reset the timestamp; the
+                                // fresh check prevents premature eviction.
+                                SessionState current = sessions.get(s.sessionId());
+                                if (current == null) {
+                                    continue;
                                 }
-                                closeSessionSocket(s);
+                                long freshElapsedNs =
+                                        now - current.lastHeartbeatNanos().get();
+                                if (freshElapsedNs <= current.heartbeatTimeoutMs() * 1_000_000L) {
+                                    continue;
+                                }
+                                SessionState removed = sessions.remove(s.sessionId());
+                                if (removed != null) {
+                                    sessionCount.decrementAndGet();
+                                    logger.info("Session " + s.sessionId() + " timed out after "
+                                            + (elapsedNs / 1_000_000L)
+                                            + "ms");
+                                    try {
+                                        ResourceCleaner.cleanupSession(
+                                                client, s.sessionId(), configuration.cleanupTimeoutMilliseconds());
+                                        logger.info("Session " + s.sessionId() + " cleaned up");
+                                    } catch (RuntimeException e) {
+                                        logger.error(
+                                                "Cleanup failed for session " + s.sessionId() + ": " + e.getMessage());
+                                    }
+                                    closeSessionSocket(s);
+                                }
                             }
                         }
                     }
@@ -219,13 +245,32 @@ public final class Reaper {
         return scanner;
     }
 
+    /**
+     * Returns whether the reaper daemon should be considered active (non-idle).
+     *
+     * <p>The daemon is active when there is at least one fully-connected session OR at least one
+     * accepted connection still completing its handshake. The idle timer reads this conservatively
+     * from two {@link AtomicInteger}s: it only ever shuts down when both read as zero, so a connection
+     * that arrives after a read is caught on the next idle interval. This keeps the idle timer from
+     * shutting the daemon down while a client is mid-handshake (during which {@code sessionCount} is
+     * still zero but {@code pendingConnections} is non-zero).
+     *
+     * @param sessionCount the connected-session count
+     * @param pendingConnections the accepted-but-not-yet-handshaked count
+     * @return {@code true} if either count is greater than zero
+     */
+    static boolean isDaemonActive(int sessionCount, int pendingConnections) {
+        return sessionCount > 0 || pendingConnections > 0;
+    }
+
     private static Thread startIdleTimer(
             AtomicInteger sessionCount,
-            Configuration config,
+            AtomicInteger pendingConnections,
+            Configuration configuration,
             ServerSocket serverSocket,
             ConcurrentHashMap<String, SessionState> sessions,
             DockerClient client) {
-        if (config.idleTimeoutMilliseconds() == 0) {
+        if (configuration.idleTimeoutMilliseconds() == 0) {
             return null;
         }
         Thread idle = new Thread(
@@ -239,13 +284,13 @@ public final class Reaper {
                             Thread.currentThread().interrupt();
                             break;
                         }
-                        int count = sessionCount.get();
-                        if (count > 0) {
+                        if (isDaemonActive(sessionCount.get(), pendingConnections.get())) {
                             counting = false;
                             continue;
                         }
                         if (!counting) {
-                            idleDeadlineNanos = System.nanoTime() + config.idleTimeoutMilliseconds() * 1_000_000L;
+                            idleDeadlineNanos =
+                                    System.nanoTime() + configuration.idleTimeoutMilliseconds() * 1_000_000L;
                             counting = true;
                             continue;
                         }
@@ -260,7 +305,7 @@ public final class Reaper {
                             for (SessionState s : sessions.values()) {
                                 try {
                                     ResourceCleaner.cleanupSession(
-                                            client, s.sessionId(), config.cleanupTimeoutMilliseconds());
+                                            client, s.sessionId(), configuration.cleanupTimeoutMilliseconds());
                                 } catch (RuntimeException e) {
                                     logger.error("Cleanup failed for session " + s.sessionId() + ": " + e.getMessage());
                                 }
@@ -335,8 +380,8 @@ public final class Reaper {
             return;
         }
 
-        Configuration config = Configuration.load();
-        Level level = Level.toLevel(config.logLevel(), Level.INFO);
+        Configuration configuration = Configuration.load();
+        Level level = Level.toLevel(configuration.logLevel(), Level.INFO);
 
         ch.qos.logback.classic.Logger rootLogger = context.getLogger(ch.qos.logback.classic.Logger.ROOT_LOGGER_NAME);
         rootLogger.setLevel(level);

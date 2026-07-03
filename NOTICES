@@ -12,9 +12,14 @@ Third-Party Notices
 
 Direct Dependency Inventory (as declared in Maven POM files)
 
-- docker-java
-  - Coordinates: com.github.docker-java:docker-java-core, com.github.docker-java:docker-java-transport-zerodep
-  - Website: https://github.com/docker-java/docker-java
+- OkHttp
+  - Coordinates: com.squareup.okhttp3:okhttp, com.squareup.okhttp3:okhttp-jvm
+  - Website: https://square.github.io/okhttp/
+  - License: Apache License 2.0
+
+- Gson
+  - Coordinates: com.google.code.gson:gson
+  - Website: https://github.com/google/gson
   - License: Apache License 2.0
 
 - SLF4J
@@ -37,36 +42,12 @@ Embedded / Shaded Dependencies (in the uber-JAR)
 The core artifact is a shaded uber-JAR that embeds and relocates the following
 components. Their original packages are not present in the published artifact.
 
-- Jackson (core, databind, annotations)
-  - Website: https://github.com/FasterXML/jackson
+- Okio
+  - Website: https://github.com/square/okio
   - License: Apache License 2.0
 
-- Guava
-  - Website: https://github.com/google/guava
-  - License: Apache License 2.0
-
-- Apache HttpClient 5
-  - Website: https://hc.apache.org/
-  - License: Apache License 2.0
-
-- Apache Commons Codec
-  - Website: https://commons.apache.org/proper/commons-codec/
-  - License: Apache License 2.0
-
-- Apache Commons IO
-  - Website: https://commons.apache.org/proper/commons-io/
-  - License: Apache License 2.0
-
-- Bouncy Castle
-  - Website: https://www.bouncycastle.org/
-  - License: Bouncy Castle Licence (MIT-style)
-
-- Java Native Access (JNA)
-  - Website: https://github.com/java-native-access/jna
-  - License: Apache License 2.0 or LGPL 2.1
-
-- JSpecify
-  - Website: https://jspecify.dev/
+- Kotlin Standard Library
+  - Website: https://kotlinlang.org/
   - License: Apache License 2.0
 
 Note: Transitive dependencies pulled in by the above components may carry

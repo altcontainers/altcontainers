@@ -18,13 +18,14 @@ package org.altcontainers.api;
 
 import java.util.Objects;
 import nonapi.org.altcontainers.ContainerManager;
+import nonapi.org.altcontainers.ContainerOperations;
 import nonapi.org.altcontainers.DockerClient;
 
 /**
  * A runtime handle to a started Docker container.
  *
  * <p>{@code Container} is an immutable facade: it holds only the container identifier and image and
- * delegates every Docker operation to the shared, package-private {@link DockerClient}. Instances are
+ * delegates every Docker operation to the shared, package-private static operation utilities. Instances are
  * thread-safe handles that can be shared freely.
  *
  * <p>Containers are created via {@link #create(ContainerSpec)} and must be
@@ -63,8 +64,8 @@ public class Container implements AutoCloseable {
      * @throws NullPointerException if either argument is {@code null}
      */
     public Container(String id, String image) {
-        this.id = Objects.requireNonNull(id);
-        this.image = Objects.requireNonNull(image);
+        this.id = Objects.requireNonNull(id, "id must not be null");
+        this.image = Objects.requireNonNull(image, "image must not be null");
     }
 
     /**
@@ -121,18 +122,35 @@ public class Container implements AutoCloseable {
      * @return {@code true} if the container exists and is running; {@code false} otherwise
      */
     public boolean isRunning() {
-        return DockerClient.instance().isContainerRunning(id);
+        return ContainerOperations.isContainerRunning(DockerClient.instance(), id);
     }
 
     /**
      * Returns the mapped host port for the given container port.
+     *
+     * <p>Port values outside {@code 1..65535} return {@code -1} without throwing. Only non-absence
+     * Docker inspection failures are escalated.
      *
      * @param containerPort the port exposed inside the container
      * @return the host port mapped to the container port, or {@code -1} if not found, the container is
      *     gone, or the port specification is malformed
      */
     public int hostPort(int containerPort) {
-        return DockerClient.instance().hostPort(id, containerPort);
+        return ContainerOperations.hostPort(DockerClient.instance(), id, containerPort);
+    }
+
+    /**
+     * Copies a file into a container's filesystem via Docker's archive API.
+     * The file is written inside the container relative to {@code containerPath}.
+     *
+     * @param containerPath the destination directory inside the container
+     * @param fileName the file name
+     * @param content the file content bytes
+     * @param mode the file mode (e.g., {@code 0777} for executable)
+     * @throws ContainerException if the copy fails
+     */
+    public void copyFileToContainer(String containerPath, String fileName, byte[] content, int mode) {
+        DockerClient.instance().putArchive(id, containerPath, fileName, content, mode);
     }
 
     /**

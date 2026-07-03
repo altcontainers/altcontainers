@@ -41,5 +41,5 @@ ContainerSpec.builder("my-service:latest")
 
 ## Learn next
 
-- [Wait Conditions](wait-conditions)
+- [Wait Strategies](wait-strategies)
 - [ContainerSpec](container-spec)

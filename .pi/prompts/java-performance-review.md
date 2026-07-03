@@ -4,6 +4,8 @@ Review the provided code, profile data, or performance concern and
 recommend optimizations that preserve behavior and improve measurable
 outcomes.
 
+$ARGUMENTS
+
 ## Objective
 
 Identify performance issues with credible impact, recommend specific

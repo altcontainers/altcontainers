@@ -20,7 +20,7 @@ package org.altcontainers.api;
  * A single host-to-container read-write bind mount.
  *
  * <p>An immutable value object carrying the two absolute paths that define one bind mount. Instances are
- * created via {@link org.altcontainers.api.ContainerSpec.Builder#bindDirectory(String, String)} and
+ * created via {@link GenericContainerSpec.Builder#bindDirectory(String, String)} and
  * consumed when building a container.
  *
  * @param hostPath the absolute host path; must not be {@code null} or blank

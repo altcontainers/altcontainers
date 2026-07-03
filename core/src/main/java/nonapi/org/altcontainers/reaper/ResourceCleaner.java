@@ -16,6 +16,9 @@
 
 package nonapi.org.altcontainers.reaper;
 
+import static nonapi.org.altcontainers.ContainerOperations.*;
+import static nonapi.org.altcontainers.NetworkOperations.*;
+
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
@@ -45,7 +48,9 @@ public final class ResourceCleaner {
     /**
      * Private constructor; utility class.
      */
-    private ResourceCleaner() {}
+    private ResourceCleaner() {
+        // Intentionally empty
+    }
 
     /**
      * Force-removes all containers and networks belonging to the given session.
@@ -82,19 +87,33 @@ public final class ResourceCleaner {
     private static void cleanupContainers(DockerClient client, Map<String, String> filter, long deadlineNanos) {
         AtomicLong sleepMs = new AtomicLong(PollBackoff.INITIAL_INTERVAL_MS);
         while (true) {
-            List<String> containerIds = listSafely(() -> client.listContainerIdsByLabels(filter));
+            List<String> containerIds = listSafely(() -> listContainerIdsByLabels(client, filter));
             if (containerIds.isEmpty()) {
                 return;
             }
             for (String id : containerIds) {
                 try {
-                    client.forceRemoveContainer(id);
+                    forceRemoveContainer(client, id);
                     logger.info("Removed container " + id);
                 } catch (RuntimeException e) {
                     logger.error("Failed to remove container " + id + ": " + e.getMessage());
                 }
             }
             if (!PollBackoff.sleepWithBackoff(deadlineNanos, sleepMs, 0)) {
+                // Final re-check: list once more after the deadline has elapsed
+                // to catch resources that appeared during the final sleep.
+                List<String> remaining = listSafely(() -> listContainerIdsByLabels(client, filter));
+                if (remaining.isEmpty()) {
+                    return;
+                }
+                for (String id : remaining) {
+                    try {
+                        forceRemoveContainer(client, id);
+                        logger.info("Removed container " + id);
+                    } catch (RuntimeException e) {
+                        logger.error("Failed to remove container (post-deadline) " + id + ": " + e.getMessage());
+                    }
+                }
                 return;
             }
         }
@@ -110,19 +129,33 @@ public final class ResourceCleaner {
     private static void cleanupNetworks(DockerClient client, Map<String, String> filter, long deadlineNanos) {
         AtomicLong sleepMs = new AtomicLong(PollBackoff.INITIAL_INTERVAL_MS);
         while (true) {
-            List<String> networkIds = listSafely(() -> client.listNetworkIdsByLabels(filter));
+            List<String> networkIds = listSafely(() -> listNetworkIdsByLabels(client, filter));
             if (networkIds.isEmpty()) {
                 return;
             }
             for (String id : networkIds) {
                 try {
-                    client.removeNetwork(id);
+                    removeNetwork(client, id);
                     logger.info("Removed network " + id);
                 } catch (RuntimeException e) {
                     logger.error("Failed to remove network " + id + ": " + e.getMessage());
                 }
             }
             if (!PollBackoff.sleepWithBackoff(deadlineNanos, sleepMs, 0)) {
+                // Final re-check: list once more after the deadline has elapsed
+                // to catch resources that appeared during the final sleep.
+                List<String> remaining = listSafely(() -> listNetworkIdsByLabels(client, filter));
+                if (remaining.isEmpty()) {
+                    return;
+                }
+                for (String id : remaining) {
+                    try {
+                        removeNetwork(client, id);
+                        logger.info("Removed network " + id);
+                    } catch (RuntimeException e) {
+                        logger.error("Failed to remove network (post-deadline) " + id + ": " + e.getMessage());
+                    }
+                }
                 return;
             }
         }

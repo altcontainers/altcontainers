@@ -15,7 +15,6 @@ The Altcontainers public API lives in the `org.altcontainers.api` package.
 | `ContainerSpec` / `ContainerSpec.Builder` | Immutable container configuration with fluent builder |
 | `Network` | Static factory for creating and destroying Docker bridge networks |
 | `WaitCondition` | Sealed class hierarchy for container readiness conditions |
-| `PrefixConsumer` | Formatted stdout log consumer |
 | `Ulimit` | Linux resource limit specification |
 | `BindMount` | Host-to-container bind mount specification |
 | `ContainerException` | Runtime exception for lifecycle failures |

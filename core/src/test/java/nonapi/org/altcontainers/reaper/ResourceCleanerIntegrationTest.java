@@ -16,6 +16,9 @@
 
 package nonapi.org.altcontainers.reaper;
 
+import static nonapi.org.altcontainers.ContainerOperations.*;
+import static nonapi.org.altcontainers.ImageOperations.*;
+import static nonapi.org.altcontainers.NetworkOperations.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.ArrayList;
@@ -42,21 +45,21 @@ class ResourceCleanerIntegrationTest {
     @BeforeAll
     static void setUp() {
         client = DockerClient.instance();
-        client.pullImageIfMissing(TEST_IMAGE);
+        pullImageIfMissing(client, TEST_IMAGE);
     }
 
     @AfterEach
     void tearDown() {
         for (String id : containerIds) {
             try {
-                client.forceRemoveContainer(id);
+                forceRemoveContainer(client, id);
             } catch (RuntimeException ignored) {
                 // Best-effort cleanup.
             }
         }
         for (String id : networkIds) {
             try {
-                client.removeNetwork(id);
+                removeNetwork(client, id);
             } catch (RuntimeException ignored) {
                 // Best-effort cleanup.
             }
@@ -70,11 +73,11 @@ class ResourceCleanerIntegrationTest {
         String sessionId = UUID.randomUUID().toString();
         String containerId = createTestContainer(sessionLabels(sessionId));
         containerIds.add(containerId);
-        assertThat(client.containerExists(containerId)).isTrue();
+        assertThat(containerExists(client, containerId)).isTrue();
 
         ResourceCleaner.cleanupSession(client, sessionId, 10_000L);
 
-        assertThat(client.containerExists(containerId)).isFalse();
+        assertThat(containerExists(client, containerId)).isFalse();
         containerIds.remove(containerId);
     }
 
@@ -83,11 +86,11 @@ class ResourceCleanerIntegrationTest {
         String sessionId = UUID.randomUUID().toString();
         String networkId = createTestNetwork(sessionLabels(sessionId));
         networkIds.add(networkId);
-        assertThat(client.networkExists(networkId)).isTrue();
+        assertThat(networkExists(client, networkId)).isTrue();
 
         ResourceCleaner.cleanupSession(client, sessionId, 10_000L);
 
-        assertThat(client.networkExists(networkId)).isFalse();
+        assertThat(networkExists(client, networkId)).isFalse();
         networkIds.remove(networkId);
     }
 
@@ -107,13 +110,13 @@ class ResourceCleanerIntegrationTest {
 
         ResourceCleaner.cleanupSession(client, sessionA, 10_000L);
 
-        assertThat(client.containerExists(containerA)).isFalse();
-        assertThat(client.containerExists(containerB)).isTrue();
+        assertThat(containerExists(client, containerA)).isFalse();
+        assertThat(containerExists(client, containerB)).isTrue();
         containerIds.remove(containerA);
     }
 
     private static Map<String, String> sessionLabels(String sessionId) {
-        return java.util.Map.of(
+        return Map.of(
                 ResourceLabels.MANAGED,
                 "true",
                 ResourceLabels.SESSION_ID,
@@ -138,11 +141,13 @@ class ResourceCleanerIntegrationTest {
                 0,
                 0,
                 0,
-                labels);
-        return client.createContainer(spec);
+                labels,
+                Map.of(),
+                Map.of());
+        return createContainer(client, spec);
     }
 
     private String createTestNetwork(Map<String, String> labels) {
-        return client.createNetwork("altcontainers-test-" + UUID.randomUUID(), labels);
+        return createNetwork(client, "altcontainers-test-" + UUID.randomUUID(), labels);
     }
 }

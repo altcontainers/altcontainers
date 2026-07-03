@@ -5,6 +5,20 @@
 
 Altcontainers is a lightweight Java 17+ Docker container lifecycle management library.
 
+## Docker Host Configuration
+
+Altcontainers connects to Docker using the following precedence:
+
+1. Java system property `altcontainers.docker.host` (e.g., `-Daltcontainers.docker.host=tcp://localhost:2375`)
+2. Environment variable `DOCKER_HOST`
+3. Default `unix:///var/run/docker.sock`
+
+Supported schemes: `unix://`, `tcp://`, `http://`, `https://` (with JVM default SSL).
+
+Docker is required on the machine to build and test the project. Windows/named pipes,
+Docker context discovery, Docker TLS cert envs, and private registry auth are
+not currently supported.
+
 ## Quick Start
 
 ```java
@@ -21,7 +35,7 @@ try (Container container = Container.create(containerSpec)) {
 
 ## Features
 
-- **Shaded uber-JAR** — docker-java, Jackson, Guava, and other dependencies are relocated to prevent classpath conflicts
+- **Shaded uber-JAR** — OkHttp, Gson, Okio, and other dependencies are relocated to prevent classpath conflicts
 - **Automatic cleanup** — integrated reaper destroys containers and networks when the JVM exits
 - **Readiness waiting** — port probes, HTTP response checks, log message matching, and custom conditions
 - **Network management** — create and destroy Docker bridge networks

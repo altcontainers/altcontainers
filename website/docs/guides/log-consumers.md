@@ -9,13 +9,11 @@ Altcontainers lets you capture container log output through a `Consumer<String>`
 
 ## Prefixed log output
 
-`PrefixConsumer` formats log lines for display on stdout:
+You can use a custom log consumer to format lines for display:
 
 ```java
-import org.altcontainers.api.PrefixConsumer;
-
 ContainerSpec containerSpec = ContainerSpec.builder("nginx:1.27")
-    .logConsumer(PrefixConsumer.of("NGINX", "nginx:1.27"))
+    .logConsumer(line -> System.out.println("[NGINX] nginx:1.27 | " + line))
     .build();
 ```
 
