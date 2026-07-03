@@ -3,7 +3,7 @@ assertj-core = "3.27.7"
 docker-java = "3.7.1"
 junit = "6.1.1"
 shadow = "8.1.1"
-logback = "1.5.34"
+logback = "1.5.37"
 slf4j = "2.0.18"
 
 [libraries]
