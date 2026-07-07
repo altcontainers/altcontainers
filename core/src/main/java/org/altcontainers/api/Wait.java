@@ -81,22 +81,41 @@ public final class Wait {
      * {@code HttpWaitStrategy.builder().port(containerPort).path(path).protocol(protocol).statusRange(minStatus, maxStatus).build()}.
      * Stateless.
      *
+     * @param protocol the protocol; see {@link HttpWaitStrategy.Protocol}
      * @param containerPort the container port whose mapped host port is
      *     probed; must be in {@code 1..65535}
      * @param path the request path; normalized to begin with {@code /}
-     * @param protocol the protocol (HTTP or HTTPS)
      * @param minStatus inclusive lower bound for acceptable status
      * @param maxStatus inclusive upper bound for acceptable status
      * @return an HTTP-response wait strategy
      */
     public static WaitStrategy forHttpResponse(
-            int containerPort, String path, Protocol protocol, int minStatus, int maxStatus) {
+            HttpWaitStrategy.Protocol protocol, int containerPort, String path, int minStatus, int maxStatus) {
         return HttpWaitStrategy.builder()
                 .port(containerPort)
                 .path(path)
                 .protocol(protocol)
                 .statusRange(minStatus, maxStatus)
                 .build();
+    }
+
+    /**
+     * Creates a strategy that issues an HTTP or HTTPS GET against the mapped
+     * host port at path {@code /} and checks the response status.
+     * Convenience wrapper for
+     * {@code HttpWaitStrategy.builder().port(containerPort).path("/").protocol(protocol).statusRange(minStatus, maxStatus).build()}.
+     * Stateless.
+     *
+     * @param protocol the protocol; see {@link HttpWaitStrategy.Protocol}
+     * @param containerPort the container port whose mapped host port is
+     *     probed; must be in {@code 1..65535}
+     * @param minStatus inclusive lower bound for acceptable status
+     * @param maxStatus inclusive upper bound for acceptable status
+     * @return an HTTP-response wait strategy
+     */
+    public static WaitStrategy forHttpResponse(
+            HttpWaitStrategy.Protocol protocol, int containerPort, int minStatus, int maxStatus) {
+        return forHttpResponse(protocol, containerPort, "/", minStatus, maxStatus);
     }
 
     /**

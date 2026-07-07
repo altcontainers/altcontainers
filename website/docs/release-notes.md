@@ -5,7 +5,7 @@ description: Altcontainers release history and changelog.
 
 # Release Notes
 
-## 0.0.1 (Unreleased)
+## 0.1.0 (Unreleased)
 
 Initial release of Altcontainers as a standalone library.
 
@@ -19,11 +19,3 @@ Initial release of Altcontainers as a standalone library.
 - **Automatic cleanup** — reaper-based resource reclamation on JVM exit
 - **Shaded uber-JAR** — relocated dependencies to prevent classpath conflicts
 - **Java 17+** — records, sealed classes, and modern Java features
-
-### Migration from Paramixel Containers
-
-Altcontainers was extracted from the Paramixel `containers/` module. If you previously used `org.paramixel:containers`:
-
-1. Change the Maven dependency to `org.altcontainers:core:0.0.1`
-2. Update imports from `org.paramixel.container.api` to `org.altcontainers.api`
-3. The API is otherwise identical

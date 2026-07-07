@@ -18,17 +18,24 @@ package examples.altcontainers.kafka;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import nonapi.org.altcontainers.api.ConcreteContainer;
+import nonapi.org.altcontainers.api.ConcreteNetwork;
+import org.altcontainers.api.Container;
 import org.altcontainers.api.ContainerSpec;
 import org.altcontainers.api.LogWaitStrategy;
 import org.altcontainers.api.Network;
+import org.altcontainers.api.OutputFrame;
+import org.altcontainers.api.StartupContext;
 import org.junit.jupiter.api.Test;
 
 class KafkaContainerSpecTest {
 
     private static final String IMAGE = "apache/kafka:3.9.2";
-    private static final Network NETWORK = new Network("test-net", "test-id");
+    private static final Network NETWORK = new ConcreteNetwork("test-net", "test-id");
 
     @Test
     void shouldSetImage() {
@@ -99,13 +106,13 @@ class KafkaContainerSpecTest {
     }
 
     @Test
-    void shouldPassLogConsumer() {
-        Consumer<String> consumer = line -> {};
+    void shouldPassOutputConsumer() {
+        Consumer<OutputFrame> consumer = frame -> {};
         var spec = KafkaContainerSpec.builder(IMAGE)
                 .network(NETWORK, "kafka")
-                .logConsumer(consumer)
+                .outputConsumer(consumer)
                 .build();
-        assertThat(spec.logConsumer()).isSameAs(consumer);
+        assertThat(spec.onOutputConsumers()).containsExactly(consumer);
     }
 
     @Test
@@ -133,5 +140,66 @@ class KafkaContainerSpecTest {
         var spec = KafkaContainerSpec.builder(IMAGE).network(NETWORK, "kafka").build();
         assertThat(spec.command()).isNotEmpty();
         assertThat(spec.command().get(2)).contains("/tmp/testcontainers_start.sh");
+    }
+
+    @Test
+    void shouldBuildBootstrapServersWithContainerHost() throws Exception {
+        var environment = new KafkaTestEnvironment(IMAGE);
+        setContainer(
+                environment,
+                new ConcreteContainer(
+                        "test-id", IMAGE, ContainerSpec.builder(IMAGE).build(), null) {
+                    @Override
+                    public String host() {
+                        return "docker.example.test";
+                    }
+
+                    @Override
+                    public Integer hostPort(int containerPort) {
+                        return 32769;
+                    }
+                });
+
+        assertThat(environment.getBootstrapServers()).isEqualTo("docker.example.test:32769");
+    }
+
+    @Test
+    void shouldAdvertiseContainerHostForExternalListener() {
+        var spec = KafkaContainerSpec.builder(IMAGE).network(NETWORK, "kafka").build();
+        AtomicReference<String> script = new AtomicReference<>();
+
+        ConcreteContainer mockContainer =
+                new ConcreteContainer(
+                        "test-id", IMAGE, ContainerSpec.builder(IMAGE).build(), null) {
+                    @Override
+                    public String host() {
+                        return "docker.example.test";
+                    }
+
+                    @Override
+                    public Integer hostPort(int containerPort) {
+                        return 32770;
+                    }
+
+                    @Override
+                    public void copyFileToContainer(String containerPath, String fileName, byte[] content, int mode) {
+                        script.set(new String(content, StandardCharsets.UTF_8));
+                    }
+                };
+
+        StartupContext startupContext = new StartupContext(mockContainer, 1, spec.startupAttempts());
+        for (var consumer : spec.onStartConsumers()) {
+            consumer.accept(startupContext);
+        }
+
+        assertThat(script.get())
+                .contains("KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://docker.example.test:32770")
+                .contains("BROKER://localhost:9093");
+    }
+
+    private static void setContainer(KafkaTestEnvironment environment, Container container) throws Exception {
+        var field = KafkaTestEnvironment.class.getDeclaredField("container");
+        field.setAccessible(true);
+        field.set(environment, container);
     }
 }

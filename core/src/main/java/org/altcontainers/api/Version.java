@@ -21,30 +21,17 @@ import java.io.InputStream;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.function.Function;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Provides the current Altcontainers version string loaded from the classpath.
- *
- * <p>Version information is loaded once during class initialization from the classpath resource
- * {@code containers-version.properties}. If the resource is missing or unreadable, the version falls back to
- * {@link #UNKNOWN}. This class cannot be instantiated.
  */
 public final class Version {
 
-    /**
-     * Fallback version returned when the version resource is missing or unreadable.
-     * The value is {@code "UNKNOWN"}.
-     */
+    /** Fallback version returned when the version resource is missing or unreadable. */
     public static final String UNKNOWN = "UNKNOWN";
 
-    private static final String RESOURCE_NAME = "containers-version.properties";
-
-    private static final String VERSION_PROPERTY = "altcontainers.core.version";
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(Version.class);
-
+    private static final String RESOURCE_NAME = "version.properties";
+    private static final String VERSION_PROPERTY = "version";
     private static final String VERSION = loadVersion(Version::getResourceAsStream);
 
     private Version() {
@@ -54,49 +41,32 @@ public final class Version {
     /**
      * Returns the Altcontainers version string.
      *
-     * @return the version string, or {@link #UNKNOWN} if the version resource is missing or unreadable
+     * @return the version string, or {@link #UNKNOWN} if the version resource is missing
      */
     public static String version() {
         return VERSION;
     }
 
     /**
-     * Loads the version string from the supplied resource provider.
+     * Loads the version from {@code version.properties} on the classpath.
      *
-     * <p>This method reads the {@code altcontainers.core.version} property from the
-     * {@code containers-version.properties} resource obtained via the supplied provider.
-     * Returns {@link #UNKNOWN} when the resource is absent, unreadable, or missing the
-     * {@code altcontainers.core.version} property.
-     *
-     * @param resourceProvider the function that supplies an {@link InputStream} for a resource name
-     * @return the version string, or {@link #UNKNOWN} on any loading failure
-     * @throws NullPointerException if {@code resourceProvider} is {@code null}
+     * @param resourceProvider a function that opens a classpath resource by name
+     * @return the loaded version string, or {@link #UNKNOWN} if the resource is missing or unreadable
      */
     static String loadVersion(final Function<String, InputStream> resourceProvider) {
         Objects.requireNonNull(resourceProvider, "resourceProvider must not be null");
         final var inputStream = resourceProvider.apply(RESOURCE_NAME);
         if (inputStream == null) {
-            LOGGER.warn("Version resource '{}' not found; version will be '{}'", RESOURCE_NAME, UNKNOWN);
             return UNKNOWN;
         }
         var properties = new Properties();
         try (inputStream) {
             properties.load(inputStream);
         } catch (IOException e) {
-            LOGGER.warn(
-                    "Failed to load version resource '{}': {}; version will be '{}'",
-                    RESOURCE_NAME,
-                    e.getMessage(),
-                    UNKNOWN);
             return UNKNOWN;
         }
         final var version = properties.getProperty(VERSION_PROPERTY);
         if (version == null || version.isBlank()) {
-            LOGGER.warn(
-                    "Version property '{}' missing or blank in '{}'; version will be '{}'",
-                    VERSION_PROPERTY,
-                    RESOURCE_NAME,
-                    UNKNOWN);
             return UNKNOWN;
         }
         return version;

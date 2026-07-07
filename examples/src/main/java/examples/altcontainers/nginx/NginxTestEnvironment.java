@@ -77,7 +77,7 @@ public class NginxTestEnvironment implements AutoCloseable {
 
         NginxContainerSpec spec = NginxContainerSpec.builder(dockerImageName)
                 .network(network, "nginx2")
-                .logConsumer(ContainerConsumer.of(getClass().getSimpleName(), argumentName))
+                .outputConsumer(ContainerConsumer.of(getClass().getSimpleName(), argumentName))
                 .build();
 
         try {

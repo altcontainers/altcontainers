@@ -5,15 +5,15 @@ description: Capturing and formatting Docker container log output with Altcontai
 
 # Log Consumers
 
-Altcontainers lets you capture container log output through a `Consumer<String>` configured via `ContainerSpec.Builder.logConsumer()`.
+Altcontainers lets you capture container output through a `Consumer<OutputFrame>` configured via `ContainerSpec.Builder.onOutput()`.
 
 ## Prefixed log output
 
-You can use a custom log consumer to format lines for display:
+You can use a custom output consumer to format lines for display:
 
 ```java
 ContainerSpec containerSpec = ContainerSpec.builder("nginx:1.27")
-    .logConsumer(line -> System.out.println("[NGINX] nginx:1.27 | " + line))
+    .onOutput(frame -> System.out.println("[NGINX] nginx:1.27 | " + frame.utf8StringWithoutLineEnding()))
     .build();
 ```
 
@@ -23,17 +23,16 @@ Output:
 [NGINX] nginx:1.27 | 2024/01/01 00:00:00 [notice] 1#1: start worker processes
 ```
 
-Null or blank log lines are silently ignored.
+## Custom output consumers
 
-## Custom log consumers
-
-Any `Consumer<String>` can be used:
+Any `Consumer<OutputFrame>` can be used:
 
 ```java
 ContainerSpec containerSpec = ContainerSpec.builder("my-image")
-    .logConsumer(line -> {
-        if (line.contains("ERROR")) {
-            System.err.println("Container error: " + line);
+    .onOutput(frame -> {
+        String text = frame.utf8StringWithoutLineEnding();
+        if (text.contains("ERROR")) {
+            System.err.println("Container error: " + text);
         }
     })
     .build();

@@ -1,147 +1,154 @@
 # Fix Code Loop
 
-Run one complete loop of analysis → design → specification → implementation
-on a target module. Execute each phase in sequence, resolve any issues
-found, and produce only the final code changes and supporting documents.
-
-$ARGUMENTS
+Run one complete bounded loop of analysis → design → specification → implementation.
+Each phase must complete before the next phase begins.
 
 ## Execution Boundary
 
-This prompt orchestrates a four-phase loop:
+This is an orchestration prompt. It may create planning artifacts and modify
+code/tests only during the implementation phase of a confirmed, bounded issue.
 
-1. `analyze-code.md` — deep correctness analysis of the target module.
-2. `create-design-plan.md` — design plan to resolve confirmed issues.
-3. `create-implementation-spec.md` — implementation specification from the
-   design plan.
-4. `implement-spec.md` — implement the specification.
-
-Each phase must complete fully before the next phase begins. The handoff
-from each phase to the next is the document produced: findings → design
-plan → implementation spec → code changes.
+- Do not make unrelated changes.
+- Do not fix speculative findings.
+- Do not duplicate fixes across loops.
+- Do not commit, push, release, install dependencies, use network services, open
+  browsers, or use editor-specific actions unless explicitly requested by the
+  user or required by repository guidance.
+- Use project-discovered build, test, format, and validation commands.
 
 ## Objective
 
-Identify correctness issues in the target module through deep analysis,
-produce a design plan to resolve them, convert that plan into a concrete
-implementation specification, and implement the specification — all in one
-continuous loop.
+Find and fix correctness issues in the target repository using one loop of
+this deterministic phase sequence:
+
+1. `analyze-code.md` — evidence-backed correctness analysis.
+2. `create-design-plan.md` — design plan for confirmed issues.
+3. `create-implementation-spec.md` — reproduction-first implementation spec.
+4. `implement-spec.md` — scoped implementation and validation.
 
 ## Input
 
-Path to the target module. Defaults to the project's core module if the
-project has one. If no default module exists and no path is specified, ask
-for the target module before proceeding.
+$ARGUMENTS
 
-Optionally, a scope constraint: specific packages, classes, or issue
-references to narrow the analysis.
+The target repository, module, package or class, issue reference, or scope
+constraint. If omitted, inspect repository guidance to identify a default target
+scope. If no target scope can be identified, ask for the target or report a
+blocker.
+
+## Required Preflight
+
+Before loop 1:
+
+- Read repository guidance, build/configuration files, and prompt-relevant
+  source/test structure.
+- Identify modules or packages or classes in scope.
+- Identify validation commands from repository guidance.
+- Record any constraints that affect public API, exception handling,
+  compatibility, concurrency, or lifecycle.
+
+## Loop State
+
+Maintain this table and update it after each phase:
+
+| Loop | Selected issue | Analysis result | Design plan path | Spec path | Files changed | Validation status | Stop reason |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+
+Use `Not applicable` for fields that do not apply.
+
+## Issue Selection Rules
+
+For each loop:
+
+- Select the smallest high-confidence correctness issue with repository
+  evidence.
+- Prefer issues with observable incorrect behavior and a clear reproduction or
+  missing-behavior test.
+- Exclude style-only, broad redesign, low-confidence, and product-decision
+  issues.
+- If multiple issues are found, fix one cohesive issue or tightly related set
+  per loop.
+- Do not select an issue already fixed in a prior loop.
 
 ## Phase 1: Analyze Code
 
-Execute `analyze-code.md` for the target module.
+Use the language-specific `analyze-code.md` rules.
 
 ### Deliverables
 
-- Complete findings report with severity levels: Critical, High, Medium, Low.
-- Confirmed bugs tied to specific files, methods, and observable incorrect
-  behavior.
-- A "needs confirmation" section for suspicious findings lacking sufficient
-  evidence.
+- Confirmed findings grouped by severity.
+- Exact files and methods, classes, and interfaces involved.
+- Evidence, trigger scenario, impact, suggested fix, and suggested test.
+- `Needs confirmation` for suspicious but unconfirmed observations.
 
 ### Decision Gate
 
-After producing the findings report, determine which issues to resolve in
-this loop:
-
-- **If Critical or High issues exist**: resolve all Critical and High
-  issues. Resolve Medium and Low issues at your discretion based on
-  severity, fix complexity, and risk of regression.
-- **If no Critical or High issues exist**: resolve the most impactful
-  Medium and Low issues. Do not skip the remaining phases — there is always
-  something to improve.
-- **If no issues are found at all**: produce a brief summary stating that
-  analysis found no correctness issues and stop. Do not fabricate problems.
-
-Report the number of issues selected for resolution before moving to Phase
-2.
+Proceed only if there is at least one confirmed, bounded, reproducible issue.
+If findings are speculative or require unresolved product decisions, stop or
+move to the next candidate within the loop limit.
 
 ## Phase 2: Design Plan
 
-Execute `create-design-plan.md` with the selected findings from Phase 1 as
-the problem statement.
+Use `create-design-plan.md` for the selected issue.
 
 ### Deliverables
 
-- Design plan document written to `.pi/plans/fix-<description>.md` covering
-  all selected issues.
-- Concrete approach, tradeoffs, test strategy, and acceptance criteria for
-  each fix.
+- Plan path under `.pi/plans/` unless the user supplied another path.
+- Problem statement, goals/non-goals, existing code, proposed design,
+  compatibility, exception handling, concurrency/lifecycle, test strategy, and
+  acceptance criteria.
+- No code or test changes in this phase.
 
 ## Phase 3: Implementation Specification
 
-Execute `create-implementation-spec.md` with the design plan from Phase 2
-as input.
+Use `create-implementation-spec.md` for the design plan.
 
 ### Deliverables
 
-- Implementation specification document written to
-  `.pi/plans/fix-<description>-spec.md` (or append `-spec` to the design
-  plan path).
-- Ordered implementation steps beginning with reproduction tests for every
-  confirmed bug.
-- Exact files, method signatures, behavior rules, and acceptance criteria.
+- Spec path derived from the design plan path unless the user supplied another
+  path.
+- Reproduction-first or missing-behavior-first test instructions.
+- Ordered implementation steps.
+- Exact files, signatures, behavior rules, exception handling, validation, and
+  acceptance criteria.
+- No code or test changes in this phase.
 
 ## Phase 4: Implement Specification
 
-Execute `implement-spec.md` with the implementation specification from
-Phase 3 as input.
+Use `implement-spec.md` for the generated specification.
 
 ### Deliverables
 
-- Reproduction tests that fail before the fix and pass after.
-- The smallest focused source changes that resolve every selected issue.
-- Passing test suite with no regressions.
-- All acceptance criteria from the specification satisfied.
+- Tests added or updated as specified.
+- Minimal scoped source changes.
+- Repository-discovered formatting and validation run with results.
+- Final implementation report with changed files, validation status, blockers,
+  and assumptions.
 
-## Phase Handoffs
+## Optional Commit Handling
 
-- The deliverable from each phase is the input to the next.
-- Wait for each phase to complete before starting the next.
-- Start Phase 1 by reading the target module files.
+Commit or push only when explicitly requested by the user or documented by the
+target repository for this task. If requested, use the repository's commit
+message and sign-off conventions.
 
 ## Stop Conditions
 
-Stop the entire loop and report the blocker if:
+Stop and report the reason if:
 
-- **Phase 1**: The target module cannot be located or its files cannot be
-  read, or the code cannot be understood sufficiently to identify contracts.
-- **Phase 2**: The selected issues are too vague to produce a concrete
-  design, or required design decisions remain unresolved.
-- **Phase 3**: The design plan is too incomplete to convert into a
-  specification, or the expected failing behavior cannot be identified.
-- **Phase 4**: The specification is ambiguous, contradicts project
-  conventions, or describes unreproducible issues.
+- No confirmed bounded issue exists.
+- Required repository context cannot be read.
+- A selected issue cannot be reproduced or specified.
+- A design decision remains unresolved.
+- Implementation would require unrelated changes.
+- Validation reveals unrelated failures that cannot be safely handled in scope.
+- Stop after one complete successful loop, or earlier if no confirmed bounded issue exists.
 
-## Completion Criteria
+## Final Report
 
-The loop is complete when:
+Report:
 
-- Phase 1 produced a findings report covering all source files in the
-  target module.
-- Phase 2 produced a design plan document for the selected issues.
-- Phase 3 produced an implementation specification with reproduction tests
-  and ordered steps.
-- Phase 4 produced passing reproduction tests, the minimal source changes
-  to resolve every selected issue, and a clean full test suite with no
-  regressions.
-- Every document and code change follows the project's agent instructions
-  for formatting, validation, and commit conventions.
-
-In the final response, report:
-
-- The number of issues found and resolved.
-- A summary of each fix applied.
-- The paths of all documents produced (findings report, design plan,
-  implementation specification).
-- The changed source and test files.
-- The validation commands run and their results.
+- completed loop count;
+- loop state table;
+- files changed;
+- design/spec artifact paths;
+- validation commands and results;
+- blockers, assumptions, and remaining confirmed issues if any.

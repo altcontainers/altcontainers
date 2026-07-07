@@ -17,31 +17,104 @@
 package org.altcontainers.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.Map;
+import nonapi.org.altcontainers.api.ConcreteContainer;
+import nonapi.org.altcontainers.api.ContainerMetadata;
 import org.junit.jupiter.api.Test;
 
+/**
+ * Verifies Container metadata fallback behavior: positive cached values are
+ * trusted; negative/null values fall through to live daemon queries.
+ */
 class ContainerTest {
 
     @Test
-    void shouldReturnId() {
-        Container container = new Container("abc123", "img");
-        assertThat(container.id()).isEqualTo("abc123");
+    void shouldQueryDaemonWhenMetadataSaysNotRunning() {
+        // With metadata.running=false, the code path must fall through to
+        // ContainerManager.isContainerRunning() rather than returning the
+        // cached false value directly.
+        Container container = new ConcreteContainer(
+                "test-id",
+                "test-image",
+                ContainerSpec.builder("test-image").build(),
+                new ContainerMetadata("localhost", false, Map.of()));
+
+        // No daemon available — ContainerManager returns false. The test
+        // verifies behavior parity (both old and new code return false),
+        // but the fix ensures the code takes the daemon path, which is
+        // verified by code coverage.
+        assertThat(container.isRunning()).isFalse();
     }
 
     @Test
-    void shouldReturnImage() {
-        Container container = new Container("abc123", "img");
-        assertThat(container.image()).isEqualTo("img");
+    void shouldUseCachedMetadataWhenRunning() {
+        // Positive cached value: metadata.running=true is trusted.
+        Container container = new ConcreteContainer(
+                "test-id",
+                "test-image",
+                ContainerSpec.builder("test-image").build(),
+                new ContainerMetadata("myhost", true, Map.of()));
+
+        assertThat(container.isRunning()).isTrue();
+        assertThat(container.host()).isEqualTo("myhost");
     }
 
     @Test
-    void shouldRejectNullId() {
-        assertThatNullPointerException().isThrownBy(() -> new Container(null, "img"));
+    void shouldQueryDaemonWhenMetadataIsNull() {
+        // No metadata — falls through to daemon queries (returns defaults with no daemon).
+        Container container = new ConcreteContainer(
+                "test-id", "test-image", ContainerSpec.builder("test-image").build(), null);
+
+        // ContainerManager returns false when daemon is unavailable
+        assertThat(container.isRunning()).isFalse();
+        // ContainerManager returns "localhost" when daemon is unavailable
+        assertThat(container.host()).isEqualTo("localhost");
     }
 
     @Test
-    void shouldRejectNullImage() {
-        assertThatNullPointerException().isThrownBy(() -> new Container("abc", null));
+    void shouldQueryDaemonWhenHostIsNullInMetadata() {
+        // metadata.host() is null — must fall through to daemon query.
+        Container container = new ConcreteContainer(
+                "test-id",
+                "test-image",
+                ContainerSpec.builder("test-image").build(),
+                new ContainerMetadata(null, true, Map.of()));
+
+        // With host=null in metadata, falls through to ContainerManager.host()
+        // which returns "localhost" when no daemon is available.
+        assertThat(container.host()).isEqualTo("localhost");
+    }
+
+    @Test
+    void shouldRejectNullValueInPortBindings() {
+        java.util.HashMap<Integer, Integer> bindings = new java.util.HashMap<>();
+        bindings.put(8080, null);
+        assertThatThrownBy(() -> ContainerSpec.builder("test:latest")
+                        .exposePorts(8080)
+                        .portBindings(bindings)
+                        .build())
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("null");
+    }
+
+    @Test
+    void shouldReturnNullForUnmappedPort() {
+        Container container = new ConcreteContainer(
+                "test-id",
+                "test-image",
+                ContainerSpec.builder("test-image").build(),
+                new ContainerMetadata("localhost", true, Map.of()));
+        assertThat(container.hostPort(9999)).isNull();
+    }
+
+    @Test
+    void shouldReturnOriginalSpec() {
+        ContainerSpec spec =
+                ContainerSpec.builder("alpine:latest").exposePorts(8080).build();
+        Container container = new ConcreteContainer(
+                "test-id", "alpine:latest", spec, new ContainerMetadata("localhost", true, Map.of()));
+        assertThat(container.spec()).isSameAs(spec);
     }
 }

@@ -62,4 +62,3 @@ and <a href="https://www.yourkit.com/youmonitor/">YourKit YouMonitor</a>.
 ---
 
 Copyright (c) 2026-present Douglas Hoard
-

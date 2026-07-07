@@ -37,12 +37,13 @@
     </scm>
 
     <modules>
+        <module>reaper</module>
         <module>core</module>
         <module>examples</module>
     </modules>
 
     <properties>
-        <revision>0.0.1</revision>
+        <revision>0.1.0</revision>
         <!-- Build settings -->
         <jacoco.skip>false</jacoco.skip>
         <maven.compiler.release>17</maven.compiler.release>
@@ -250,6 +251,9 @@
                     <version>${jacoco-maven-plugin.version}</version>
                     <configuration>
                         <skip>${jacoco.skip}</skip>
+                        <excludes>
+                            <exclude>reaper.jar</exclude>
+                        </excludes>
                     </configuration>
                     <executions>
                         <execution>
@@ -442,6 +446,9 @@
                 <artifactId>jacoco-maven-plugin</artifactId>
                 <configuration>
                     <skip>${jacoco.skip}</skip>
+                    <excludes>
+                        <exclude>reaper.jar</exclude>
+                    </excludes>
                 </configuration>
             </plugin>
         </plugins>

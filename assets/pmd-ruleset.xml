@@ -24,7 +24,6 @@
         <exclude name="AvoidReassigningParameters"/>
         <exclude name="PreserveStackTrace"/>
         <exclude name="ImplicitFunctionalInterface"/>
-        <exclude name="UnusedPrivateField"/>
     </rule>
     
     <!-- Code Style -->
@@ -48,7 +47,6 @@
         <exclude name="LambdaCanBeMethodReference"/>
         <exclude name="FieldDeclarationsShouldBeAtStartOfClass"/>
         <exclude name="UseUnderscoresInNumericLiterals"/>
-        <exclude name="ControlStatementBraces"/>
         <exclude name="EmptyMethodInAbstractClassShouldBeAbstract"/>
         <exclude name="PrematureDeclaration"/>
     </rule>

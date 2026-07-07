@@ -100,8 +100,9 @@ public class AnnotationNginxTest {
     public void testGet() throws Exception {
         LOGGER.info("[%s] testing GET ...", environment.name());
 
-        int port = environment.getContainer().hostPort(80);
-        var content = doGet("http://localhost:" + port);
+        var container = environment.getContainer();
+        int port = container.hostPort(80);
+        var content = doGet("http://" + container.host() + ":" + port);
         assertThat(content).contains("Welcome to nginx!");
     }
 

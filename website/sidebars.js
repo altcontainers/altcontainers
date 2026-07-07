@@ -32,6 +32,7 @@ const sidebars = {
       label: 'Guides',
       collapsed: true,
       items: [
+        'guides/configuration',
         'guides/log-consumers',
         'guides/retry-and-backoff',
         'guides/troubleshooting',

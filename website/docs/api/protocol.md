@@ -5,14 +5,15 @@ description: HTTP protocol variant for Altcontainers container readiness probes.
 
 # Protocol
 
-`Protocol` is an enum representing the HTTP protocol variant used by `WaitCondition.HttpWait` readiness probes.
+`HttpWaitStrategy.Protocol` is an enum representing the HTTP protocol variant used by `HttpWaitStrategy` readiness probes.
 
 ```java
 package org.altcontainers.api;
 
-public enum Protocol {
+public enum HttpWaitStrategy.Protocol {
     HTTP,
-    HTTPS;
+    HTTPS_INSECURE,
+    HTTPS_VERIFY;
 }
 ```
 
@@ -21,21 +22,34 @@ public enum Protocol {
 | Value | Description |
 |---|---|
 | `HTTP` | Hypertext Transfer Protocol (unencrypted) |
-| `HTTPS` | Hypertext Transfer Protocol Secure (encrypted) |
+| `HTTPS_INSECURE` | HTTPS with trust-all certificates, hostname verification disabled |
+| `HTTPS_VERIFY` | HTTPS with strict certificate and hostname validation (JVM default) |
 
 ## Usage
 
-`Protocol` is used indirectly through `ContainerSpec.Builder` wait methods. Users do not instantiate or configure `Protocol` directly — it is selected by which builder method is called:
+`HttpWaitStrategy.Protocol` is used indirectly through `ContainerSpec.Builder` wait methods or directly with `HttpWaitStrategy.Builder`:
 
 ```java
+// HTTP (default)
 ContainerSpec.builder("my-service:latest")
     .exposePorts(8080)
-    .waitForHttpResponse(8080, "/health")   // uses Protocol.HTTP
+    .waitForHttpResponse(8080, "/health")   // uses HttpWaitStrategy.Protocol.HTTP
     .build();
 
+// HTTPS with trust-all certificates
 ContainerSpec.builder("my-service:latest")
     .exposePorts(8443)
-    .waitForHttpsResponse(8443, "/health")  // uses Protocol.HTTPS
+    .waitForHttpsResponse(8443, "/health")  // uses HttpWaitStrategy.Protocol.HTTPS_INSECURE
+    .build();
+
+// HTTPS with strict certificate validation
+ContainerSpec.builder("my-service:latest")
+    .exposePorts(8443)
+    .waitStrategy(HttpWaitStrategy.builder()
+        .protocol(HttpWaitStrategy.Protocol.HTTPS_VERIFY)
+        .port(8443)
+        .path("/health")
+        .build())
     .build();
 ```
 

@@ -16,120 +16,54 @@
 
 package org.altcontainers.api;
 
-import java.util.Objects;
-import nonapi.org.altcontainers.NetworkManager;
+import nonapi.org.altcontainers.api.NetworkManager;
 
 /**
- * A runtime handle to an ephemeral Docker bridged network used to isolate integration-test containers.
+ * A runtime handle to a Docker network.
  *
- * <p>Networks are created via {@link #create()} and must be released via
- * {@link #destroy()} or {@link #close()} once the associated containers have stopped. Containers join
- * the network through {@link GenericContainerSpec.Builder#network(Network, String...)}, using {@link #name()}
- * as the network mode, so that peers on the same network can resolve each other by alias.
- *
- * <p>{@code Network} is a thin, immutable facade: it holds only the network name and identifier and
- * delegates every Docker operation to the shared {@code DockerClient}. Instances are immutable and safe
- * to share between threads. It implements {@link AutoCloseable} and is intended for use in a
- * try-with-resources block so cleanup always runs, even on test failure:
- *
- * <pre>{@code
- * try (Network network = Network.create()) {
- *     ContainerSpec containerSpec = ContainerSpec.builder(image)
- *             .network(network, "exporter")
- *             .build();
- *     try (Container container = Container.create(spec)) {
- *         // ... assertions ...
- *     }
- * }
- * }</pre>
- *
- * <p>Destruction is idempotent and blocks until Docker confirms the network is gone, retrying transient
- * {@code endpoint still attached} failures; a failure that persists beyond the destroy deadline is
- * reported via {@link ContainerException}.
+ * <p>Networks are created via {@link #create()} and destroyed via
+ * {@link #close()} or {@link #close(Network)}. The concrete
+ * implementation lives in the {@code nonapi} package and is not
+ * intended for direct construction.
  */
-public final class Network implements AutoCloseable {
+public interface Network extends AutoCloseable {
 
     /**
-     * The human-readable network name (a random UUID), passed to containers as the network mode.
-     */
-    private final String name;
-
-    /**
-     * The Docker-assigned network identifier used for removal and inspection.
-     */
-    private final String id;
-
-    /**
-     * Creates a network handle binding a name to its Docker identifier.
+     * Creates a new Docker network.
      *
-     * @param name the Docker network name; must not be {@code null}
-     * @param id the Docker network identifier; must not be {@code null}
-     * @throws NullPointerException if either argument is {@code null}
+     * @return a network handle
+     * @throws ContainerException if creation fails
      */
-    public Network(String name, String id) {
-        this.name = Objects.requireNonNull(name, "name must not be null");
-        this.id = Objects.requireNonNull(id, "id must not be null");
-    }
-
-    /**
-     * Creates a new Docker bridged network with a session-scoped name.
-     *
-     * @return a runtime handle to the created network
-     * @throws ContainerException if Docker fails to create the network or the reaper is unavailable
-     */
-    public static Network create() {
+    static Network create() {
         return NetworkManager.getInstance().createNetwork();
     }
 
     /**
-     * Destroys the given Docker network, blocking until Docker confirms it is gone. Null-safe.
+     * Destroys a network. Null-safe.
      *
-     * @param network the network to destroy, or {@code null} for a no-op
-     * @throws ContainerException if the network is not confirmed destroyed within the destroy deadline,
-     *     or if the calling thread is interrupted while waiting
+     * @param network the network to close
      */
-    public static void destroy(Network network) {
-        NetworkManager.getInstance().destroyNetwork(network);
+    static void close(Network network) {
+        NetworkManager.getInstance().closeNetwork(network);
     }
 
     /**
-     * Returns the Docker network name that containers join. Package-private: used by
-     * {@link GenericContainerSpec.Builder#network(Network, String...)} as the network mode.
+     * Returns the network name.
      *
-     * @return the network name
+     * @return the name
      */
-    String name() {
-        return name;
-    }
+    String name();
 
     /**
-     * Returns the Docker-assigned network identifier used for removal and inspection.
+     * Returns the network id.
      *
-     * @return the network identifier
+     * @return the id
      */
-    public String id() {
-        return id;
-    }
+    String id();
 
     /**
-     * Destroy this Docker network, blocking until Docker confirms it is gone. Idempotent.
-     *
-     * <p>Issues an idempotent remove and then polls until the network can no longer be inspected, retrying
-     * transient {@code endpoint still attached} failures. Returns only once destruction is confirmed.
-     *
-     * @throws ContainerException if the network is not confirmed destroyed within the destroy deadline,
-     *     or if the calling thread is interrupted while waiting
-     */
-    public void destroy() {
-        NetworkManager.getInstance().destroyNetwork(this);
-    }
-
-    /**
-     * Destroys this network. Delegates to {@link #destroy()}. Implements {@link AutoCloseable} for use
-     * in try-with-resources blocks.
+     * Destroys this network.
      */
     @Override
-    public void close() {
-        destroy();
-    }
+    void close();
 }

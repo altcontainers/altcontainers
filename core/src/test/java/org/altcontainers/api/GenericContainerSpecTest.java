@@ -17,784 +17,176 @@
 package org.altcontainers.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
-import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.sun.net.httpserver.HttpServer;
-import java.net.InetSocketAddress;
 import java.time.Duration;
-import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+/**
+ * Tests for {@link ContainerSpec#toBuilder()} and {@link ContainerSpec#with(Consumer)}.
+ */
 class GenericContainerSpecTest {
 
-    @Test
-    void shouldRejectBlankImage() {
-        assertThatIllegalArgumentException().isThrownBy(() -> ContainerSpec.builder(""));
-    }
-
-    @Test
-    void shouldRejectNullImage() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder(null))
-                .withMessageContaining("image must not be blank");
-    }
-
-    @Test
-    void shouldRejectNullCommand() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").command((String[]) null));
-    }
-
-    @Test
-    void shouldRejectNullCommandElement() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").command("a", null, "b"))
-                .withMessageContaining("command parts must not contain null");
-    }
-
-    @Test
-    void shouldBuildMinimalSpec() {
-        ContainerSpec containerSpec = ContainerSpec.builder("alpine:latest").build();
-
-        assertThat(containerSpec.image()).isEqualTo("alpine:latest");
-        assertThat(containerSpec.command()).isEmpty();
-        assertThat(containerSpec.exposedPorts()).isEmpty();
-        assertThat(containerSpec.bindMounts()).isEmpty();
-        assertThat(containerSpec.networkMode()).isNull();
-        assertThat(containerSpec.networkAliases()).isEmpty();
-        assertThat(containerSpec.workingDirectory()).isNull();
-        assertThat(containerSpec.logConsumer()).isNull();
-        assertThat(containerSpec.startupConsumer()).isNotNull();
-        assertThat(containerSpec.startupTimeout()).isEqualTo(ContainerSpec.DEFAULT_STARTUP_TIMEOUT);
-        assertThat(containerSpec.startupAttempts()).isEqualTo(1);
-        assertThat(containerSpec.waitConditions()).isEmpty();
-        assertThat(containerSpec.memory()).isEqualTo(0);
-        assertThat(containerSpec.memorySwap()).isEqualTo(0);
-        assertThat(containerSpec.shmSize()).isEqualTo(0);
-        assertThat(containerSpec.cpuShares()).isEqualTo(0);
-        assertThat(containerSpec.cpuPeriod()).isEqualTo(0);
-        assertThat(containerSpec.cpuQuota()).isEqualTo(0);
-        assertThat(containerSpec.environment()).isEmpty();
-        assertThat(containerSpec.portBindings()).isEmpty();
-    }
-
-    @Test
-    void shouldAccumulateCommandParts() {
-        ContainerSpec containerSpec =
-                ContainerSpec.builder("img").command("a").command("b").build();
-        assertThat(containerSpec.command()).containsExactly("a", "b");
-    }
-
-    @Test
-    void shouldDeduplicateExposedPorts() {
-        ContainerSpec containerSpec =
-                ContainerSpec.builder("img").exposePorts(8080, 8080).build();
-        assertThat(containerSpec.exposedPorts()).containsExactly(8080);
-    }
-
-    @Test
-    void shouldRejectNullExposePorts() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").exposePorts((int[]) null))
-                .withMessageContaining("ports must not be null");
-    }
-
-    @Test
-    void shouldRejectInvalidPortRange() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").exposePorts(0));
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").exposePorts(65536));
-    }
-
-    @Test
-    void shouldBuildWithMemoryLimit() {
-        ContainerSpec containerSpec =
-                ContainerSpec.builder("img").memory(536870912L).build();
-        assertThat(containerSpec.memory()).isEqualTo(536870912L);
-    }
-
-    @Test
-    void shouldBuildWithAllResourceLimits() {
-        ContainerSpec containerSpec = ContainerSpec.builder("img")
-                .memory(536870912L)
-                .memorySwap(1073741824L)
-                .shmSize(67108864L)
-                .cpuShares(512)
-                .cpuPeriod(100000L)
-                .cpuQuota(50000L)
-                .build();
-
-        assertThat(containerSpec.memory()).isEqualTo(536870912L);
-        assertThat(containerSpec.memorySwap()).isEqualTo(1073741824L);
-        assertThat(containerSpec.shmSize()).isEqualTo(67108864L);
-        assertThat(containerSpec.cpuShares()).isEqualTo(512);
-        assertThat(containerSpec.cpuPeriod()).isEqualTo(100000L);
-        assertThat(containerSpec.cpuQuota()).isEqualTo(50000L);
-    }
-
-    @Test
-    void shouldBuildWithWaitConditions() {
-        ContainerSpec containerSpec = ContainerSpec.builder("img")
-                .waitForContainerPort(8080)
-                .waitForLogMessage("ready")
-                .waitForLogMessage("done", 3)
-                .build();
-        assertThat(containerSpec.waitConditions()).hasSize(3);
-    }
-
-    @Test
-    void shouldRejectStartupAttemptsZero() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").startupAttempts(0))
-                .withMessageContaining("startupAttempts must be >= 1");
-    }
-
-    @Test
-    void shouldRejectStartupAttemptsNegative() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").startupAttempts(-1))
-                .withMessageContaining("startupAttempts must be >= 1");
-    }
-
-    @Test
-    void shouldReturnConfiguredValues() {
-        ContainerSpec containerSpec = ContainerSpec.builder("my-image:latest")
-                .command("sh")
-                .exposePorts(8080)
-                .memory(536870912L)
-                .build();
-
-        assertThat(containerSpec.image()).isEqualTo("my-image:latest");
-        assertThat(containerSpec.command()).containsExactly("sh");
-        assertThat(containerSpec.exposedPorts()).containsExactly(8080);
-        assertThat(containerSpec.memory()).isEqualTo(536870912L);
-    }
-
-    @Test
-    void shouldRejectBlankBindHostPath() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").bindDirectory("", "/container"));
-    }
-
-    @Test
-    void shouldRejectBlankBindContainerPath() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").bindDirectory("/host", ""));
-    }
-
-    @Test
-    void shouldBuildWithBindDirectory() {
-        ContainerSpec containerSpec = ContainerSpec.builder("img")
-                .bindDirectory("/host/path", "/container/path")
-                .build();
-        assertThat(containerSpec.bindMounts()).hasSize(1);
-        assertThat(containerSpec.bindMounts().get(0).hostPath()).isEqualTo("/host/path");
-        assertThat(containerSpec.bindMounts().get(0).containerPath()).isEqualTo("/container/path");
-    }
-
-    @Test
-    void shouldBuildWithNetwork() {
-        Network network = new Network("test-net", "abc123");
-        ContainerSpec containerSpec = ContainerSpec.builder("img")
-                .network(network, "alias1", "alias2")
-                .build();
-        assertThat(containerSpec.networkMode()).isEqualTo("test-net");
-        assertThat(containerSpec.networkAliases()).containsExactly("alias1", "alias2");
-    }
-
-    @Test
-    void shouldRejectNullNetwork() {
-        assertThatNullPointerException()
-                .isThrownBy(() -> ContainerSpec.builder("img").network(null, "alias"));
-    }
-
-    @Test
-    void shouldRejectNullAliasesArray() {
-        Network network = new Network("test-net", "abc123");
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").network(network, (String[]) null))
-                .withMessageContaining("aliases must not be null");
-    }
-
-    @Test
-    void shouldRejectBlankAlias() {
-        Network network = new Network("test-net", "abc123");
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").network(network, ""));
-    }
-
-    @Test
-    void shouldRejectNullAliasElement() {
-        Network network = new Network("test-net", "abc123");
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").network(network, "a", null, "b"))
-                .withMessageContaining("alias must not be blank");
-    }
-
-    @Test
-    void shouldReplaceNetworkOnSecondCall() {
-        Network net1 = new Network("net1", "id1");
-        Network net2 = new Network("net2", "id2");
-        ContainerSpec containerSpec = ContainerSpec.builder("img")
-                .network(net1, "a")
-                .network(net2, "b")
-                .build();
-        assertThat(containerSpec.networkMode()).isEqualTo("net2");
-        assertThat(containerSpec.networkAliases()).containsExactly("b");
-    }
-
-    @Test
-    void shouldBuildWithSingleUlimit() {
-        ContainerSpec containerSpec =
-                ContainerSpec.builder("img").ulimit("nofile", 65536, 65536).build();
-        assertThat(containerSpec.ulimits()).hasSize(1);
-        assertThat(containerSpec.ulimits().get(0).name()).isEqualTo("nofile");
-        assertThat(containerSpec.ulimits().get(0).soft()).isEqualTo(65536);
-        assertThat(containerSpec.ulimits().get(0).hard()).isEqualTo(65536);
-    }
-
-    @Test
-    void shouldAccumulateUlimits() {
-        ContainerSpec containerSpec = ContainerSpec.builder("img")
-                .ulimit("nofile", 65536, 65536)
-                .ulimit("nproc", 4096, 4096)
-                .build();
-        assertThat(containerSpec.ulimits()).hasSize(2);
-        assertThat(containerSpec.ulimits().get(0).name()).isEqualTo("nofile");
-        assertThat(containerSpec.ulimits().get(1).name()).isEqualTo("nproc");
-    }
-
-    @Test
-    void shouldBuildMinimalSpecWithEmptyUlimits() {
-        ContainerSpec containerSpec = ContainerSpec.builder("img").build();
-        assertThat(containerSpec.ulimits()).isEmpty();
-    }
-
-    @Test
-    void shouldClearUlimits() {
-        ContainerSpec containerSpec = ContainerSpec.builder("img")
-                .ulimit("nofile", 65536, 65536)
-                .clearUlimits()
-                .build();
-        assertThat(containerSpec.ulimits()).isEmpty();
-    }
-
-    @Test
-    void shouldReturnConfiguredUlimits() {
-        ContainerSpec containerSpec = ContainerSpec.builder("img")
-                .ulimit("nofile", 65536, 65536)
-                .ulimit("nproc", 4096, 4096)
-                .build();
-        assertThat(containerSpec.ulimits()).hasSize(2);
-    }
-
-    @Test
-    void shouldRejectNegativeMemory() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").memory(-1))
-                .withMessageContaining("memory must be >= 0");
-    }
-
-    @Test
-    void shouldRejectNegativeMemorySwap() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").memorySwap(-1))
-                .withMessageContaining("memorySwap must be >= 0");
-    }
-
-    @Test
-    void shouldRejectNegativeShmSize() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").shmSize(-1))
-                .withMessageContaining("shmSize must be >= 0");
-    }
-
-    @Test
-    void shouldRejectNegativeCpuShares() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").cpuShares(-1))
-                .withMessageContaining("cpuShares must be >= 0");
-    }
-
-    @Test
-    void shouldRejectNegativeCpuPeriod() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").cpuPeriod(-1))
-                .withMessageContaining("cpuPeriod must be >= 0");
-    }
-
-    @Test
-    void shouldRejectNegativeCpuQuota() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").cpuQuota(-1))
-                .withMessageContaining("cpuQuota must be >= 0");
-    }
-
-    @Test
-    void shouldAllowZeroMemory() {
-        ContainerSpec containerSpec = ContainerSpec.builder("img").memory(0).build();
-        assertThat(containerSpec.memory()).isEqualTo(0);
-    }
-
-    @Test
-    void shouldAllowZeroMemorySwap() {
-        ContainerSpec containerSpec = ContainerSpec.builder("img").memorySwap(0).build();
-        assertThat(containerSpec.memorySwap()).isEqualTo(0);
+    @BeforeEach
+    void setUp() {
+        Altcontainers.configure(null);
     }
 
-    @Test
-    void shouldRejectWaitForLogMessageZeroTimes() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").waitForLogMessage("ready", 0))
-                .withMessageContaining("times must be >= 1");
-    }
-
-    // waitForHttpResponse tests
-
-    @Test
-    void shouldAddHttpWaitCondition() {
-        ContainerSpec containerSpec =
-                ContainerSpec.builder("img").waitForHttpResponse(80, "/health").build();
-        assertThat(containerSpec.waitConditions()).hasSize(1);
-        assertThat(containerSpec.waitConditions().get(0)).isInstanceOf(HttpWaitStrategy.class);
-    }
-
-    @Test
-    void shouldDefaultStatusRange() {
-        ContainerSpec containerSpec =
-                ContainerSpec.builder("img").waitForHttpResponse(80, "/").build();
-        assertThat(containerSpec.waitConditions()).hasSize(1);
-        HttpWaitStrategy httpWait =
-                (HttpWaitStrategy) containerSpec.waitConditions().get(0);
-        // Can't directly access private fields, so we verify via behavior
-        // Create a mock Container that returns 200 for any port
-        Container mockContainer = new Container("test", "img") {
-            private HttpServer server;
-
-            {
-                try {
-                    server = HttpServer.create(new InetSocketAddress(0), 0);
-                    server.createContext("/", exchange -> {
-                        exchange.sendResponseHeaders(200, -1);
-                        exchange.close();
-                    });
-                    server.start();
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
-                }
-            }
-
-            @Override
-            public int hostPort(int containerPort) {
-                return server.getAddress().getPort();
-            }
-
-            @Override
-            public void close() {
-                server.stop(0);
-                super.close();
-            }
-        };
-        assertThat(httpWait.check(mockContainer)).isTrue();
-        mockContainer.close();
-    }
-
-    @Test
-    void shouldRejectBlankPath() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").waitForHttpResponse(80, ""))
-                .withMessageContaining("path must not be blank");
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").waitForHttpResponse(80, "  "))
-                .withMessageContaining("path must not be blank");
-    }
-
-    @Test
-    void shouldRejectOutOfRangePort() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").waitForHttpResponse(0, "/"))
-                .withMessageContaining("containerPort must be in 1..65535");
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").waitForHttpResponse(70000, "/"))
-                .withMessageContaining("containerPort must be in 1..65535");
-    }
-
-    @Test
-    void shouldRejectNullHttpPath() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").waitForHttpResponse(80, null, 200, 200))
-                .withMessageContaining("path must not be blank");
-    }
-
-    @Test
-    void shouldRejectStatusOutOfRange() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").waitForHttpResponse(80, "/", 99, 200))
-                .withMessageContaining("minStatus must be in 100..599");
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").waitForHttpResponse(80, "/", 200, 600))
-                .withMessageContaining("maxStatus must be in 100..599");
-    }
-
-    @Test
-    void shouldRejectHttpMinStatusTooHigh() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").waitForHttpResponse(80, "/", 600, 200))
-                .withMessageContaining("minStatus must be in 100..599");
-    }
-
-    @Test
-    void shouldRejectHttpMaxStatusTooLow() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").waitForHttpResponse(80, "/", 200, 99))
-                .withMessageContaining("maxStatus must be in 100..599");
-    }
-
-    @Test
-    void shouldRejectMinGreaterThanMax() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").waitForHttpResponse(80, "/", 300, 200))
-                .withMessageContaining("minStatus must be <= maxStatus");
-    }
-
-    @Test
-    void shouldStackWithContainerPort() {
-        ContainerSpec containerSpec = ContainerSpec.builder("img")
-                .waitForContainerPort(80)
-                .waitForHttpResponse(80, "/")
-                .build();
-        assertThat(containerSpec.waitConditions()).hasSize(2);
-    }
-
-    // waitForHttpsResponse tests
-
-    @Test
-    void shouldAddHttpsWaitCondition() {
-        ContainerSpec containerSpec = ContainerSpec.builder("img")
-                .waitForHttpsResponse(443, "/health")
-                .build();
-        assertThat(containerSpec.waitConditions()).hasSize(1);
-        assertThat(containerSpec.waitConditions().get(0)).isInstanceOf(HttpWaitStrategy.class);
-    }
-
-    @Test
-    void shouldDefaultStatusRangeForHttps() {
-        ContainerSpec containerSpec =
-                ContainerSpec.builder("img").waitForHttpsResponse(443, "/").build();
-        assertThat(containerSpec.waitConditions()).hasSize(1);
-        HttpWaitStrategy httpsWait =
-                (HttpWaitStrategy) containerSpec.waitConditions().get(0);
-        // Cannot directly test HTTPS without container, so verify structure
-        assertThat(containerSpec.waitConditions()).hasSize(1);
-        assertThat(httpsWait).isNotNull();
-    }
-
-    @Test
-    void shouldAcceptCustomStatusRangeForHttps() {
-        ContainerSpec containerSpec = ContainerSpec.builder("img")
-                .waitForHttpsResponse(443, "/ready", 500, 599)
-                .build();
-        assertThat(containerSpec.waitConditions()).hasSize(1);
-        assertThat(containerSpec.waitConditions().get(0)).isInstanceOf(HttpWaitStrategy.class);
-    }
-
-    @Test
-    void shouldStackHttpsWithOtherConditions() {
-        ContainerSpec containerSpec = ContainerSpec.builder("img")
-                .waitForContainerPort(443)
-                .waitForHttpsResponse(443, "/")
-                .waitForLogMessage("started")
-                .build();
-        assertThat(containerSpec.waitConditions()).hasSize(3);
-    }
-
-    @Test
-    void shouldRejectHttpsBlankPath() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").waitForHttpsResponse(443, ""))
-                .withMessageContaining("path must not be blank");
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").waitForHttpsResponse(443, "  "))
-                .withMessageContaining("path must not be blank");
-    }
-
-    @Test
-    void shouldRejectHttpsOutOfRangePort() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").waitForHttpsResponse(0, "/"))
-                .withMessageContaining("containerPort must be in 1..65535");
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").waitForHttpsResponse(70000, "/"))
-                .withMessageContaining("containerPort must be in 1..65535");
-    }
-
-    @Test
-    void shouldRejectNullHttpsPath() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").waitForHttpsResponse(443, null, 200, 200))
-                .withMessageContaining("path must not be blank");
-    }
-
-    @Test
-    void shouldRejectHttpsStatusOutOfRange() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").waitForHttpsResponse(443, "/", 99, 200))
-                .withMessageContaining("minStatus must be in 100..599");
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").waitForHttpsResponse(443, "/", 200, 600))
-                .withMessageContaining("maxStatus must be in 100..599");
-    }
-
-    @Test
-    void shouldRejectHttpsMinStatusTooHigh() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").waitForHttpsResponse(443, "/", 600, 200))
-                .withMessageContaining("minStatus must be in 100..599");
-    }
-
-    @Test
-    void shouldRejectHttpsMaxStatusTooLow() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").waitForHttpsResponse(443, "/", 200, 99))
-                .withMessageContaining("maxStatus must be in 100..599");
-    }
-
-    @Test
-    void shouldRejectHttpsMinGreaterThanMax() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").waitForHttpsResponse(443, "/", 300, 200))
-                .withMessageContaining("minStatus must be <= maxStatus");
-    }
-
-    // environment tests
-
-    @Test
-    void shouldDefaultToEmptyEnvironment() {
-        GenericContainerSpec genericContainerSpec = ContainerSpec.builder("img").build();
-        assertThat(genericContainerSpec.environment()).isEmpty();
-    }
-
-    @Test
-    void shouldAcceptEnvironment() {
-        Map<String, String> env = Map.of("K1", "V1", "K2", "V2");
-        GenericContainerSpec genericContainerSpec =
-                ContainerSpec.builder("img").environment(env).build();
-        assertThat(genericContainerSpec.environment()).containsExactlyInAnyOrderEntriesOf(env);
-    }
-
-    @Test
-    void shouldRejectNullEnvironment() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").environment(null))
-                .withMessageContaining("environment must not be null");
-    }
-
-    @Test
-    void shouldMakeEnvironmentImmutable() {
-        Map<String, String> env = new LinkedHashMap<>();
-        env.put("K", "V");
-        GenericContainerSpec genericContainerSpec =
-                ContainerSpec.builder("img").environment(env).build();
-        env.put("K2", "V2");
-        assertThat(genericContainerSpec.environment()).hasSize(1).containsEntry("K", "V");
-    }
-
-    @Test
-    void shouldReturnUnmodifiableEnvironment() {
-        GenericContainerSpec genericContainerSpec =
-                ContainerSpec.builder("img").environment(Map.of("K", "V")).build();
-        assertThatThrownBy(() -> genericContainerSpec.environment().put("K2", "V2"))
-                .isInstanceOf(UnsupportedOperationException.class);
-    }
-
-    // workingDirectory tests
-
-    @Test
-    void shouldRejectNullWorkingDirectory() {
-        assertThatNullPointerException()
-                .isThrownBy(() -> ContainerSpec.builder("img").workingDirectory(null));
-    }
-
-    @Test
-    void shouldRejectBlankWorkingDirectory() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").workingDirectory(""))
-                .withMessageContaining("directory must not be blank");
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").workingDirectory("  "))
-                .withMessageContaining("directory must not be blank");
-    }
-
-    @Test
-    void shouldBuildWithWorkingDirectory() {
-        ContainerSpec containerSpec =
-                ContainerSpec.builder("img").workingDirectory("/app").build();
-        assertThat(containerSpec.workingDirectory()).isEqualTo("/app");
-    }
-
-    // logConsumer tests
-
-    @Test
-    void shouldRejectNullLogConsumer() {
-        assertThatNullPointerException()
-                .isThrownBy(() -> ContainerSpec.builder("img").logConsumer(null));
-    }
-
-    @Test
-    void shouldBuildWithLogConsumer() {
-        Consumer<String> consumer = line -> System.out.println("[> ] test-image | " + line);
-        ContainerSpec containerSpec =
-                ContainerSpec.builder("img").logConsumer(consumer).build();
-        assertThat(containerSpec.logConsumer()).isSameAs(consumer);
-    }
-
-    @Test
-    void shouldReturnDefaultEmptyPortBindings() {
-        ContainerSpec containerSpec = ContainerSpec.builder("img").build();
-        assertThat(containerSpec.portBindings()).isEmpty();
+    @AfterEach
+    void tearDown() {
+        Altcontainers.configure(null);
     }
 
     @Test
-    void shouldReturnConfiguredPortBindings() {
-        ContainerSpec containerSpec = ContainerSpec.builder("img")
-                .exposePorts(9092)
-                .portBindings(Map.of(9092, 9092))
-                .build();
-        assertThat(containerSpec.portBindings()).containsExactly(Map.entry(9092, 9092));
-    }
-
-    @Test
-    void shouldMakePortBindingsImmutable() {
-        GenericContainerSpec genericContainerSpec = ContainerSpec.builder("img")
-                .exposePorts(9092)
-                .portBindings(Map.of(9092, 9092))
-                .build();
-        assertThatThrownBy(() -> genericContainerSpec.portBindings().put(9092, 9093))
-                .isInstanceOf(UnsupportedOperationException.class);
-    }
-
-    @Test
-    void shouldCopyAllFieldsViaCopyConstructor() {
-        Consumer<String> logConsumer = line -> System.out.println("[> ] img | " + line);
-        Consumer<Container> startupConsumer = container -> {};
-        Network network = new Network("net", "id123");
-
-        GenericContainerSpec original = ContainerSpec.builder("img:v1")
-                .command("sh", "-c", "echo hi")
+    void toBuilderShouldCopyAllFields() {
+        ContainerSpec original = ContainerSpec.builder("alpine:latest")
                 .exposePorts(8080, 9090)
-                .bindDirectory("/host/a", "/container/a")
-                .network(network, "alias1")
-                .workingDirectory("/app")
-                .logConsumer(logConsumer)
-                .startupConsumer(startupConsumer)
-                .startupTimeout(Duration.ofSeconds(90))
+                .command("sh", "-c", "echo hello")
+                .bindDirectory("/host", "/container")
+                .startupTimeout(Duration.ofMinutes(2))
                 .startupAttempts(3)
+                .environment(Map.of("KEY", "VALUE"))
+                .memory(512 * 1024 * 1024L)
+                .build();
+
+        ContainerSpec rebuilt = original.toBuilder().build();
+
+        assertThat(rebuilt.image()).isEqualTo("alpine:latest");
+        assertThat(rebuilt.exposedPorts()).containsExactly(8080, 9090);
+        assertThat(rebuilt.command()).containsExactly("sh", "-c", "echo hello");
+        assertThat(rebuilt.bindMounts()).hasSize(1);
+        assertThat(rebuilt.startupTimeout()).isEqualTo(Duration.ofMinutes(2));
+        assertThat(rebuilt.startupAttempts()).isEqualTo(3);
+        assertThat(rebuilt.environment()).containsEntry("KEY", "VALUE");
+        assertThat(rebuilt.memory()).isEqualTo(512 * 1024 * 1024L);
+    }
+
+    @Test
+    void toBuilderShouldNotBeSameInstance() {
+        ContainerSpec original = ContainerSpec.builder("alpine:latest").build();
+        ContainerSpec rebuilt = original.toBuilder().build();
+        assertThat(rebuilt).isNotSameAs(original);
+    }
+
+    @Test
+    void withShouldApplyCustomizations() {
+        ContainerSpec original = ContainerSpec.builder("alpine:latest")
+                .exposePorts(8080)
+                .startupTimeout(Duration.ofSeconds(30))
+                .build();
+
+        ContainerSpec modified = original.with(b -> b.exposePorts(9090).startupTimeout(Duration.ofMinutes(1)));
+
+        // Original unchanged
+        assertThat(original.exposedPorts()).containsExactly(8080);
+        assertThat(original.startupTimeout()).isEqualTo(Duration.ofSeconds(30));
+
+        // Modified has additions
+        assertThat(modified.exposedPorts()).containsExactly(8080, 9090);
+        assertThat(modified.startupTimeout()).isEqualTo(Duration.ofMinutes(1));
+    }
+
+    @Test
+    void shouldUseConfiguredDefaultStartupTimeout() {
+        Altcontainers.configure(c -> c.containerStartupTimeout(Duration.ofSeconds(120)));
+        ContainerSpec spec = ContainerSpec.builder("alpine:latest").build();
+        assertThat(spec.startupTimeout()).isEqualTo(Duration.ofSeconds(120));
+    }
+
+    @Test
+    void shouldLetExplicitStartupTimeoutOverrideConfigDefault() {
+        Altcontainers.configure(c -> c.containerStartupTimeout(Duration.ofSeconds(120)));
+        ContainerSpec spec = ContainerSpec.builder("alpine:latest")
+                .startupTimeout(Duration.ofMinutes(2))
+                .build();
+        assertThat(spec.startupTimeout()).isEqualTo(Duration.ofMinutes(2));
+    }
+
+    @Test
+    void waitStrategyShouldAddConditions() {
+        WaitStrategy port = Wait.forListeningPort(8080);
+        WaitStrategy log = Wait.forLogMessage(".*started.*", 1);
+        ContainerSpec spec =
+                ContainerSpec.builder("alpine:latest").waitStrategy(port, log).build();
+        assertThat(spec.waitConditions()).containsExactly(port, log);
+    }
+
+    @Test
+    void waitStrategyCombinedWithConvenienceMethods() {
+        ContainerSpec spec = ContainerSpec.builder("alpine:latest")
                 .waitForContainerPort(8080)
-                .waitForLogMessage("ready")
-                .ulimit("nofile", 65536, 65536)
-                .memory(536870912L)
-                .memorySwap(1073741824L)
-                .shmSize(67108864L)
-                .cpuShares(512)
-                .cpuPeriod(100000L)
-                .cpuQuota(50000L)
-                .environment(Map.of("K", "V"))
-                .portBindings(Map.of(8080, 8080))
+                .waitStrategy(Wait.anyOf(Wait.forListeningPort(9090), Wait.forLogMessage(".*ready.*", 1)))
+                .build();
+        assertThat(spec.waitConditions()).hasSize(2);
+    }
+
+    @Test
+    void portBindingsAcceptsImmutableMap() {
+        ContainerSpec spec = ContainerSpec.builder("test:latest")
+                .exposePorts(8080)
+                .portBindings(Map.of(8080, 18080))
                 .build();
 
-        GenericContainerSpec copy = new GenericContainerSpec(original) {};
-
-        assertThat(copy.image()).isEqualTo(original.image());
-        assertThat(copy.command()).isEqualTo(original.command());
-        assertThat(copy.exposedPorts()).isEqualTo(original.exposedPorts());
-        assertThat(copy.bindMounts()).isEqualTo(original.bindMounts());
-        assertThat(copy.networkMode()).isEqualTo(original.networkMode());
-        assertThat(copy.networkAliases()).isEqualTo(original.networkAliases());
-        assertThat(copy.workingDirectory()).isEqualTo(original.workingDirectory());
-        assertThat(copy.logConsumer()).isSameAs(original.logConsumer());
-        assertThat(copy.startupConsumer()).isSameAs(original.startupConsumer());
-        assertThat(copy.startupTimeout()).isEqualTo(original.startupTimeout());
-        assertThat(copy.startupAttempts()).isEqualTo(original.startupAttempts());
-        assertThat(copy.waitConditions()).hasSameSizeAs(original.waitConditions());
-        assertThat(copy.ulimits()).isEqualTo(original.ulimits());
-        assertThat(copy.memory()).isEqualTo(original.memory());
-        assertThat(copy.memorySwap()).isEqualTo(original.memorySwap());
-        assertThat(copy.shmSize()).isEqualTo(original.shmSize());
-        assertThat(copy.cpuShares()).isEqualTo(original.cpuShares());
-        assertThat(copy.cpuPeriod()).isEqualTo(original.cpuPeriod());
-        assertThat(copy.cpuQuota()).isEqualTo(original.cpuQuota());
-        assertThat(copy.environment()).isEqualTo(original.environment());
-        assertThat(copy.portBindings()).isEqualTo(original.portBindings());
+        assertThat(spec.portBindings()).containsEntry(8080, 18080);
     }
 
     @Test
-    void shouldConstructSubclassViaCopyConstructor() {
-        GenericContainerSpec base = ContainerSpec.builder("img").build();
-        GenericContainerSpec subclass = new GenericContainerSpec(base) {};
-
-        assertThat(subclass).isInstanceOf(GenericContainerSpec.class);
-        assertThat(subclass).isInstanceOf(ContainerSpec.class);
-        assertThat(subclass.image()).isEqualTo("img");
-    }
-
-    @Test
-    void shouldReplacePortBindingsOnSecondCall() {
-        ContainerSpec containerSpec = ContainerSpec.builder("img")
-                .exposePorts(8080, 9092)
-                .portBindings(Map.of(8080, 8080))
-                .portBindings(Map.of(9092, 9092))
+    void portBindingsAcceptsMultiEntryImmutableMap() {
+        ContainerSpec spec = ContainerSpec.builder("test:latest")
+                .exposePorts(8080, 9090)
+                .portBindings(Map.of(8080, 18080, 9090, 19090))
                 .build();
-        assertThat(containerSpec.portBindings()).containsExactly(Map.entry(9092, 9092));
-        assertThat(containerSpec.portBindings()).doesNotContainKey(8080);
+
+        assertThat(spec.portBindings()).containsEntry(8080, 18080).containsEntry(9090, 19090);
     }
 
     @Test
-    void shouldDefaultToNoOpStartupConsumer() {
-        GenericContainerSpec genericContainerSpec = ContainerSpec.builder("img").build();
-        assertThat(genericContainerSpec.startupConsumer()).isNotNull();
-    }
-
-    @Test
-    void shouldSetStartupConsumer() {
-        Consumer<Container> consumer = container -> {};
-        GenericContainerSpec genericContainerSpec =
-                ContainerSpec.builder("img").startupConsumer(consumer).build();
-        assertThat(genericContainerSpec.startupConsumer()).isSameAs(consumer);
-    }
-
-    @Test
-    void shouldRejectNullStartupConsumer() {
-        assertThatNullPointerException()
-                .isThrownBy(() -> ContainerSpec.builder("img").startupConsumer(null))
-                .withMessageContaining("startupConsumer");
-    }
-
-    @Test
-    void shouldRejectPortBindingWithoutExposedPort() {
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> ContainerSpec.builder("img").portBindings(Map.of(8080, 19080)))
-                .withMessageContaining("exposed via exposePorts");
-    }
-
-    @Test
-    void shouldAcceptPortBindingWithExposedPort() {
-        ContainerSpec containerSpec = ContainerSpec.builder("img")
-                .exposePorts(8080, 9092)
-                .portBindings(Map.of(8080, 19080, 9092, 9092))
+    void portBindingsAcceptsEmptyImmutableMap() {
+        ContainerSpec spec = ContainerSpec.builder("test:latest")
+                .exposePorts(8080)
+                .portBindings(Map.of())
                 .build();
-        assertThat(containerSpec.portBindings()).containsExactlyInAnyOrderEntriesOf(Map.of(8080, 19080, 9092, 9092));
-        assertThat(containerSpec.exposedPorts()).containsExactlyInAnyOrder(8080, 9092);
+
+        assertThat(spec.portBindings()).isEmpty();
     }
 
     @Test
-    void shouldRejectNullStartupTimeout() {
-        assertThatNullPointerException()
-                .isThrownBy(() -> ContainerSpec.builder("img").startupTimeout(null))
-                .withMessageContaining("startupTimeout must not be null");
+    void onOutputShouldStoreConsumersInRegistrationOrder() {
+        AtomicInteger counter = new AtomicInteger(0);
+        Consumer<OutputFrame> first = frame -> counter.incrementAndGet();
+        Consumer<OutputFrame> second = frame -> counter.incrementAndGet();
+        Consumer<OutputFrame> third = frame -> counter.incrementAndGet();
+
+        ContainerSpec spec = ContainerSpec.builder("alpine:latest")
+                .onOutput(first)
+                .onOutput(second)
+                .onOutput(third)
+                .build();
+
+        assertThat(spec.onOutputConsumers()).containsExactly(first, second, third);
+    }
+
+    @Test
+    void onOutputConsumersShouldBeCopiedThroughToBuilder() {
+        Consumer<OutputFrame> consumer = frame -> {};
+
+        ContainerSpec original =
+                ContainerSpec.builder("alpine:latest").onOutput(consumer).build();
+
+        ContainerSpec rebuilt = original.toBuilder().build();
+
+        assertThat(rebuilt.onOutputConsumers()).containsExactly(consumer);
+    }
+
+    @Test
+    void onOutputNullShouldThrow() {
+        assertThatThrownBy(() -> ContainerSpec.builder("alpine:latest").onOutput(null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("consumer must not be null");
     }
 }

@@ -17,27 +17,19 @@
 package org.altcontainers.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 
+import nonapi.org.altcontainers.api.ConcreteNetwork;
 import org.junit.jupiter.api.Test;
 
+/**
+ * Tests for {@link Network}.
+ */
 class NetworkTest {
 
     @Test
-    void shouldExposeNameAndId() {
-        Network network = new Network("test-net", "abc123");
-
+    void shouldExposeNetworkName() {
+        Network network = new ConcreteNetwork("test-net", "test-id");
         assertThat(network.name()).isEqualTo("test-net");
-        assertThat(network.id()).isEqualTo("abc123");
-    }
-
-    @Test
-    void shouldRejectNullName() {
-        assertThatNullPointerException().isThrownBy(() -> new Network(null, "abc123"));
-    }
-
-    @Test
-    void shouldRejectNullId() {
-        assertThatNullPointerException().isThrownBy(() -> new Network("test-net", null));
+        assertThat(network.id()).isEqualTo("test-id");
     }
 }

@@ -4,36 +4,24 @@ Copyright (c) 2026-present Douglas Hoard
 Licensed under the Apache License, Version 2.0 (the "License");
 see META-INF/LICENSE for the full license text.
 
-This JAR is a shaded uber jar. All third-party software listed below is
-redistributed with its packages relocated under nonapi.org.altcontainers.*
-to prevent class-loading collisions. Their original packages are not present.
+This JAR is a regular (non-shaded) library JAR. It embeds the following
+resource within the JAR:
 
-The following third-party components are included:
+  reaper.jar — a shaded uber JAR produced by the Altcontainers Reaper
+  module. The reaper module bundles and relocates its own third-party
+  dependencies. See the reaper artifact's NOTICE for its third-party
+  attribution.
 
-== OkHttp (okhttp, okhttp-jvm) 5.4.0 ==
-  Website: https://square.github.io/okhttp/
-  License: Apache License 2.0
-  Copyright (c) Square, Inc.
-  Licensed under the Apache License, Version 2.0; see META-INF/LICENSE.
+The following compile-scope dependencies are declared in the POM and are
+resolved from the consuming application's classpath at runtime (they are
+NOT bundled or relocated in this JAR):
 
-== Okio 3.17.0 ==
-  Website: https://github.com/square/okio
-  License: Apache License 2.0
-  Copyright (c) Square, Inc.
-  Licensed under the Apache License, Version 2.0; see META-INF/LICENSE.
+  com.github.docker-java:docker-java-core:3.4.2        (Apache 2.0)
+  com.github.docker-java:docker-java-transport-zerodep:3.4.2 (Apache 2.0)
+  org.slf4j:slf4j-api:2.0.18                            (MIT)
 
-== Gson 2.12.1 ==
-  Website: https://github.com/google/gson
-  License: Apache License 2.0
-  Copyright (c) Google Inc.
-  Licensed under the Apache License, Version 2.0; see META-INF/LICENSE.
-
-== Kotlin Standard Library 2.1.21 ==
-  Website: https://kotlinlang.org/
-  License: Apache License 2.0
-  Copyright (c) JetBrains s.r.o.
-  Licensed under the Apache License, Version 2.0; see META-INF/LICENSE.
-
-Note: org.slf4j:slf4j-api is a declared dependency of this artifact but is NOT
-bundled or relocated in this JAR; it is resolved from the consuming application's
-classpath at runtime.
+docker-java-core transitively pulls in Jackson (Apache 2.0), Commons IO
+(Apache 2.0), Commons Compress (Apache 2.0), Commons Lang (Apache 2.0),
+Guava (Apache 2.0), and Bouncy Castle (MIT). docker-java-transport-zerodep
+is itself a shaded uber JAR bundling Apache HttpClient 5, HttpCore 5,
+Commons Codec, and Bouncy Castle.

@@ -10,15 +10,17 @@ description: Runtime handle to a started Docker container.
 ```java
 package org.altcontainers.api;
 
-public class Container implements AutoCloseable {
-    public static Container create(ContainerSpec containerSpec);
-    public static void destroy(Container container);
-    public String id();
-    public String image();
-    public boolean isRunning();
-    public int hostPort(int containerPort);
-    public void destroy();
-    public void close();
+public interface Container extends AutoCloseable {
+    static Container create(ContainerSpec containerSpec);
+    static void close(Container container);
+    String id();
+    String image();
+    boolean isRunning();
+    String host();
+    Integer hostPort(int containerPort);
+    void copyFileToContainer(String containerPath, String fileName, byte[] content, int mode);
+    ContainerSpec spec();
+    void close();
 }
 ```
 
@@ -45,10 +47,10 @@ try (Container container = Container.create(spec)) {
 - `NullPointerException` if `spec` is `null`
 - `ContainerException` if the container cannot be started or does not become ready
 
-## Destroying a container
+## Closing a container
 
 ```java
-Container.destroy(container);
+Container.close(container);
 ```
 
 Or use try-with-resources:
@@ -59,7 +61,7 @@ try (Container container = Container.create(spec)) {
 }
 ```
 
-`destroy(container)`:
+`close(container)`:
 - Stops and removes the container
 - Blocks until Docker confirms removal
 - Idempotent — safe to call multiple times
@@ -93,26 +95,48 @@ if (container.isRunning()) {
 }
 ```
 
-### `hostPort(containerPort)`
+### `host()`
 
-Returns the mapped host port for the given container port, or `-1` if not found.
+Returns the Docker host.
 
 ```java
-int hostPort = container.hostPort(80);
-String url = "http://localhost:" + hostPort;
+String host = container.host();
 ```
 
-### `destroy()`
+### `hostPort(containerPort)`
 
-Stops and removes the container, blocking until Docker confirms it is gone. Idempotent.
+Returns the mapped host port for the given container port, or `null` if not mapped.
 
 ```java
-container.destroy();
+Integer hostPort = container.hostPort(80);
+if (hostPort != null) {
+    String url = "http://localhost:" + hostPort;
+}
+```
+
+### `copyFileToContainer(...)`
+
+Copies a file into the container.
+
+```java
+copyFileToContainer("/tmp", "config.json", content, 0644);
+```
+
+### `spec()`
+
+Returns the container spec used to create this container.
+
+```java
+ContainerSpec spec = container.spec();
 ```
 
 ### `close()`
 
-Delegates to `destroy()`. Implements `AutoCloseable`.
+Destroys this container. Implements `AutoCloseable`.
+
+```java
+container.close();
+```
 
 ## Thread safety
 

@@ -16,12 +16,18 @@
 
 package examples.altcontainers.mongodb;
 
+import com.mongodb.ConnectionString;
+import com.mongodb.MongoClientSettings;
+import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoClients;
 import examples.altcontainers.support.ContainerConsumer;
 import examples.support.Resource;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 import org.altcontainers.api.Container;
 import org.altcontainers.api.ContainerException;
 import org.altcontainers.api.Network;
@@ -79,7 +85,7 @@ public class MongoDBTestEnvironment implements AutoCloseable {
 
         MongoDBContainerSpec spec = MongoDBContainerSpec.builder(dockerImageName)
                 .network(network, argumentName)
-                .logConsumer(ContainerConsumer.of(getClass().getSimpleName(), argumentName))
+                .outputConsumer(ContainerConsumer.of(getClass().getSimpleName(), argumentName))
                 .build();
 
         try {
@@ -87,6 +93,40 @@ public class MongoDBTestEnvironment implements AutoCloseable {
         } catch (ContainerException e) {
             stopQuietly();
             throw e;
+        }
+        awaitBrokerReady();
+    }
+
+    private void awaitBrokerReady() {
+        int pollIntervalMs = 500;
+        long deadline = System.currentTimeMillis() + Duration.ofMinutes(2).toMillis();
+        while (System.currentTimeMillis() < deadline) {
+            if (isBrokerReady()) {
+                return;
+            }
+            try {
+                Thread.sleep(pollIntervalMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new ContainerException("Interrupted while waiting for MongoDB", e);
+            }
+        }
+        stopQuietly();
+        throw new ContainerException("MongoDB not ready within startup timeout");
+    }
+
+    private boolean isBrokerReady() {
+        try {
+            var settings = MongoClientSettings.builder()
+                    .applyConnectionString(new ConnectionString(getConnectionString()))
+                    .applyToClusterSettings(builder -> builder.serverSelectionTimeout(2, TimeUnit.SECONDS))
+                    .build();
+            try (MongoClient client = MongoClients.create(settings)) {
+                client.listDatabaseNames().first();
+                return true;
+            }
+        } catch (Exception e) {
+            return false;
         }
     }
 
@@ -118,7 +158,7 @@ public class MongoDBTestEnvironment implements AutoCloseable {
         if (container == null) {
             throw new IllegalStateException("getConnectionString() called before initialize()");
         }
-        return "mongodb://localhost:" + container.hostPort(MongoDBContainerSpec.MONGODB_PORT);
+        return "mongodb://" + container.host() + ":" + container.hostPort(MongoDBContainerSpec.MONGODB_PORT);
     }
 
     /**

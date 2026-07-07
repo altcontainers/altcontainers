@@ -17,31 +17,57 @@ ContainerSpec containerSpec = ContainerSpec.builder("nginx:1.27")
     .waitForHttpResponse(80, "/")
     .startupTimeout(Duration.ofSeconds(30))
     .startupAttempts(2)
-    .logConsumer(line -> System.out.println("[NGINX] nginx:1.27 | " + line))
+    .onOutput(frame -> System.out.println("[NGINX] nginx:1.27 | " + frame.utf8StringWithoutLineEnding()))
     .memory(256 * 1024 * 1024)
     .build();
 ```
 
+## Lifecycle consumers
+
+`ContainerSpec.Builder` supports lifecycle callbacks:
+
+- `onOutput(Consumer<OutputFrame>)` — receives raw output frames
+- `onStart(Consumer<StartupContext>)` — invoked after container starts, before readiness checks
+- `onStartFailure(Consumer<StartupFailure>)` — invoked when a startup attempt fails
+- `onReady(Consumer<StartupContext>)` — invoked after readiness is confirmed
+- `onClose(Consumer<Container>)` — invoked when the container is closed
+
+## Environment variables
+
+Set container environment variables:
+
+```java
+builder.environment(Map.of("MY_VAR", "value"))
+```
+
+## Fixed port bindings
+
+Map container ports to specific host ports:
+
+```java
+builder.exposePorts(8080).portBindings(Map.of(8080, 9090))
+```
+
 ## Custom wait strategies
 
-`waitForStrategy` accepts any `WaitStrategy` implementation: lambdas, directly constructed
+`waitStrategy` accepts any `WaitStrategy` implementation: lambdas, directly constructed
 built-in strategies, or composed strategies.
 
 ```java
 // Direct construction
-builder.waitForStrategy(HttpWaitStrategy.builder().port(8080).path("/health").build());
+builder.waitStrategy(HttpWaitStrategy.builder().port(8080).path("/health").build());
 
 // Factory convenience
-builder.waitForStrategy(Wait.forListeningPort(8080));
+builder.waitStrategy(Wait.forListeningPort(8080));
 
 // Composition
-builder.waitForStrategy(Wait.allOf(
+builder.waitStrategy(Wait.allOf(
     PortWaitStrategy.builder().port(8080).build(),
     LogWaitStrategy.builder().pattern(".*started.*").build()
 ));
 
 // Custom lambda
-builder.waitForStrategy(container -> container.hostPort(8080) > 0);
+builder.waitStrategy(container -> container.hostPort(8080) > 0);
 ```
 
 ## Defaults
@@ -59,6 +85,5 @@ builder.waitForStrategy(container -> container.hostPort(8080) > 0);
 
 ## Learn next
 
-- [Container](container)
 - [Container](container)
 - [Javadoc](javadocs)

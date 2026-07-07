@@ -18,17 +18,18 @@ package examples.altcontainers.support;
 
 import java.util.Objects;
 import java.util.function.Consumer;
+import org.altcontainers.api.OutputFrame;
 
 /**
- * A {@link Consumer} that formats and prints Docker container log lines to {@link System#out}.
+ * A {@link Consumer} that formats and prints Docker container output frames to {@link System#out}.
  *
- * <p>Each non-blank line is output as {@code [prefix] image | line} followed by the platform line
- * separator. Null or blank lines are silently ignored. Instances are immutable and safe to share between
+ * <p>Each non-blank frame is output as {@code [prefix] image | line} followed by the platform line
+ * separator. Blank frames are silently ignored. Instances are immutable and safe to share between
  * threads.
  *
  * <p>Created via {@link #of(String, String)} rather than direct construction.
  */
-public final class ContainerConsumer implements Consumer<String> {
+public final class ContainerConsumer implements Consumer<OutputFrame> {
 
     private final String prefix;
     private final String image;
@@ -46,7 +47,7 @@ public final class ContainerConsumer implements Consumer<String> {
     }
 
     /**
-     * Creates a prefixed log consumer.
+     * Creates a prefixed output consumer.
      *
      * @param prefix the label prepended in brackets for identification
      *     (for example {@code "JMX_EXPORTER_JAVAAGENT"}); must not be {@code null}
@@ -59,14 +60,15 @@ public final class ContainerConsumer implements Consumer<String> {
     }
 
     /**
-     * Prints a formatted line to {@link System#out} as {@code [prefix] image | line}. The input is
-     * expected to be a single newline-stripped line. Null or blank input is silently ignored.
+     * Prints a formatted line to {@link System#out} as {@code [prefix] image | line}. The frame is
+     * decoded as UTF-8 and stripped of trailing line endings. Blank output is silently ignored.
      *
-     * @param line the log line; may be {@code null} or blank
+     * @param frame the output frame
      */
     @Override
-    public void accept(String line) {
-        if (line != null && !line.isBlank()) {
+    public void accept(OutputFrame frame) {
+        String line = frame.utf8StringWithoutLineEnding();
+        if (!line.isBlank()) {
             System.out.println("[" + prefix + "] " + image + " | " + line);
         }
     }

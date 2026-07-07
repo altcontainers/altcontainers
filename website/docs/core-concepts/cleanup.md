@@ -35,14 +35,14 @@ Container container = Container.create(spec);
 try {
     // ... use container ...
 } finally {
-    container.destroy();  // or container.close()
+    container.close();
 }
 ```
 
-Or via the manager:
+Or via the static method:
 
 ```java
-Container.destroy(container);
+Container.close(container);
 ```
 
 ## Idempotent destruction
@@ -51,10 +51,30 @@ Destroying an already-destroyed container or network is safe. Passing `null` is 
 
 ## Automatic cleanup (Reaper)
 
-Altcontainers starts a background "reaper" that registers a JVM shutdown hook. On JVM exit (including `System.exit()`), the reaper destroys:
+Altcontainers launches a separate **reaper process** for each JVM session. The reaper is a standalone Java process that watches a persistent TCP connection for liveness. When the connection drops, the reaper cleans up all Docker resources labeled with the session ID.
 
-- All containers created during the JVM session
-- All networks created during the JVM session
+### How the reaper works
+
+1. **Session creation**: When the first container or network is created, the core module generates a unique session UUID.
+
+2. **Reaper launch**: The core module extracts the reaper JAR from its classpath and launches it as a detached process (using `setsid` on Linux, `nohup` on other platforms). The reaper process receives the session ID via a system property.
+
+3. **Port discovery**: The reaper binds a server socket on localhost (random port) and writes the port to a discovery file in the temp directory.
+
+4. **TCP connection**: The core module polls the discovery file, connects to the reaper, and performs a session ID handshake. This persistent TCP connection serves as a liveness signal.
+
+5. **Resource labeling**: All containers and networks created during the session are labeled with the session ID.
+
+6. **Cleanup trigger**: When the JVM exits (including `System.exit()`), the JVM shutdown hook sends a `TERMINATE` message to the reaper and closes the TCP connection. The reaper then cleans up all Docker resources labeled with the session ID.
+
+7. **Grace period**: If the connection drops unexpectedly (without `TERMINATE`), the reaper waits 60 seconds before cleanup, allowing for transient reconnections.
+
+### Key characteristics
+
+- **Separate process**: The reaper runs in its own JVM, independent of the application JVM. This ensures cleanup even if the application JVM crashes or is killed.
+- **Per-session**: Each JVM session gets its own reaper process with a unique session ID.
+- **No Docker sidecar**: Unlike Testcontainers' Ryuk, the reaper is a plain Java process, not a Docker container. No privileged sidecar is required.
+- **Liveness-based**: The reaper watches a TCP connection. When the connection drops, cleanup begins.
 
 The reaper is a safety net. You should still explicitly clean up resources when possible; relying solely on the reaper can cause resource exhaustion in long-running processes.
 

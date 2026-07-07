@@ -23,7 +23,7 @@ System.out.println("Altcontainers version: " + Version.version());
 ```
 
 Returns:
-- The version string from the classpath resource `containers-version.properties` (property `altcontainers.core.version`)
+- The version string from the classpath resource `version.properties` (property `version`)
 - `"UNKNOWN"` if the resource is missing or unreadable
 
 ## Learn next

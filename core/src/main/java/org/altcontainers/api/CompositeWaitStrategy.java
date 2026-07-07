@@ -16,10 +16,12 @@
 
 package org.altcontainers.api;
 
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
+import nonapi.org.altcontainers.api.ManagedWaitStrategy;
 
 /**
  * Abstract base class for composite wait strategies that delegate to a list of
@@ -29,7 +31,7 @@ import java.util.function.Consumer;
  * via {@link #check(Container)}. Log dispatch fans out to all log-observing
  * children.
  */
-abstract class CompositeWaitStrategy implements WaitStrategy {
+abstract class CompositeWaitStrategy implements ManagedWaitStrategy {
 
     final List<WaitStrategy> strategies;
 
@@ -50,27 +52,32 @@ abstract class CompositeWaitStrategy implements WaitStrategy {
     }
 
     /**
-     * Returns a fresh copy with fresh copies of all child strategies.
+     * Returns a fresh copy with fresh copies of all managed child strategies.
+     * Lambda children (not implementing {@link ManagedWaitStrategy}) are reused
+     * as-is.
      *
      * @return a new composite strategy instance
      */
     @Override
-    public WaitStrategy newAttemptCondition() {
-        WaitStrategy[] fresh =
-                strategies.stream().map(WaitStrategy::newAttemptCondition).toArray(WaitStrategy[]::new);
+    public ManagedWaitStrategy newAttemptCondition() {
+        WaitStrategy[] fresh = strategies.stream()
+                .map(s -> s instanceof ManagedWaitStrategy m ? m.newAttemptCondition() : s)
+                .toArray(WaitStrategy[]::new);
         return create(fresh);
     }
 
     /**
-     * Returns a consumer that fans out each log line to all log-observing child
-     * strategies, or {@code null} if none of the children observe logs.
+     * Returns a consumer that fans out each log line to all managed
+     * log-observing child strategies, or {@code null} if none of the
+     * managed children observe logs.
      *
      * @return a composite log-line consumer, or {@code null}
      */
     @Override
     public Consumer<String> logLineConsumer() {
         List<Consumer<String>> consumers = strategies.stream()
-                .map(WaitStrategy::logLineConsumer)
+                .filter(s -> s instanceof ManagedWaitStrategy)
+                .map(s -> ((ManagedWaitStrategy) s).logLineConsumer())
                 .filter(Objects::nonNull)
                 .toList();
         if (consumers.isEmpty()) {
@@ -82,11 +89,30 @@ abstract class CompositeWaitStrategy implements WaitStrategy {
     }
 
     /**
+     * Returns a timeout diagnostic joining diagnostics from all managed children,
+     * falling back to the simple class name for non-managed children.
+     *
+     * @param container the container that did not become ready
+     * @param startupTimeout the startup/readiness timeout
+     * @return a diagnostic message
+     */
+    @Override
+    public String timeoutDiagnostic(Container container, Duration startupTimeout) {
+        return String.join(
+                "; ",
+                strategies.stream()
+                        .map(s -> s instanceof ManagedWaitStrategy m
+                                ? m.timeoutDiagnostic(container, startupTimeout)
+                                : s.getClass().getSimpleName())
+                        .toList());
+    }
+
+    /**
      * Returns a new composite of the same type with the given fresh child
      * strategies.
      *
      * @param strategies the fresh child strategies
      * @return a new composite strategy
      */
-    abstract CompositeWaitStrategy create(WaitStrategy... strategies);
+    abstract ManagedWaitStrategy create(WaitStrategy... strategies);
 }

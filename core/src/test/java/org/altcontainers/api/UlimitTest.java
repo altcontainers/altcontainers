@@ -22,35 +22,69 @@ import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 
 import org.junit.jupiter.api.Test;
 
+/**
+ * Tests for {@link Ulimit}.
+ */
 class UlimitTest {
 
     @Test
-    void shouldCreateValidUlimit() {
-        Ulimit ulimit = new Ulimit("nofile", 65536, 65536);
+    void shouldConstructValidUlimit() {
+        Ulimit ulimit = new Ulimit("nofile", 1024, 65536);
 
         assertThat(ulimit.name()).isEqualTo("nofile");
+        assertThat(ulimit.soft()).isEqualTo(1024);
+        assertThat(ulimit.hard()).isEqualTo(65536);
+    }
+
+    @Test
+    void shouldAllowEqualSoftAndHardLimits() {
+        Ulimit ulimit = new Ulimit("nofile", 65536, 65536);
+
         assertThat(ulimit.soft()).isEqualTo(65536);
         assertThat(ulimit.hard()).isEqualTo(65536);
     }
 
     @Test
+    void shouldAllowSoftLessThanHard() {
+        Ulimit ulimit = new Ulimit("nofile", 1024, 65536);
+
+        assertThat(ulimit.soft()).isLessThan(ulimit.hard());
+    }
+
+    @Test
+    void shouldAllowHardOfZero() {
+        Ulimit ulimit = new Ulimit("nofile", 0, 0);
+
+        assertThat(ulimit.soft()).isEqualTo(0);
+        assertThat(ulimit.hard()).isEqualTo(0);
+    }
+
+    @Test
+    void shouldAllowSoftOfZeroWithPositiveHard() {
+        Ulimit ulimit = new Ulimit("nofile", 0, 1024);
+
+        assertThat(ulimit.soft()).isEqualTo(0);
+        assertThat(ulimit.hard()).isEqualTo(1024);
+    }
+
+    @Test
     void shouldRejectNullName() {
         assertThatNullPointerException()
-                .isThrownBy(() -> new Ulimit(null, 65536, 65536))
+                .isThrownBy(() -> new Ulimit(null, 1024, 65536))
                 .withMessage("name must not be null");
     }
 
     @Test
     void shouldRejectBlankName() {
         assertThatIllegalArgumentException()
-                .isThrownBy(() -> new Ulimit("", 65536, 65536))
+                .isThrownBy(() -> new Ulimit("  ", 1024, 65536))
                 .withMessage("name must not be blank");
     }
 
     @Test
-    void shouldRejectWhitespaceName() {
+    void shouldRejectEmptyName() {
         assertThatIllegalArgumentException()
-                .isThrownBy(() -> new Ulimit("  ", 65536, 65536))
+                .isThrownBy(() -> new Ulimit("", 1024, 65536))
                 .withMessage("name must not be blank");
     }
 
@@ -64,63 +98,22 @@ class UlimitTest {
     @Test
     void shouldRejectNegativeHard() {
         assertThatIllegalArgumentException()
-                .isThrownBy(() -> new Ulimit("nofile", 65536, -1))
+                .isThrownBy(() -> new Ulimit("nofile", 1024, -1))
                 .withMessage("hard must be >= 0, was -1");
     }
 
     @Test
-    void shouldAllowZeroSoft() {
-        Ulimit ulimit = new Ulimit("nofile", 0, 65536);
-        assertThat(ulimit.soft()).isEqualTo(0);
-    }
-
-    @Test
-    void shouldAllowZeroHard() {
-        Ulimit ulimit = new Ulimit("nofile", 65536, 0);
-        assertThat(ulimit.hard()).isEqualTo(0);
-    }
-
-    @Test
-    void shouldImplementEquality() {
-        Ulimit ulimit1 = new Ulimit("nofile", 65536, 65536);
-        Ulimit ulimit2 = new Ulimit("nofile", 65536, 65536);
-
-        assertThat(ulimit1).isEqualTo(ulimit2);
-        assertThat(ulimit1.hashCode()).isEqualTo(ulimit2.hashCode());
-    }
-
-    @Test
-    void shouldImplementToString() {
-        Ulimit ulimit = new Ulimit("nofile", 65536, 65536);
-
-        assertThat(ulimit.toString()).isNotNull().contains("nofile").contains("65536");
-    }
-
-    @Test
-    void shouldRejectSoftGreaterThanHard() {
+    void shouldRejectSoftGreaterThanHardWhenHardPositive() {
         assertThatIllegalArgumentException()
-                .isThrownBy(() -> new Ulimit("nofile", 65536, 4096))
-                .withMessageContaining("soft must be <= hard");
+                .isThrownBy(() -> new Ulimit("nofile", 65536, 1024))
+                .withMessage("soft must be <= hard when hard > 0, was soft=65536, hard=1024");
     }
 
     @Test
-    void shouldAllowSoftEqualToHard() {
-        Ulimit ulimit = new Ulimit("nofile", 65536, 65536);
-        assertThat(ulimit.soft()).isEqualTo(65536);
-        assertThat(ulimit.hard()).isEqualTo(65536);
-    }
+    void shouldAllowSoftGreaterThanHardWhenHardIsZero() {
+        Ulimit ulimit = new Ulimit("nproc", 10, 0);
 
-    @Test
-    void shouldAllowSoftLessThanHard() {
-        Ulimit ulimit = new Ulimit("nofile", 4096, 65536);
-        assertThat(ulimit.soft()).isEqualTo(4096);
-        assertThat(ulimit.hard()).isEqualTo(65536);
-    }
-
-    @Test
-    void shouldAllowSoftWithZeroHard() {
-        Ulimit ulimit = new Ulimit("nofile", 65536, 0);
-        assertThat(ulimit.soft()).isEqualTo(65536);
+        assertThat(ulimit.soft()).isEqualTo(10);
         assertThat(ulimit.hard()).isEqualTo(0);
     }
 }

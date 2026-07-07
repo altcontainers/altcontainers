@@ -20,15 +20,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Duration;
 import java.util.function.Consumer;
+import nonapi.org.altcontainers.api.ConcreteNetwork;
 import org.altcontainers.api.ContainerSpec;
 import org.altcontainers.api.HttpWaitStrategy;
 import org.altcontainers.api.Network;
+import org.altcontainers.api.OutputFrame;
 import org.junit.jupiter.api.Test;
 
 class NginxContainerSpecTest {
 
     private static final String IMAGE = "nginx:1.27.5";
-    private static final Network NETWORK = new Network("test-net", "test-id");
+    private static final Network NETWORK = new ConcreteNetwork("test-net", "test-id");
 
     @Test
     void shouldSetImage() {
@@ -70,13 +72,13 @@ class NginxContainerSpecTest {
     }
 
     @Test
-    void shouldPassLogConsumer() {
-        Consumer<String> consumer = line -> {};
+    void shouldPassOutputConsumer() {
+        Consumer<OutputFrame> consumer = frame -> {};
         var spec = NginxContainerSpec.builder(IMAGE)
                 .network(NETWORK, "nginx2")
-                .logConsumer(consumer)
+                .outputConsumer(consumer)
                 .build();
-        assertThat(spec.logConsumer()).isSameAs(consumer);
+        assertThat(spec.onOutputConsumers()).containsExactly(consumer);
     }
 
     @Test

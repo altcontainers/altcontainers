@@ -1,0 +1,409 @@
+/*
+ * Copyright (c) 2026-present Douglas Hoard
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package nonapi.org.altcontainers.api;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.time.Duration;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Properties;
+import java.util.function.Function;
+import org.altcontainers.api.Altcontainers;
+import org.altcontainers.api.AltcontainersConfiguration;
+import org.altcontainers.api.ContainerException;
+import org.altcontainers.api.ContainerSpec;
+
+/**
+ * Resolves Altcontainers configuration from properties files, environment
+ * variables, programmatic configuration, and hardcoded defaults.
+ *
+ * <p>Resolution precedence for each value (first wins):
+ *
+ * <ol>
+ *   <li>Programmatic configuration set via
+ *       {@link Altcontainers#configure(java.util.function.Consumer)}.</li>
+ *   <li>Environment variable, derived from the property key by uppercasing and
+ *       replacing {@code .} with {@code _}, prefixed with {@code ALTCONTAINERS_}
+ *       when it does not already start with it.</li>
+ *   <li>{@code ~/.altcontainers.properties} (user home dot-file).</li>
+ *   <li>The bundled classpath resource {@code altcontainers.properties}.</li>
+ *   <li>The hardcoded default for the key.</li>
+ * </ol>
+ *
+ * <p>The two properties files are loaded and every known-key value is validated
+ * <em>eagerly</em> the first time {@link #instance()} is referenced, so
+ * malformed files or invalid values fail fast with a {@link ContainerException}
+ * rather than surfacing mid-operation. Per-key selection remains lazy: each
+ * accessor rechecks the programmatic configuration at call time.
+ *
+ * <p>Instances are immutable and thread-safe after construction.
+ */
+public final class AltcontainersProperties {
+
+    private static final String CLASSPATH_RESOURCE = "altcontainers.properties";
+    private static final String USER_HOME_FILE_NAME = ".altcontainers.properties";
+    private static final String ENV_PREFIX = "ALTCONTAINERS_";
+
+    /** Property key for {@link #reaperDisabled()}. */
+    static final String REAPER_DISABLED = "altcontainers.reaper.disabled";
+
+    /** Property key for {@link #reaperConnectionTimeout()}. */
+    static final String REAPER_CONNECTION_TIMEOUT_MS = "altcontainers.reaper.connection.timeout.ms";
+
+    /** Property key for {@link #reaperStartupTimeout()}. */
+    static final String REAPER_STARTUP_TIMEOUT_MS = "altcontainers.reaper.startup.timeout.ms";
+
+    /** Property key for {@link #reaperStopTimeout()}. */
+    static final String REAPER_STOP_TIMEOUT_MS = "altcontainers.reaper.stop.timeout.ms";
+
+    /** Property key for {@link #containerStartupTimeout()}. */
+    static final String CONTAINER_STARTUP_TIMEOUT_MS = "altcontainers.container.startup.timeout.ms";
+
+    /** Property key for {@link #containerReadinessPollInitial()}. */
+    static final String CONTAINER_READINESS_POLL_INITIAL_MS =
+            "altcontainers.container.startup.readiness.poll.initial.ms";
+
+    /** Property key for {@link #containerReadinessPollMax()}. */
+    static final String CONTAINER_READINESS_POLL_MAX_MS = "altcontainers.container.startup.readiness.poll.max.ms";
+
+    /** Property key for {@link #containerStartupRetryBackoffMultiplier()}. */
+    static final String CONTAINER_STARTUP_RETRY_BACKOFF_MULTIPLIER_MS =
+            "altcontainers.container.startup.retry.backoff.multiplier.ms";
+
+    /** Property key for {@link #containerStartupRetryBackoffMax()}. */
+    static final String CONTAINER_STARTUP_RETRY_BACKOFF_MAX_MS = "altcontainers.container.startup.retry.backoff.max.ms";
+
+    /** Property key for {@link #portProbeTimeout()}. */
+    static final String PORT_PROBE_TIMEOUT_MS = "altcontainers.wait.port.probe.timeout.ms";
+
+    /** Property key for {@link #httpProbeTimeout()}. */
+    static final String HTTP_PROBE_TIMEOUT_MS = "altcontainers.wait.http.probe.timeout.ms";
+
+    /** Property key for {@link #containerPutArchivePipeBufferBytes()}. */
+    static final String CONTAINER_PUT_ARCHIVE_PIPE_BUFFER_BYTES =
+            "altcontainers.container.put.archive.pipe.buffer.bytes";
+
+    private static final List<KeyDef> KNOWN_KEYS = List.of(
+            new KeyDef(REAPER_DISABLED, "false", Kind.BOOLEAN),
+            new KeyDef(REAPER_CONNECTION_TIMEOUT_MS, "10000", Kind.DURATION_MS),
+            new KeyDef(REAPER_STARTUP_TIMEOUT_MS, "10000", Kind.DURATION_MS),
+            new KeyDef(REAPER_STOP_TIMEOUT_MS, "5000", Kind.DURATION_MS),
+            new KeyDef(
+                    CONTAINER_STARTUP_TIMEOUT_MS,
+                    String.valueOf(ContainerSpec.DEFAULT_STARTUP_TIMEOUT.toMillis()),
+                    Kind.DURATION_MS),
+            new KeyDef(CONTAINER_READINESS_POLL_INITIAL_MS, "10", Kind.DURATION_MS),
+            new KeyDef(CONTAINER_READINESS_POLL_MAX_MS, "500", Kind.DURATION_MS),
+            new KeyDef(CONTAINER_STARTUP_RETRY_BACKOFF_MULTIPLIER_MS, "1000", Kind.DURATION_MS),
+            new KeyDef(CONTAINER_STARTUP_RETRY_BACKOFF_MAX_MS, "5000", Kind.DURATION_MS),
+            new KeyDef(PORT_PROBE_TIMEOUT_MS, "500", Kind.DURATION_MS),
+            new KeyDef(HTTP_PROBE_TIMEOUT_MS, "2000", Kind.DURATION_MS),
+            new KeyDef(CONTAINER_PUT_ARCHIVE_PIPE_BUFFER_BYTES, "65536", Kind.BYTES));
+
+    private final Map<String, Object> resolved;
+
+    private AltcontainersProperties(Properties classpath, Properties userHome, Map<String, String> env) {
+        Map<String, Object> out = new HashMap<>();
+        for (KeyDef def : KNOWN_KEYS) {
+            String raw = resolveRaw(def, classpath, userHome, env);
+            out.put(def.key, parse(def, raw));
+        }
+        this.resolved = Collections.unmodifiableMap(out);
+    }
+
+    /**
+     * Returns the singleton instance, performing the eager file load on first
+     * reference.
+     *
+     * @return the singleton instance
+     */
+    public static AltcontainersProperties instance() {
+        return Holder.INSTANCE;
+    }
+
+    /**
+     * Constructs an instance from explicit sources for testing.
+     *
+     * @param classpath the classpath properties (may be empty)
+     * @param userHome the user-home properties (may be empty)
+     * @param env the environment variable map
+     * @return a new instance
+     */
+    static AltcontainersProperties forTesting(Properties classpath, Properties userHome, Map<String, String> env) {
+        return new AltcontainersProperties(classpath, userHome, env);
+    }
+
+    /**
+     * Returns whether the reaper is disabled.
+     *
+     * @return {@code true} if the reaper is disabled
+     */
+    public boolean reaperDisabled() {
+        AltcontainersConfiguration config = Altcontainers.configuration();
+        if (config != null) {
+            return config.reaperDisabled();
+        }
+        return (Boolean) resolved.get(REAPER_DISABLED);
+    }
+
+    /**
+     * Returns the reaper connection/handshake timeout.
+     *
+     * @return the connection timeout
+     */
+    public Duration reaperConnectionTimeout() {
+        return resolvedDuration(REAPER_CONNECTION_TIMEOUT_MS, AltcontainersConfiguration::reaperConnectionTimeout);
+    }
+
+    /**
+     * Returns the reaper startup timeout (how long the client waits for the
+     * reaper process to bind).
+     *
+     * @return the reaper startup timeout
+     */
+    public Duration reaperStartupTimeout() {
+        return resolvedDuration(REAPER_STARTUP_TIMEOUT_MS, AltcontainersConfiguration::reaperStartupTimeout);
+    }
+
+    /**
+     * Returns the reaper stop timeout used when stopping containers.
+     *
+     * @return the reaper stop timeout
+     */
+    public Duration reaperStopTimeout() {
+        return resolvedDuration(REAPER_STOP_TIMEOUT_MS, AltcontainersConfiguration::reaperStopTimeout);
+    }
+
+    /**
+     * Returns the default container startup timeout.
+     *
+     * @return the default container startup timeout
+     */
+    public Duration containerStartupTimeout() {
+        return resolvedDuration(CONTAINER_STARTUP_TIMEOUT_MS, AltcontainersConfiguration::containerStartupTimeout);
+    }
+
+    /**
+     * Returns the initial readiness poll interval.
+     *
+     * @return the initial readiness poll interval
+     */
+    public Duration containerReadinessPollInitial() {
+        return resolvedDuration(
+                CONTAINER_READINESS_POLL_INITIAL_MS, AltcontainersConfiguration::containerReadinessPollInitial);
+    }
+
+    /**
+     * Returns the maximum readiness poll interval.
+     *
+     * @return the maximum readiness poll interval
+     */
+    public Duration containerReadinessPollMax() {
+        return resolvedDuration(CONTAINER_READINESS_POLL_MAX_MS, AltcontainersConfiguration::containerReadinessPollMax);
+    }
+
+    /**
+     * Returns the startup retry backoff multiplier.
+     *
+     * @return the startup retry backoff multiplier
+     */
+    public Duration containerStartupRetryBackoffMultiplier() {
+        return resolvedDuration(
+                CONTAINER_STARTUP_RETRY_BACKOFF_MULTIPLIER_MS,
+                AltcontainersConfiguration::containerStartupRetryBackoffMultiplier);
+    }
+
+    /**
+     * Returns the startup retry backoff maximum.
+     *
+     * @return the startup retry backoff maximum
+     */
+    public Duration containerStartupRetryBackoffMax() {
+        return resolvedDuration(
+                CONTAINER_STARTUP_RETRY_BACKOFF_MAX_MS, AltcontainersConfiguration::containerStartupRetryBackoffMax);
+    }
+
+    /**
+     * Returns the port probe timeout.
+     *
+     * @return the port probe timeout
+     */
+    public Duration portProbeTimeout() {
+        return resolvedDuration(PORT_PROBE_TIMEOUT_MS, AltcontainersConfiguration::portProbeTimeout);
+    }
+
+    /**
+     * Returns the HTTP probe timeout.
+     *
+     * @return the HTTP probe timeout
+     */
+    public Duration httpProbeTimeout() {
+        return resolvedDuration(HTTP_PROBE_TIMEOUT_MS, AltcontainersConfiguration::httpProbeTimeout);
+    }
+
+    /**
+     * Returns the put-archive pipe buffer size in bytes.
+     *
+     * @return the put-archive pipe buffer size in bytes
+     */
+    public int containerPutArchivePipeBufferBytes() {
+        return resolvedInt(
+                CONTAINER_PUT_ARCHIVE_PIPE_BUFFER_BYTES,
+                AltcontainersConfiguration::containerPutArchivePipeBufferBytes);
+    }
+
+    private Duration resolvedDuration(String key, Function<AltcontainersConfiguration, Duration> programmatic) {
+        AltcontainersConfiguration config = Altcontainers.configuration();
+        if (config != null) {
+            return programmatic.apply(config);
+        }
+        return (Duration) resolved.get(key);
+    }
+
+    private int resolvedInt(String key, Function<AltcontainersConfiguration, Integer> programmatic) {
+        AltcontainersConfiguration config = Altcontainers.configuration();
+        if (config != null) {
+            return programmatic.apply(config);
+        }
+        return (Integer) resolved.get(key);
+    }
+
+    private static String resolveRaw(KeyDef def, Properties classpath, Properties userHome, Map<String, String> env) {
+        String envValue = env.get(envVarName(def.key));
+        if (envValue != null && !envValue.isEmpty()) {
+            return envValue;
+        }
+        String userHomeValue = userHome.getProperty(def.key);
+        if (userHomeValue != null) {
+            return userHomeValue;
+        }
+        String classpathValue = classpath.getProperty(def.key);
+        if (classpathValue != null) {
+            return classpathValue;
+        }
+        return def.defaultValue;
+    }
+
+    private static Object parse(KeyDef def, String raw) {
+        return switch (def.kind) {
+            case BOOLEAN -> {
+                String trimmed = raw.trim().toLowerCase(Locale.ROOT);
+                if (!trimmed.equals("true") && !trimmed.equals("false")) {
+                    throw new ContainerException(def.key + " must be 'true' or 'false', got '" + raw + "'");
+                }
+                yield Boolean.parseBoolean(trimmed);
+            }
+            case DURATION_MS -> {
+                long millis;
+                try {
+                    millis = Long.parseLong(raw.trim());
+                } catch (NumberFormatException e) {
+                    throw new ContainerException(
+                            def.key + " must be a valid integer (milliseconds), got '" + raw + "'", e);
+                }
+                if (millis <= 0) {
+                    throw new ContainerException(def.key + " must be positive, got " + millis);
+                }
+                yield Duration.ofMillis(millis);
+            }
+            case BYTES -> {
+                int value;
+                try {
+                    value = Integer.parseInt(raw.trim());
+                } catch (NumberFormatException e) {
+                    throw new ContainerException(def.key + " must be a valid integer, got '" + raw + "'", e);
+                }
+                if (value <= 0) {
+                    throw new ContainerException(def.key + " must be positive, got " + value);
+                }
+                yield value;
+            }
+        };
+    }
+
+    private static String envVarName(String key) {
+        String name = key.replace('.', '_').toUpperCase(Locale.ROOT);
+        if (!name.startsWith(ENV_PREFIX)) {
+            name = ENV_PREFIX + name;
+        }
+        return name;
+    }
+
+    private static Properties loadClasspathResource(String name) {
+        Properties props = new Properties();
+        try (InputStream in = AltcontainersProperties.class.getClassLoader().getResourceAsStream(name)) {
+            if (in != null) {
+                props.load(in);
+            }
+        } catch (IOException e) {
+            throw new ContainerException("Failed to load classpath resource " + name, e);
+        }
+        return props;
+    }
+
+    private static Properties loadUserHomeFile(String fileName) {
+        Properties props = new Properties();
+        File file = new File(System.getProperty("user.home"), fileName);
+        if (!file.isFile()) {
+            return props;
+        }
+        try (InputStream in = Files.newInputStream(file.toPath())) {
+            props.load(in);
+        } catch (IOException e) {
+            throw new ContainerException("Failed to load " + file, e);
+        }
+        return props;
+    }
+
+    private static AltcontainersProperties create() {
+        Properties classpath = loadClasspathResource(CLASSPATH_RESOURCE);
+        Properties userHome = loadUserHomeFile(USER_HOME_FILE_NAME);
+        return new AltcontainersProperties(classpath, userHome, System.getenv());
+    }
+
+    private static final class Holder {
+        static final AltcontainersProperties INSTANCE = create();
+
+        private Holder() {
+            // Intentionally empty
+        }
+    }
+
+    private enum Kind {
+        DURATION_MS,
+        BOOLEAN,
+        BYTES
+    }
+
+    private static final class KeyDef {
+        private final String key;
+        private final String defaultValue;
+        private final Kind kind;
+
+        KeyDef(String key, String defaultValue, Kind kind) {
+            this.key = key;
+            this.defaultValue = defaultValue;
+            this.kind = kind;
+        }
+    }
+}
