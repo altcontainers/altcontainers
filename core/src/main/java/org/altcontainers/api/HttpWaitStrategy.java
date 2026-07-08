@@ -18,11 +18,22 @@ package org.altcontainers.api;
 
 import java.io.IOException;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.Objects;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
+import nonapi.org.altcontainers.api.AltcontainersProperties;
+import nonapi.org.altcontainers.api.ManagedWaitStrategy;
 
 /**
  * A readiness strategy that issues an HTTP or HTTPS GET against the mapped
@@ -36,17 +47,27 @@ import java.util.Objects;
  * actually handling requests.
  *
  * <p>Created directly or via
- * {@link Wait#forHttpResponse(int, String, Protocol, int, int)}.
+ * {@link Wait#forHttpResponse(Protocol, int, String, int, int)}.
+ *
+ * <p>The {@link Protocol} enum encodes SSL trust behavior:
+ *
+ * <ul>
+ *   <li>{@link Protocol#HTTP} — plaintext, no SSL.
+ *   <li>{@link Protocol#HTTPS_INSECURE} — HTTPS, trust-all certificates,
+ *       hostname verification disabled. The default for HTTPS probes.
+ *   <li>{@link Protocol#HTTPS_VERIFY} — HTTPS, strict certificate and
+ *       hostname validation (JVM default).
+ * </ul>
  *
  * <pre>{@code
  * // Direct construction
- * WaitStrategy http = new HttpWaitStrategy(8080, "/health", Protocol.HTTP, 200, 399);
+ * WaitStrategy http = new HttpWaitStrategy(Protocol.HTTP, 8080, "/health", 200, 399);
  *
  * // Factory
- * WaitStrategy http = Wait.forHttpResponse(8080, "/health", Protocol.HTTP, 200, 399);
+ * WaitStrategy http = Wait.forHttpResponse(Protocol.HTTP, 8080, "/health", 200, 399);
  * }</pre>
  */
-public final class HttpWaitStrategy implements WaitStrategy {
+public final class HttpWaitStrategy implements ManagedWaitStrategy {
 
     /**
      * Default lower bound (inclusive) for an acceptable response status.
@@ -58,7 +79,54 @@ public final class HttpWaitStrategy implements WaitStrategy {
      */
     public static final int DEFAULT_MAX_STATUS = 399;
 
-    private static final int DEFAULT_REQUEST_TIMEOUT_MILLIS = 2_000;
+    /**
+     * HTTP protocol variant for container readiness probes.
+     *
+     * <p>Encodes both the URI scheme and the SSL trust policy:
+     *
+     * <ul>
+     *   <li>{@link #HTTP} — plaintext over {@code http://}.
+     *   <li>{@link #HTTPS_INSECURE} — encrypted over {@code https://},
+     *       trusts any certificate and disables hostname verification.
+     *   <li>{@link #HTTPS_VERIFY} — encrypted over {@code https://},
+     *       validates certificates and hostnames with the JVM default
+     *       {@link SSLContext}.
+     * </ul>
+     */
+    public enum Protocol {
+
+        /**
+         * Hypertext Transfer Protocol (unencrypted).
+         */
+        HTTP("http"),
+
+        /**
+         * HTTPS with trust-all: accepts any certificate and disables
+         * hostname verification. The default for HTTPS probes.
+         */
+        HTTPS_INSECURE("https"),
+
+        /**
+         * HTTPS with strict certificate and hostname validation
+         * (JVM default {@link javax.net.ssl.SSLContext}).
+         */
+        HTTPS_VERIFY("https");
+
+        private final String scheme;
+
+        Protocol(String scheme) {
+            this.scheme = scheme;
+        }
+
+        /**
+         * Returns the URI scheme for this protocol.
+         *
+         * @return the URI scheme ({@code "http"} or {@code "https"})
+         */
+        String scheme() {
+            return scheme;
+        }
+    }
 
     private final int containerPort;
     private final String path;
@@ -67,6 +135,9 @@ public final class HttpWaitStrategy implements WaitStrategy {
     private final int maxStatus;
     private final Duration requestTimeout;
     private final HttpClient httpClient;
+    private volatile String lastUrl;
+    private volatile Integer lastStatus;
+    private volatile String lastError = "not probed yet";
 
     /**
      * Creates an HTTP-wait strategy probing the given container port and path,
@@ -75,21 +146,22 @@ public final class HttpWaitStrategy implements WaitStrategy {
      *
      * <p>The path is normalized to begin with {@code /} if it does not
      * already. Inputs are validated; callers can also validate via
-     * {@code ContainerSpec.Builder#waitForHttpResponse(int, String)} or
+     * {@code ContainerSpec.Builder#waitForHttpResponse(int)} or
      * equivalent.
      *
+     * @param protocol the HTTP protocol variant; must not be {@code null}.
+     *     See {@link Protocol} for SSL trust semantics
      * @param containerPort the container port whose mapped host port is
      *     probed; must be in {@code 1..65535}
      * @param path the request path; normalized to begin with {@code /};
      *     must not be {@code null} or blank
-     * @param protocol the HTTP protocol variant (HTTP or HTTPS)
      * @param minStatus inclusive lower bound for an acceptable status;
      *     must be in {@code 100..599}
      * @param maxStatus inclusive upper bound for an acceptable status;
      *     must be in {@code 100..599}, and {@code >= minStatus}
      * @throws IllegalArgumentException if any parameter is invalid
      */
-    public HttpWaitStrategy(int containerPort, String path, Protocol protocol, int minStatus, int maxStatus) {
+    public HttpWaitStrategy(Protocol protocol, int containerPort, String path, int minStatus, int maxStatus) {
         if (containerPort < 1 || containerPort > 65535) {
             throw new IllegalArgumentException("containerPort must be in 1..65535, was " + containerPort);
         }
@@ -111,8 +183,8 @@ public final class HttpWaitStrategy implements WaitStrategy {
         this.protocol = protocol;
         this.minStatus = minStatus;
         this.maxStatus = maxStatus;
-        this.requestTimeout = Duration.ofMillis(DEFAULT_REQUEST_TIMEOUT_MILLIS);
-        this.httpClient = HttpClient.newBuilder().connectTimeout(requestTimeout).build();
+        this.requestTimeout = AltcontainersProperties.instance().httpProbeTimeout();
+        this.httpClient = buildHttpClient(protocol, requestTimeout);
     }
 
     /**
@@ -121,14 +193,14 @@ public final class HttpWaitStrategy implements WaitStrategy {
      * @return this instance
      */
     @Override
-    public WaitStrategy newAttemptCondition() {
+    public ManagedWaitStrategy newAttemptCondition() {
         return this;
     }
 
     /**
      * Returns {@code true} iff a GET to
-     * {@code <protocol>://localhost:<hostPort><path>} returns a status in
-     * {@code [minStatus, maxStatus]}.
+     * {@code <protocol>://<container.host()>:<mappedPort><path>} returns a
+     * status in {@code [minStatus, maxStatus]}.
      *
      * <p>Returns {@code false} if the port is unmapped ({@code hostPort <= 0}),
      * the request fails or times out (any {@link IOException}), or the status
@@ -141,33 +213,118 @@ public final class HttpWaitStrategy implements WaitStrategy {
      */
     @Override
     public boolean check(Container container) {
-        int hostPort = container.hostPort(containerPort);
-        if (hostPort <= 0) {
+        String host = container.host();
+        Integer hostPort = container.hostPort(containerPort);
+        if (hostPort == null) {
+            lastUrl = protocol.scheme() + "://" + host + ":<unmapped>" + path;
+            lastStatus = null;
+            lastError = "mapped host port unavailable";
             return false;
         }
 
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(protocol.scheme() + "://localhost:" + hostPort + path))
-                .timeout(requestTimeout)
-                .GET()
-                .build();
+        URI uri;
+        try {
+            uri = buildUri(protocol.scheme(), host, hostPort, path);
+        } catch (RuntimeException e) {
+            lastUrl = protocol.scheme() + "://" + host + ":" + hostPort + path;
+            lastStatus = null;
+            lastError = e.getClass().getSimpleName() + ": " + e.getMessage();
+            return false;
+        }
+        lastUrl = uri.toString();
+        HttpRequest request =
+                HttpRequest.newBuilder().uri(uri).timeout(requestTimeout).GET().build();
         try {
             HttpResponse<Void> response = httpClient.send(request, HttpResponse.BodyHandlers.discarding());
             int status = response.statusCode();
+            lastStatus = status;
+            lastError = null;
             return status >= minStatus && status <= maxStatus;
         } catch (IOException e) {
             // Connect refused, connection reset, or read timeout: not ready — retry on next poll.
+            lastStatus = null;
+            lastError = e.getClass().getSimpleName() + ": " + e.getMessage();
             return false;
         } catch (InterruptedException e) {
             // Restore the interrupt status so the outer readiness loop observes it via its
             // Thread.sleep and propagates as ContainerException. Never swallow an interrupt.
             Thread.currentThread().interrupt();
+            lastStatus = null;
+            lastError = "InterruptedException: " + e.getMessage();
             return false;
         }
     }
 
+    /**
+     * Returns a timeout diagnostic including the URL, expected status range, and
+     * last observed response status or error.
+     *
+     * @param container the container that did not become ready
+     * @param startupTimeout the readiness timeout
+     * @return a diagnostic message
+     */
+    @Override
+    public String timeoutDiagnostic(Container container, Duration startupTimeout) {
+        String status = lastStatus != null ? String.valueOf(lastStatus) : "none";
+        String error = lastError != null ? "; last error: " + lastError : "";
+        String url = lastUrl != null ? lastUrl : protocol.scheme() + "://<unprobed>:" + containerPort + path;
+        return "HttpWaitStrategy failed for image " + container.image() + ", container " + container.id() + ", URL "
+                + url + ", expected status " + minStatus + ".." + maxStatus + ", last status " + status
+                + " within " + format(startupTimeout) + error;
+    }
+
     private static String normalizePath(String path) {
         return path.startsWith("/") ? path : "/" + path;
+    }
+
+    private static URI buildUri(String scheme, String host, int port, String path) {
+        try {
+            return new URI(scheme, null, host, port, path, null, null);
+        } catch (URISyntaxException e) {
+            throw new IllegalArgumentException("Invalid wait URL host/path", e);
+        }
+    }
+
+    private static String format(Duration timeout) {
+        long timeoutMillis = timeout.toMillis();
+        return (timeoutMillis >= 1000 && timeoutMillis % 1000 == 0) ? timeout.toSeconds() + "s" : timeoutMillis + "ms";
+    }
+
+    private static HttpClient buildHttpClient(Protocol protocol, Duration connectTimeout) {
+        if (protocol != Protocol.HTTPS_INSECURE) {
+            return HttpClient.newBuilder().connectTimeout(connectTimeout).build();
+        }
+        try {
+            SSLContext sslContext = SSLContext.getInstance("TLS");
+            TrustManager[] trustAll = new TrustManager[] {
+                new X509TrustManager() {
+                    @Override
+                    public X509Certificate[] getAcceptedIssuers() {
+                        return new X509Certificate[0];
+                    }
+
+                    @Override
+                    public void checkClientTrusted(X509Certificate[] certs, String authType) {
+                        // trust all
+                    }
+
+                    @Override
+                    public void checkServerTrusted(X509Certificate[] certs, String authType) {
+                        // trust all
+                    }
+                }
+            };
+            sslContext.init(null, trustAll, new SecureRandom());
+            SSLParameters sslParams = new SSLParameters();
+            sslParams.setEndpointIdentificationAlgorithm("");
+            return HttpClient.newBuilder()
+                    .connectTimeout(connectTimeout)
+                    .sslContext(sslContext)
+                    .sslParameters(sslParams)
+                    .build();
+        } catch (NoSuchAlgorithmException | KeyManagementException e) {
+            throw new ContainerException("Failed to create trust-all SSL context", e);
+        }
     }
 
     /**
@@ -264,7 +421,7 @@ public final class HttpWaitStrategy implements WaitStrategy {
             if (port < 1 || port > 65535) {
                 throw new IllegalArgumentException("port must be set in 1..65535, was " + port);
             }
-            return new HttpWaitStrategy(port, path, protocol, minStatus, maxStatus);
+            return new HttpWaitStrategy(protocol, port, path, minStatus, maxStatus);
         }
     }
 }

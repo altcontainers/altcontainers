@@ -16,8 +16,6 @@
 
 package org.altcontainers.api;
 
-import java.util.function.Consumer;
-
 /**
  * A readiness strategy evaluated against a started container.
  *
@@ -28,13 +26,14 @@ import java.util.function.Consumer;
  *       from multiple threads concurrently.
  *   <li><strong>Idempotent:</strong> Repeated calls to {@code check} with the
  *       same container state must return the same result.
- *   <li><strong>Side-effect-free:</strong> {@code check} must not mutate the
- *       container, start threads, or perform I/O that cannot be safely
- *       retried.
+ *   <li><strong>Retry-safe:</strong> {@code check} must not mutate the
+ *       container or start threads. Implementations may record diagnostic
+ *       state from the last probe.
  * </ul>
  *
  * <p>Built-in strategies are available through the {@link Wait} factory class.
- * Custom strategies implement this interface directly:
+ * Custom strategies implement this interface directly as a lambda or method
+ * reference:
  *
  * <pre>{@code
  * WaitStrategy fileExists = container -> {
@@ -43,11 +42,9 @@ import java.util.function.Consumer;
  * };
  * }</pre>
  *
- * <p>Strategies that observe container logs override {@link #logLineConsumer()}
- * to receive raw log lines during the readiness poll.
- *
  * @see Wait
  */
+@FunctionalInterface
 public interface WaitStrategy {
 
     /**
@@ -57,34 +54,4 @@ public interface WaitStrategy {
      * @return {@code true} if the strategy is satisfied
      */
     boolean check(Container container);
-
-    /**
-     * Returns a fresh copy of this strategy for a new startup attempt,
-     * carrying the same configuration but reset state.
-     *
-     * <p>The default implementation returns {@code this}, which is correct
-     * for stateless strategies. Stateful strategies (such as log-matching
-     * counters) override this to return a new instance with a fresh counter.
-     *
-     * @return a new strategy instance, or {@code this} for stateless strategies
-     */
-    default WaitStrategy newAttemptCondition() {
-        return this;
-    }
-
-    /**
-     * Returns a consumer for raw, newline-terminated container log lines,
-     * or {@code null} if this strategy does not observe container logs.
-     *
-     * <p>The default implementation returns {@code null}. Log-based strategies
-     * override this to receive every raw log line emitted by the container
-     * after startup, allowing them to update internal counters for pattern
-     * matching. The consumer is invoked from a single callback thread and
-     * does not need to be thread-safe with respect to other log consumers.
-     *
-     * @return a log-line consumer, or {@code null}
-     */
-    default Consumer<String> logLineConsumer() {
-        return null;
-    }
 }

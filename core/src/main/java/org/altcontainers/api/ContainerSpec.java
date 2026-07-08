@@ -19,6 +19,7 @@ package org.altcontainers.api;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
@@ -99,25 +100,90 @@ public interface ContainerSpec {
     String workingDirectory();
 
     /**
-     * Returns the log consumer.
+     * Returns the ordered list of output frame consumers.
      *
-     * @return the log consumer, or {@code null}
+     * <p>Frames are raw, unfiltered, undecoded output chunks with stream type metadata. The framework
+     * does not strip, filter, decode, or line-buffer frames before invoking output consumers.
+     *
+     * @return the output frame consumers (unmodifiable, empty by default)
      */
-    Consumer<String> logConsumer();
+    List<Consumer<OutputFrame>> onOutputConsumers();
 
     /**
-     * Returns a consumer invoked after the container starts but before readiness
-     * checks begin. The {@link Container} handle has a valid {@code hostPort} at
-     * this point. The default is a no-op consumer.
+     * Returns the ordered list of lifecycle consumers invoked after the
+     * container starts but before readiness checks begin. The
+     * {@link StartupContext#container()} handle has a valid
+     * {@code hostPort} at this point.
      *
-     * <p>Throwing from the consumer cancels startup; the exception is wrapped in
-     * {@link ContainerException} and follows the usual retry/destroy-on-failure
-     * behavior.
+     * <p>Throwing from any consumer cancels startup for the current
+     * attempt; the exception is wrapped in {@link ContainerException}
+     * and follows the usual retry/destroy-on-failure behavior.
      *
-     * @return the startup consumer, never {@code null}
+     * @return the on-start consumers (unmodifiable, empty by default)
      */
-    default Consumer<Container> startupConsumer() {
-        return container -> {};
+    default List<Consumer<StartupContext>> onStartConsumers() {
+        return List.of();
+    }
+
+    /**
+     * Returns the ordered list of lifecycle consumers invoked when a startup
+     * attempt fails after a container has been created (including start
+     * failures), before the doomed container is destroyed. Consumers are not
+     * invoked when container creation itself fails (no container exists to
+     * destroy).
+     *
+     * <p>Throwing from any consumer aborts startup; the exception is wrapped
+     * in {@link ContainerException} with the original startup failure
+     * attached as a suppressed exception.
+     *
+     * @return the on-start-failure consumers (unmodifiable, empty by default)
+     */
+    default List<Consumer<StartupFailure>> onStartFailureConsumers() {
+        return List.of();
+    }
+
+    /**
+     * Returns the ordered list of lifecycle consumers invoked after
+     * readiness is confirmed, immediately before the container handle is
+     * returned to the caller.
+     *
+     * <p>Throwing from any consumer cancels startup for the current
+     * attempt; the exception is wrapped in {@link ContainerException}
+     * and follows the usual retry/destroy-on-failure behavior.
+     *
+     * @return the on-ready consumers (unmodifiable, empty by default)
+     */
+    default List<Consumer<StartupContext>> onReadyConsumers() {
+        return List.of();
+    }
+
+    /**
+     * Returns the ordered list of lifecycle consumers invoked when a
+     * successfully created container is closed, before the container
+     * is stopped and removed.
+     *
+     * <p>Callback failures are logged and collected; Docker cleanup
+     * runs regardless. If any callback fails, {@code close()} throws
+     * after cleanup.
+     *
+     * @return the on-close consumers (unmodifiable, empty by default)
+     */
+    default List<Consumer<Container>> onCloseConsumers() {
+        return List.of();
+    }
+
+    /**
+     * Returns the startup-check strategy used after Docker starts the container
+     * and before readiness wait strategies run.
+     *
+     * <p>The default strategy requires the container to still be running after
+     * Docker start succeeds. Readiness wait strategies remain responsible for
+     * proving service-level readiness.
+     *
+     * @return the startup-check strategy, never {@code null}
+     */
+    default StartupCheckStrategy startupCheckStrategy() {
+        return StartupCheckStrategy.isRunning();
     }
 
     /**
@@ -136,6 +202,11 @@ public interface ContainerSpec {
 
     /**
      * Returns the wait strategies.
+     *
+     * <p>Multiple configured strategies are combined with AND semantics: every
+     * strategy must be satisfied before startup completes. Use
+     * {@link Wait#anyOf(WaitStrategy...)} or {@link Wait#allOf(WaitStrategy...)}
+     * for explicit composition.
      *
      * @return the wait strategies (unmodifiable)
      */
@@ -205,6 +276,29 @@ public interface ContainerSpec {
      */
     default Map<Integer, Integer> portBindings() {
         return Map.of();
+    }
+
+    /**
+     * Returns a pre-filled builder initialized from this spec's values.
+     * The builder is independent — modifications do not affect this spec.
+     *
+     * @return a new builder pre-filled from this spec
+     */
+    GenericContainerSpec.Builder toBuilder();
+
+    /**
+     * Returns a new spec derived from this one with the given modifications
+     * applied. This spec is unchanged.
+     *
+     * @param customizer a consumer that configures the derived spec's builder
+     * @return a new spec with the customizations applied
+     * @throws NullPointerException if {@code customizer} is {@code null}
+     */
+    default ContainerSpec with(Consumer<GenericContainerSpec.Builder> customizer) {
+        Objects.requireNonNull(customizer, "customizer must not be null");
+        GenericContainerSpec.Builder builder = toBuilder();
+        customizer.accept(builder);
+        return builder.build();
     }
 
     /**

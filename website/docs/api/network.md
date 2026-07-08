@@ -10,12 +10,12 @@ description: Runtime handle to a Docker bridge network for container-to-containe
 ```java
 package org.altcontainers.api;
 
-public final class Network implements AutoCloseable {
-    public static Network create();
-    public static void destroy(Network network);
-    public String id();
-    public void destroy();
-    public void close();
+public interface Network extends AutoCloseable {
+    static Network create();
+    static void close(Network network);
+    String name();
+    String id();
+    void close();
 }
 ```
 
@@ -33,10 +33,10 @@ Creates a new Docker bridge network with a unique name (`altcontainers-<session>
 
 **Throws:** `ContainerException` if Docker fails to create the network.
 
-## Destroying a network
+## Closing a network
 
 ```java
-Network.destroy(network);
+Network.close(network);
 ```
 
 Or use try-with-resources:
@@ -47,7 +47,7 @@ try (Network network = Network.create()) {
 }
 ```
 
-`destroy(network)`:
+`close(network)`:
 - Removes the Docker network
 - Blocks until Docker confirms removal
 - Retries transient `endpoint still attached` failures
@@ -75,17 +75,29 @@ try (Network network = Network.create()) {
 
 ## Methods
 
+### `name()`
+
+Returns the network name.
+
+```java
+String name = network.name();
+```
+
 ### `id()`
 
 Returns the Docker-assigned network identifier.
 
-### `destroy()`
-
-Removes the Docker network, blocking until Docker confirms it is gone. Idempotent.
+```java
+String id = network.id();
+```
 
 ### `close()`
 
-Delegates to `destroy()`. Implements `AutoCloseable`.
+Destroys this network. Implements `AutoCloseable`.
+
+```java
+network.close();
+```
 
 ## Thread safety
 

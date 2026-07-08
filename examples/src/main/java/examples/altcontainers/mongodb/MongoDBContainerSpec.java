@@ -21,6 +21,7 @@ import java.util.function.Consumer;
 import org.altcontainers.api.ContainerSpec;
 import org.altcontainers.api.GenericContainerSpec;
 import org.altcontainers.api.Network;
+import org.altcontainers.api.OutputFrame;
 
 /**
  * A {@link ContainerSpec} pre-configured for a {@code mongo} image.
@@ -35,7 +36,7 @@ import org.altcontainers.api.Network;
  * <pre>{@code
  * MongoDBContainerSpec spec = MongoDBContainerSpec.builder("mongo:7.0")
  *         .network(network, "mongodb")
- *         .logConsumer(ContainerConsumer.of("mongodb", "7.0"))
+ *         .outputConsumer(ContainerConsumer.of("mongodb", "7.0"))
  *         .build();
  * Container container = Container.create(spec);
  * }</pre>
@@ -69,7 +70,7 @@ public final class MongoDBContainerSpec extends GenericContainerSpec {
      *
      * <p>The builder pre-fills MongoDB defaults: port 27017, port-wait readiness
      * condition, 1-minute startup timeout, 3 startup attempts. Callers specify
-     * only image, network, and optionally a log consumer.
+     * only image, network, and optionally an output consumer.
      *
      * <p>Instances are mutable and not thread-safe.
      */
@@ -98,13 +99,13 @@ public final class MongoDBContainerSpec extends GenericContainerSpec {
         }
 
         /**
-         * Sets the log consumer for container output.
+         * Sets the output consumer for container output.
          *
-         * @param consumer the log consumer
+         * @param consumer the output consumer
          * @return this builder
          */
-        public Builder logConsumer(Consumer<String> consumer) {
-            delegate.logConsumer(consumer);
+        public Builder outputConsumer(Consumer<OutputFrame> consumer) {
+            delegate.onOutput(consumer);
             return this;
         }
 

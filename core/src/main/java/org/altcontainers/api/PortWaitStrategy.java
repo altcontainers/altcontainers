@@ -16,8 +16,12 @@
 
 package org.altcontainers.api;
 
+import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.time.Duration;
+import nonapi.org.altcontainers.api.AltcontainersProperties;
+import nonapi.org.altcontainers.api.ManagedWaitStrategy;
 
 /**
  * A readiness strategy that probes the mapped host port for an open TCP
@@ -34,12 +38,13 @@ import java.net.Socket;
  * WaitStrategy port = Wait.forListeningPort(8080);
  * }</pre>
  */
-public final class PortWaitStrategy implements WaitStrategy {
-
-    private static final String PORT_PROBE_HOST = "localhost";
-    private static final int PORT_PROBE_TIMEOUT_MILLIS = 1000;
+public final class PortWaitStrategy implements ManagedWaitStrategy {
 
     private final int containerPort;
+    private final int portProbeTimeoutMillis;
+    private volatile String lastHost;
+    private volatile Integer lastMappedPort;
+    private volatile String lastError = "not probed yet";
 
     /**
      * Creates a port-wait strategy for the given container port.
@@ -54,6 +59,8 @@ public final class PortWaitStrategy implements WaitStrategy {
             throw new IllegalArgumentException("containerPort must be in 1..65535, was " + containerPort);
         }
         this.containerPort = containerPort;
+        this.portProbeTimeoutMillis =
+                (int) AltcontainersProperties.instance().portProbeTimeout().toMillis();
     }
 
     /**
@@ -62,7 +69,7 @@ public final class PortWaitStrategy implements WaitStrategy {
      * @return this instance
      */
     @Override
-    public WaitStrategy newAttemptCondition() {
+    public ManagedWaitStrategy newAttemptCondition() {
         return this;
     }
 
@@ -83,16 +90,44 @@ public final class PortWaitStrategy implements WaitStrategy {
      */
     @Override
     public boolean check(Container container) {
-        int hostPort = container.hostPort(containerPort);
-        if (hostPort <= 0) {
+        String host = container.host();
+        Integer hostPort = container.hostPort(containerPort);
+        lastHost = host;
+        lastMappedPort = hostPort;
+        if (hostPort == null) {
+            lastError = "mapped host port unavailable";
             return false;
         }
         try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(PORT_PROBE_HOST, hostPort), PORT_PROBE_TIMEOUT_MILLIS);
+            socket.connect(new InetSocketAddress(host, hostPort), portProbeTimeoutMillis);
+            lastError = null;
             return true;
-        } catch (Exception e) {
+        } catch (IOException | RuntimeException e) {
+            lastError = e.getClass().getSimpleName() + ": " + e.getMessage();
             return false;
         }
+    }
+
+    /**
+     * Returns a timeout diagnostic including the target host and mapped port.
+     *
+     * @param container the container that did not become ready
+     * @param startupTimeout the readiness timeout
+     * @return a diagnostic message
+     */
+    @Override
+    public String timeoutDiagnostic(Container container, Duration startupTimeout) {
+        String host = lastHost != null ? lastHost : "unknown";
+        String mapped = lastMappedPort != null ? String.valueOf(lastMappedPort) : "unavailable";
+        String error = lastError != null ? "; last error: " + lastError : "";
+        return "PortWaitStrategy failed for image " + container.image() + ", container " + container.id()
+                + ", host " + host + ", container port " + containerPort + ", mapped host port " + mapped
+                + " within " + format(startupTimeout) + error;
+    }
+
+    private static String format(Duration timeout) {
+        long timeoutMillis = timeout.toMillis();
+        return (timeoutMillis >= 1000 && timeoutMillis % 1000 == 0) ? timeout.toSeconds() + "s" : timeoutMillis + "ms";
     }
 
     /**

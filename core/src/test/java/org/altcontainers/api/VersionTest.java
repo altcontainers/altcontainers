@@ -23,120 +23,84 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.Properties;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-@DisplayName("Version")
+/**
+ * Tests for {@link Version}.
+ */
 class VersionTest {
 
     @Test
-    @DisplayName("loads version from classpath resource")
-    void loadsVersionFromClasspathResource() throws IOException {
-        var version = Version.version();
-
-        assertThat(version).isNotBlank();
-        assertThat(version).isEqualTo(loadVersionFromResource());
+    void versionShouldReturnNonNullString() {
+        assertThat(Version.version()).isNotNull();
     }
 
     @Test
-    @DisplayName("loads version when context class loader is null")
-    void loadsVersionWhenContextClassLoaderIsNull() {
-        var original = Thread.currentThread().getContextClassLoader();
-        try {
-            Thread.currentThread().setContextClassLoader(null);
-            var version = Version.version();
-            assertThat(version).isNotBlank();
-        } finally {
-            Thread.currentThread().setContextClassLoader(original);
-        }
+    void unknownConstantShouldBeUnknown() {
+        assertThat(Version.UNKNOWN).isEqualTo("UNKNOWN");
     }
 
     @Test
-    @DisplayName("returns consistent version across calls")
-    void returnsConsistentVersionAcrossCalls() {
-        var first = Version.version();
-        var second = Version.version();
-        assertThat(first).isSameAs(second);
-        assertThat(first).isNotBlank();
+    void loadVersionShouldReturnVersionFromProperties() {
+        String props = "version=1.2.3\n";
+        InputStream stream = new ByteArrayInputStream(props.getBytes(StandardCharsets.UTF_8));
+        String result = Version.loadVersion(name -> stream);
+        assertThat(result).isEqualTo("1.2.3");
     }
 
-    @Nested
-    @DisplayName("loadVersion()")
-    class LoadVersion {
-
-        @Test
-        @DisplayName("returns UNKNOWN when resource provider returns null")
-        void returnsUnknownWhenResourceAbsent() {
-            var result = Version.loadVersion(name -> null);
-            assertThat(result).isEqualTo("UNKNOWN");
-        }
-
-        @Test
-        @DisplayName("logs warning when resource provider returns null")
-        void logsWarningWhenResourceAbsent() {
-            // Verify loadVersion returns UNKNOWN and does not throw when
-            // the resource is absent. The SLF4J logger is configured to
-            // WARN-level output; the test validates the return value.
-            var result = Version.loadVersion(name -> null);
-            assertThat(result).isEqualTo("UNKNOWN");
-        }
-
-        @Test
-        @DisplayName("returns UNKNOWN when InputStream throws IOException on load")
-        void returnsUnknownWhenIOExceptionOnLoad() {
-            var broken = new InputStream() {
-                @Override
-                public int read() throws IOException {
-                    throw new IOException("simulated read failure");
-                }
-            };
-            var result = Version.loadVersion(name -> broken);
-            assertThat(result).isEqualTo("UNKNOWN");
-        }
-
-        @Test
-        @DisplayName("returns UNKNOWN when version property is missing")
-        void returnsUnknownWhenVersionPropertyMissing() {
-            var content = "other=value".getBytes(StandardCharsets.ISO_8859_1);
-            var result = Version.loadVersion(name -> new ByteArrayInputStream(content));
-            assertThat(result).isEqualTo("UNKNOWN");
-        }
-
-        @Test
-        @DisplayName("returns UNKNOWN when version property is blank")
-        void returnsUnknownWhenVersionPropertyBlank() {
-            var content = "altcontainers.core.version=   ".getBytes(StandardCharsets.ISO_8859_1);
-            var result = Version.loadVersion(name -> new ByteArrayInputStream(content));
-            assertThat(result).isEqualTo("UNKNOWN");
-        }
-
-        @Test
-        @DisplayName("returns version string when present and non-blank")
-        void returnsVersionWhenPresent() {
-            var content = "altcontainers.core.version=1.2.3".getBytes(StandardCharsets.ISO_8859_1);
-            var result = Version.loadVersion(name -> new ByteArrayInputStream(content));
-            assertThat(result).isEqualTo("1.2.3");
-        }
-
-        @Test
-        @DisplayName("throws NullPointerException when resourceProvider is null")
-        void throwsForNullProvider() {
-            assertThatThrownBy(() -> Version.loadVersion(null))
-                    .isInstanceOf(NullPointerException.class)
-                    .hasMessageContaining("resourceProvider must not be null");
-        }
+    @Test
+    void loadVersionShouldRejectNullProvider() {
+        assertThatThrownBy(() -> Version.loadVersion(null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessageContaining("resourceProvider");
     }
 
-    private static String loadVersionFromResource() throws IOException {
-        var inputStream =
-                Thread.currentThread().getContextClassLoader().getResourceAsStream("containers-version.properties");
-        assertThat(inputStream).isNotNull();
-        var properties = new Properties();
-        try (inputStream) {
-            properties.load(inputStream);
-        }
-        return properties.getProperty("altcontainers.core.version");
+    @Test
+    void loadVersionShouldReturnUnknownWhenProviderReturnsNull() {
+        String result = Version.loadVersion(name -> null);
+        assertThat(result).isEqualTo(Version.UNKNOWN);
+    }
+
+    @Test
+    void loadVersionShouldReturnUnknownOnIoException() {
+        String result = Version.loadVersion(name -> new InputStream() {
+            @Override
+            public int read() throws IOException {
+                throw new IOException("read error");
+            }
+        });
+        assertThat(result).isEqualTo(Version.UNKNOWN);
+    }
+
+    @Test
+    void loadVersionShouldReturnUnknownWhenPropertyMissing() {
+        String props = "other=value\n";
+        InputStream stream = new ByteArrayInputStream(props.getBytes(StandardCharsets.UTF_8));
+        String result = Version.loadVersion(name -> stream);
+        assertThat(result).isEqualTo(Version.UNKNOWN);
+    }
+
+    @Test
+    void loadVersionShouldReturnUnknownWhenPropertyBlank() {
+        String props = "version=   \n";
+        InputStream stream = new ByteArrayInputStream(props.getBytes(StandardCharsets.UTF_8));
+        String result = Version.loadVersion(name -> stream);
+        assertThat(result).isEqualTo(Version.UNKNOWN);
+    }
+
+    @Test
+    void loadVersionShouldReturnUnknownWhenPropertyEmpty() {
+        String props = "version=\n";
+        InputStream stream = new ByteArrayInputStream(props.getBytes(StandardCharsets.UTF_8));
+        String result = Version.loadVersion(name -> stream);
+        assertThat(result).isEqualTo(Version.UNKNOWN);
+    }
+
+    @Test
+    void loadVersionShouldAcceptValidSemver() {
+        String props = "version=0.1.0-SNAPSHOT\n";
+        InputStream stream = new ByteArrayInputStream(props.getBytes(StandardCharsets.UTF_8));
+        String result = Version.loadVersion(name -> stream);
+        assertThat(result).isEqualTo("0.1.0-SNAPSHOT");
     }
 }

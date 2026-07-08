@@ -16,163 +16,103 @@
 
 package org.altcontainers.api;
 
-import java.util.Objects;
-import nonapi.org.altcontainers.ContainerManager;
-import nonapi.org.altcontainers.ContainerOperations;
-import nonapi.org.altcontainers.DockerClient;
+import nonapi.org.altcontainers.api.ContainerManager;
 
 /**
  * A runtime handle to a started Docker container.
  *
- * <p>{@code Container} is an immutable facade: it holds only the container identifier and image and
- * delegates every Docker operation to the shared, package-private static operation utilities. Instances are
- * thread-safe handles that can be shared freely.
- *
- * <p>Containers are created via {@link #create(ContainerSpec)} and must be
- * released with {@link #destroy()} (or {@link #close()}, which delegates to {@code destroy()}). Use
- * try-with-resources to guarantee cleanup:
- *
- * <pre>{@code
- * ContainerSpec containerSpec = ContainerSpec.builder("my-image:latest")
- *         .exposePorts(8080)
- *         .waitForLogMessage("started")
- *         .build();
- * try (Container container = Container.create(spec)) {
- *     // ... use container ...
- * }
- * }</pre>
- *
- * <p>Destruction is idempotent and blocks until Docker confirms the container is gone.
+ * <p>Containers are created via {@link #create(ContainerSpec)} and destroyed via
+ * {@link #close()} or {@link #close(Container)}. The concrete implementation
+ * lives in the {@code nonapi} package and is not intended for direct
+ * construction.
  */
-public class Container implements AutoCloseable {
+public interface Container extends AutoCloseable {
 
     /**
-     * The Docker-assigned container identifier.
-     */
-    private final String id;
-
-    /**
-     * The Docker image the container runs.
-     */
-    private final String image;
-
-    /**
-     * Creates a container handle.
+     * Creates, starts, and waits for a container to become ready.
      *
-     * @param id the Docker-assigned container identifier; must not be {@code null}
-     * @param image the Docker image name; must not be {@code null}
-     * @throws NullPointerException if either argument is {@code null}
+     * @param containerSpec the container spec
+     * @return a container handle
+     * @throws ContainerException if creation fails
      */
-    public Container(String id, String image) {
-        this.id = Objects.requireNonNull(id, "id must not be null");
-        this.image = Objects.requireNonNull(image, "image must not be null");
-    }
-
-    /**
-     * Creates, starts, and waits for a container to become ready, returning a runtime handle.
-     *
-     * <p>Delegates to the internal container manager. Equivalent to the former
-     * {@code Container.create(spec)}.
-     *
-     * @param containerSpec the immutable desired container configuration; must not be {@code null}
-     * @return a handle to the started, ready container
-     * @throws NullPointerException if {@code containerSpec} is {@code null}
-     * @throws IllegalArgumentException if the spec's {@code startupAttempts < 1} or
-     *     {@code startupTimeout} is not positive
-     * @throws ContainerException if the container cannot be pulled, started, or reach a ready state
-     */
-    public static Container create(ContainerSpec containerSpec) {
+    static Container create(ContainerSpec containerSpec) {
         return ContainerManager.getInstance().createContainer(containerSpec);
     }
 
     /**
-     * Stops and removes the given container, blocking until Docker confirms it is gone. Null-safe.
+     * Destroys a container. Null-safe. Delegates to the instance
+     * {@link #close()} method which ensures idempotent close.
      *
-     * @param container the container to destroy, or {@code null} for a no-op
-     * @throws ContainerException if the container is not confirmed gone within the destroy deadline,
-     *     or if the calling thread is interrupted while waiting
+     * @param container the container to close; may be {@code null}
      */
-    public static void destroy(Container container) {
-        ContainerManager.getInstance().destroyContainer(container);
+    static void close(Container container) {
+        if (container != null) {
+            container.close();
+        }
     }
 
     /**
-     * Returns the Docker-assigned container identifier.
+     * Returns the container id.
      *
-     * @return the container identifier
+     * @return the id
      */
-    public String id() {
-        return id;
-    }
+    String id();
 
     /**
-     * Returns the Docker image the container runs.
+     * Returns the Docker image.
      *
-     * @return the Docker image name
+     * @return the image name
      */
-    public String image() {
-        return image;
-    }
+    String image();
 
     /**
-     * Returns whether the container is currently in the {@code running} state.
+     * Returns whether the container is running.
+     * Uses cached metadata when available, falling back to a
+     * live daemon query when the cache is absent or negative.
      *
-     * <p>Absent containers are reported as not running rather than throwing.
-     *
-     * @return {@code true} if the container exists and is running; {@code false} otherwise
+     * @return true if running
      */
-    public boolean isRunning() {
-        return ContainerOperations.isContainerRunning(DockerClient.instance(), id);
-    }
+    boolean isRunning();
 
     /**
-     * Returns the mapped host port for the given container port.
+     * Returns the Docker host.
+     * Uses cached metadata when available, falling back to a
+     * live daemon query when the cache is absent or {@code null}.
      *
-     * <p>Port values outside {@code 1..65535} return {@code -1} without throwing. Only non-absence
-     * Docker inspection failures are escalated.
-     *
-     * @param containerPort the port exposed inside the container
-     * @return the host port mapped to the container port, or {@code -1} if not found, the container is
-     *     gone, or the port specification is malformed
+     * @return the host
      */
-    public int hostPort(int containerPort) {
-        return ContainerOperations.hostPort(DockerClient.instance(), id, containerPort);
-    }
+    String host();
 
     /**
-     * Copies a file into a container's filesystem via Docker's archive API.
-     * The file is written inside the container relative to {@code containerPath}.
+     * Returns the mapped host port.
+     * Uses cached metadata when available. Returns {@code null}
+     * if the port is not in the cached bindings from startup inspection.
      *
-     * @param containerPath the destination directory inside the container
-     * @param fileName the file name
-     * @param content the file content bytes
-     * @param mode the file mode (e.g., {@code 0777} for executable)
-     * @throws ContainerException if the copy fails
+     * @param containerPort the container port
+     * @return the mapped host port, or {@code null} if not mapped
      */
-    public void copyFileToContainer(String containerPath, String fileName, byte[] content, int mode) {
-        DockerClient.instance().putArchive(id, containerPath, fileName, content, mode);
-    }
+    Integer hostPort(int containerPort);
 
     /**
-     * Stop and remove this container, blocking until Docker confirms it is gone. Idempotent and terminal.
+     * Copies a file into the container.
      *
-     * <p>Releases the container's log follow-stream, issues a best-effort graceful stop, then an idempotent
-     * force-remove, polling until the container can no longer be inspected. Returns only once destruction
-     * is confirmed. The container cannot be reused after this call.
-     *
-     * @throws ContainerException if the container is not confirmed gone within the destroy deadline,
-     *     or if the calling thread is interrupted while waiting
+     * @param containerPath destination path
+     * @param fileName file name
+     * @param content file content
+     * @param mode file mode
      */
-    public void destroy() {
-        ContainerManager.getInstance().destroyContainer(this);
-    }
+    void copyFileToContainer(String containerPath, String fileName, byte[] content, int mode);
 
     /**
-     * Destroys this container. Delegates to {@link #destroy()}. Implements {@link AutoCloseable} for use
-     * in try-with-resources blocks.
+     * Returns the container spec used to create this container.
+     *
+     * @return the container spec, never {@code null}
+     */
+    ContainerSpec spec();
+
+    /**
+     * Destroys this container.
      */
     @Override
-    public void close() {
-        destroy();
-    }
+    void close();
 }

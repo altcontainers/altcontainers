@@ -35,7 +35,7 @@ The `Wait` class provides discoverable static factory methods equivalent to dire
 ```java
 WaitStrategy port = Wait.forListeningPort(8080);
 WaitStrategy log = Wait.forLogMessage(".*started.*", 1);
-WaitStrategy http = Wait.forHttpResponse(8080, "/health", Protocol.HTTP, 200, 399);
+WaitStrategy http = Wait.forHttpResponse(HttpWaitStrategy.Protocol.HTTP, 8080, "/health", 200, 399);
 ```
 
 ## Composition
@@ -50,7 +50,7 @@ WaitStrategy ready = Wait.allOf(
 
 ContainerSpec.builder("my-image")
     .exposePorts(8080)
-    .waitForStrategy(ready)
+    .waitStrategy(ready)
     .build();
 ```
 

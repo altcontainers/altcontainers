@@ -20,15 +20,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Duration;
 import java.util.function.Consumer;
+import nonapi.org.altcontainers.api.ConcreteContainer;
+import nonapi.org.altcontainers.api.ConcreteNetwork;
+import org.altcontainers.api.Container;
 import org.altcontainers.api.ContainerSpec;
 import org.altcontainers.api.Network;
+import org.altcontainers.api.OutputFrame;
 import org.altcontainers.api.PortWaitStrategy;
 import org.junit.jupiter.api.Test;
 
 class MongoDBContainerSpecTest {
 
     private static final String IMAGE = "mongo:7.0";
-    private static final Network NETWORK = new Network("test-net", "test-id");
+    private static final Network NETWORK = new ConcreteNetwork("test-net", "test-id");
 
     @Test
     void shouldSetImage() {
@@ -69,13 +73,13 @@ class MongoDBContainerSpecTest {
     }
 
     @Test
-    void shouldPassLogConsumer() {
-        Consumer<String> consumer = line -> {};
+    void shouldPassOutputConsumer() {
+        Consumer<OutputFrame> consumer = frame -> {};
         var spec = MongoDBContainerSpec.builder(IMAGE)
                 .network(NETWORK, "mongodb")
-                .logConsumer(consumer)
+                .outputConsumer(consumer)
                 .build();
-        assertThat(spec.logConsumer()).isSameAs(consumer);
+        assertThat(spec.onOutputConsumers()).containsExactly(consumer);
     }
 
     @Test
@@ -99,5 +103,32 @@ class MongoDBContainerSpecTest {
         var spec =
                 MongoDBContainerSpec.builder(IMAGE).network(NETWORK, "mongodb").build();
         assertThat(spec.environment()).isEmpty();
+    }
+
+    @Test
+    void shouldBuildConnectionStringWithContainerHost() throws Exception {
+        var environment = new MongoDBTestEnvironment(IMAGE);
+        setContainer(
+                environment,
+                new ConcreteContainer(
+                        "test-id", IMAGE, ContainerSpec.builder(IMAGE).build(), null) {
+                    @Override
+                    public String host() {
+                        return "docker.example.test";
+                    }
+
+                    @Override
+                    public Integer hostPort(int containerPort) {
+                        return 32768;
+                    }
+                });
+
+        assertThat(environment.getConnectionString()).isEqualTo("mongodb://docker.example.test:32768");
+    }
+
+    private static void setContainer(MongoDBTestEnvironment environment, Container container) throws Exception {
+        var field = MongoDBTestEnvironment.class.getDeclaredField("container");
+        field.setAccessible(true);
+        field.set(environment, container);
     }
 }

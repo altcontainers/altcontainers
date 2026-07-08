@@ -92,9 +92,8 @@ public class KafkaTestEnvironment implements AutoCloseable {
         Objects.requireNonNull(network, "network must not be null");
 
         KafkaContainerSpec spec = KafkaContainerSpec.builder(dockerImageName)
-                .startupDirectory("ignored")
                 .network(network, argumentName.replace('/', '-').replace(':', '-'))
-                .logConsumer(ContainerConsumer.of(getClass().getSimpleName(), argumentName))
+                .outputConsumer(ContainerConsumer.of(getClass().getSimpleName(), argumentName))
                 .build();
 
         try {
@@ -110,11 +109,14 @@ public class KafkaTestEnvironment implements AutoCloseable {
      * Polls the Kafka broker until it accepts API requests, or the broker
      * startup timeout elapses.
      */
+    private static final String PROBE_TOPIC = "_altcontainers_readiness_probe";
+
     private void awaitBrokerReady() {
         int pollIntervalMs = 500;
         long deadline = System.currentTimeMillis() + Duration.ofMinutes(2).toMillis();
         while (System.currentTimeMillis() < deadline) {
             if (isBrokerReady()) {
+                deleteProbeTopic();
                 return;
             }
             try {
@@ -128,6 +130,17 @@ public class KafkaTestEnvironment implements AutoCloseable {
         throw new ContainerException("Kafka broker not ready within startup timeout");
     }
 
+    private void deleteProbeTopic() {
+        var properties = new Properties();
+        properties.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, getBootstrapServers());
+        properties.put(AdminClientConfig.REQUEST_TIMEOUT_MS_CONFIG, ADMIN_REQUEST_TIMEOUT_MS);
+        try (var adminClient = AdminClient.create(properties)) {
+            adminClient.deleteTopics(List.of(PROBE_TOPIC)).all().get(TOPIC_CREATE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (Exception ignored) {
+            // Best-effort cleanup
+        }
+    }
+
     /**
      * Tests whether the Kafka broker is ready by attempting to create a
      * temporary topic.
@@ -136,7 +149,7 @@ public class KafkaTestEnvironment implements AutoCloseable {
      */
     private boolean isBrokerReady() {
         try {
-            createTopic("_altcontainers_readiness_probe");
+            createTopic(PROBE_TOPIC);
             return true;
         } catch (Exception e) {
             return false;
@@ -153,7 +166,7 @@ public class KafkaTestEnvironment implements AutoCloseable {
         if (container == null) {
             throw new IllegalStateException("getBootstrapServers() called before initialize()");
         }
-        return "localhost:" + container.hostPort(KafkaContainerSpec.KAFKA_PORT);
+        return container.host() + ":" + container.hostPort(KafkaContainerSpec.KAFKA_PORT);
     }
 
     /**

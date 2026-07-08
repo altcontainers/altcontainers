@@ -11,19 +11,25 @@ The Altcontainers public API lives in the `org.altcontainers.api` package.
 
 | Class | Role |
 |---|---|
-| `Container` | Static factory for creating and destroying containers |
-| `ContainerSpec` / `ContainerSpec.Builder` | Immutable container configuration with fluent builder |
-| `Network` | Static factory for creating and destroying Docker bridge networks |
-| `WaitCondition` | Sealed class hierarchy for container readiness conditions |
+| `Container` | Interface for creating and managing Docker containers |
+| `ContainerSpec` / `GenericContainerSpec.Builder` | Immutable container configuration with fluent builder |
+| `Network` | Interface for creating and managing Docker bridge networks |
+| `WaitStrategy` | Functional interface for container readiness strategies |
 | `Ulimit` | Linux resource limit specification |
 | `BindMount` | Host-to-container bind mount specification |
 | `ContainerException` | Runtime exception for lifecycle failures |
 | `Version` | Library version information |
-| `Protocol` | HTTP protocol variant for readiness probes |
+| `HttpWaitStrategy.Protocol` | HTTP protocol variant enum nested in HttpWaitStrategy |
+| `OutputFrame` | Raw container output frame with stream metadata |
+| `StartupContext` | Immutable context passed to startup-phase lifecycle callbacks |
+| `StartupFailure` | Immutable context passed to failed-startup-attempt lifecycle callbacks |
+| `StartupCheckStrategy` | Functional interface for startup-check strategies |
+| `Altcontainers` | Entry point for programmatic configuration |
+| `AltcontainersConfiguration` | Programmatic runtime configuration record |
 
 ## Design patterns
 
-- **Static factory methods.** `Container.create(spec)` and `Network.create()` are the entry points for creating resources. `Container.destroy(container)` and `Network.destroy(network)` for destruction.
+- **Static factory methods.** `Container.create(spec)` and `Network.create()` are the entry points for creating resources. `Container.close(container)` and `Network.close(network)` for destruction.
 - **Builder pattern.** `ContainerSpec.builder(image)` returns a mutable builder; `.build()` produces an immutable spec.
 - **Try-with-resources.** `Container` and `Network` implement `AutoCloseable` for deterministic cleanup.
 - **Shaded internals.** All implementation classes (Docker client, reaper, container manager, network manager) live under `nonapi.org.altcontainers` and are not part of the public API.

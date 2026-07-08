@@ -12,7 +12,7 @@ Altcontainers provides a programmatic Java API for Docker container lifecycle ma
 - Create, start, and destroy Docker containers from Java code
 - Wait for containers to be ready (port open, HTTP response, log message)
 - Manage Docker bridge networks for container-to-container communication
-- Automatic cleanup via JVM shutdown hook (reaper)
+- Automatic cleanup via a separate reaper process per JVM session
 - Retry failed startups with configurable backoff
 - Shaded dependencies — no classpath conflicts
 
@@ -25,7 +25,9 @@ Key differences:
 - **No module ecosystem.** Altcontainers is a single JAR with no specialized container wrappers.
 - **Shaded uber-JAR.** All dependencies are relocated; no version conflicts with your project.
 - **Explicit lifecycle.** You control when containers are created and destroyed.
-- **Reaper-based cleanup.** Containers and networks are destroyed on JVM exit, even after `System.exit()`.
+- **Reaper-based cleanup.** Altcontainers launches a separate Java reaper process for each JVM session. The reaper watches a persistent TCP connection for liveness. When the JVM exits (including `System.exit()`), the shutdown hook sends a `TERMINATE` message to the reaper, which then destroys all containers and networks labeled with the session ID. Unlike [Testcontainers' Ryuk](https://java.testcontainers.org), the reaper is a plain Java process, not a Docker container — no privileged sidecar required.
+
+- **Parallelism control.** The `altcontainers.networks.parallelism` system property bounds concurrent network creation, preventing Docker daemon overload under heavy parallel test execution.
 
 ## When to use Altcontainers
 

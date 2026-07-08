@@ -74,12 +74,12 @@ ContainerSpec.builder("my-service")
 All strategies must be satisfied before the container is considered ready.
 
 Strategies can also be composed with `Wait.allOf()` and `Wait.anyOf()` and passed
-to `waitForStrategy()`:
+to `waitStrategy()`:
 
 ```java
 ContainerSpec.builder("my-service")
     .exposePorts(8080)
-    .waitForStrategy(Wait.allOf(
+    .waitStrategy(Wait.allOf(
         PortWaitStrategy.builder().port(8080).build(),
         LogWaitStrategy.builder().pattern(".*started.*").build()
     ))
@@ -99,18 +99,18 @@ ContainerSpec.builder("my-service")
 
 ```java
 // Lambda implementation
-builder.waitForStrategy(container -> {
-    int port = container.hostPort(8080);
-    return port > 0;
+builder.waitStrategy(container -> {
+    Integer port = container.hostPort(8080);
+    return port != null && port > 0;
 });
 
 // Direct construction of built-in types
-builder.waitForStrategy(PortWaitStrategy.builder().port(8080).build());
-builder.waitForStrategy(HttpWaitStrategy.builder().port(8080).path("/health").build());
+builder.waitStrategy(PortWaitStrategy.builder().port(8080).build());
+builder.waitStrategy(HttpWaitStrategy.builder().port(8080).path("/health").build());
 
 // Factory convenience
-builder.waitForStrategy(Wait.forListeningPort(8080));
-builder.waitForStrategy(Wait.forLogMessage(".*started.*", 1));
+builder.waitStrategy(Wait.forListeningPort(8080));
+builder.waitStrategy(Wait.forLogMessage(".*started.*", 1));
 ```
 
 ## Learn next

@@ -24,7 +24,7 @@ The container started but the wait conditions were not satisfied within the `sta
   ```
 - Enable log output to see what the container is doing:
   ```java
-  .logConsumer(line -> System.out.println("[APP] my-image | " + line))
+  .onOutput(frame -> System.out.println("[APP] my-image | " + frame.utf8StringWithoutLineEnding()))
   ```
 - Verify the wait condition matches the service behavior
 
@@ -70,9 +70,9 @@ The container was destroyed between creation and use.
 
 ## Port mapping issues
 
-### "hostPort returns -1"
+### "hostPort returns null"
 
-The container port was not found in the port mapping.
+The container port is not in the cached bindings from startup inspection.
 
 **Causes:**
 - The port was not exposed via `.exposePorts()`
@@ -82,6 +82,7 @@ The container port was not found in the port mapping.
 **Solutions:**
 - Always call `.exposePorts()` for ports you need to access
 - Check `container.isRunning()` before calling `hostPort()`
+- Check for `null` before using the host port value
 
 ## Learn next
 

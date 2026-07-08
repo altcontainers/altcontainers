@@ -16,16 +16,31 @@
 
 package org.altcontainers.api;
 
+import nonapi.org.altcontainers.api.ManagedWaitStrategy;
+
 /**
  * A composite wait strategy that is satisfied when all of its child strategies
  * are satisfied. Short-circuits on the first failing child.
  */
 final class AllOfWaitStrategy extends CompositeWaitStrategy {
 
+    /**
+     * Creates an all-of strategy with the given child strategies.
+     *
+     * @param strategies the child strategies; must not be {@code null} or
+     *     contain {@code null} elements
+     */
     AllOfWaitStrategy(WaitStrategy... strategies) {
         super(strategies);
     }
 
+    /**
+     * Returns {@code true} only when every child strategy is satisfied.
+     * Short-circuits on the first failing child.
+     *
+     * @param container the container to evaluate against
+     * @return {@code true} if all child strategies are satisfied
+     */
     @Override
     public boolean check(Container container) {
         for (WaitStrategy s : strategies) {
@@ -37,7 +52,7 @@ final class AllOfWaitStrategy extends CompositeWaitStrategy {
     }
 
     @Override
-    CompositeWaitStrategy create(WaitStrategy... strategies) {
+    ManagedWaitStrategy create(WaitStrategy... strategies) {
         return new AllOfWaitStrategy(strategies);
     }
 }

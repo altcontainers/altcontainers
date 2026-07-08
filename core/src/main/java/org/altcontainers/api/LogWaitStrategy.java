@@ -16,9 +16,11 @@
 
 package org.altcontainers.api;
 
+import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
+import nonapi.org.altcontainers.api.ManagedWaitStrategy;
 
 /**
  * A readiness strategy that counts log lines matching a regex
@@ -36,7 +38,7 @@ import java.util.regex.Pattern;
  * WaitStrategy log = Wait.forLogMessage(".*started.*", 1);
  * }</pre>
  */
-public final class LogWaitStrategy implements WaitStrategy {
+public final class LogWaitStrategy implements ManagedWaitStrategy {
 
     private final Pattern pattern;
     private final int times;
@@ -86,7 +88,7 @@ public final class LogWaitStrategy implements WaitStrategy {
      * @return a new strategy instance with a fresh counter
      */
     @Override
-    public WaitStrategy newAttemptCondition() {
+    public ManagedWaitStrategy newAttemptCondition() {
         return new LogWaitStrategy(pattern, times, new AtomicInteger(0));
     }
 
@@ -114,6 +116,21 @@ public final class LogWaitStrategy implements WaitStrategy {
     }
 
     /**
+     * Returns a timeout diagnostic with the configured regex and observed match
+     * count.
+     *
+     * @param container the container that did not become ready
+     * @param startupTimeout the readiness timeout
+     * @return a diagnostic message
+     */
+    @Override
+    public String timeoutDiagnostic(Container container, Duration startupTimeout) {
+        return "LogWaitStrategy failed for image " + container.image() + ", container " + container.id()
+                + ", regex " + pattern.pattern() + ", matched " + count.get() + " of " + times + " within "
+                + format(startupTimeout);
+    }
+
+    /**
      * Increments the match count if the given raw line matches the pattern.
      *
      * <p>The raw log line is matched as-is (including any trailing newline),
@@ -127,6 +144,11 @@ public final class LogWaitStrategy implements WaitStrategy {
         if (pattern.matcher(line).matches()) {
             count.incrementAndGet();
         }
+    }
+
+    private static String format(Duration timeout) {
+        long timeoutMillis = timeout.toMillis();
+        return (timeoutMillis >= 1000 && timeoutMillis % 1000 == 0) ? timeout.toSeconds() + "s" : timeoutMillis + "ms";
     }
 
     /**

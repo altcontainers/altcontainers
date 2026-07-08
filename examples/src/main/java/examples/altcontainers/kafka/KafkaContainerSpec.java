@@ -21,9 +21,11 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Consumer;
+import org.altcontainers.api.Container;
 import org.altcontainers.api.ContainerSpec;
 import org.altcontainers.api.GenericContainerSpec;
 import org.altcontainers.api.Network;
+import org.altcontainers.api.OutputFrame;
 
 /**
  * A {@link ContainerSpec} pre-configured for an {@code apache/kafka} image running in KRAFT mode.
@@ -37,7 +39,7 @@ import org.altcontainers.api.Network;
  * <pre>{@code
  * KafkaContainerSpec spec = KafkaContainerSpec.builder("apache/kafka:3.9.2")
  *         .network(network, "kafka")
- *         .logConsumer(ContainerConsumer.of("kafka", "3.9.2"))
+ *         .outputConsumer(ContainerConsumer.of("kafka", "3.9.2"))
  *         .build();
  * Container container = Container.create(spec);
  * }</pre>
@@ -104,7 +106,7 @@ public final class KafkaContainerSpec extends GenericContainerSpec {
      *
      * <p>The builder pre-fills Kafka defaults: port 9092, KRAFT environment variables,
      * log-message wait condition, 1-minute startup timeout, 3 startup attempts.
-     * Callers specify only image, network, and log consumer.
+     * Callers specify only image, network, and output consumer.
      *
      * <p>Instances are mutable and not thread-safe.
      */
@@ -124,7 +126,21 @@ public final class KafkaContainerSpec extends GenericContainerSpec {
                     .shmSize(SHM_SIZE)
                     .startupTimeout(STARTUP_TIMEOUT)
                     .startupAttempts(STARTUP_ATTEMPTS)
-                    .waitForLogMessage(".*Transition(?:ing)? from RECOVERY to RUNNING.*");
+                    .waitForLogMessage(".*Transition(?:ing)? from RECOVERY to RUNNING.*")
+                    .onStart(startupContext -> {
+                        Container container = startupContext.container();
+                        String host = container.host();
+                        int hostPort = container.hostPort(KAFKA_PORT);
+                        String script = "#!/bin/bash\n"
+                                + "export KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://"
+                                + host
+                                + ":"
+                                + hostPort
+                                + ",BROKER://localhost:9093\n"
+                                + "exec /etc/kafka/docker/run\n";
+                        container.copyFileToContainer(
+                                "/tmp", "testcontainers_start.sh", script.getBytes(StandardCharsets.UTF_8), 0777);
+                    });
         }
 
         /**
@@ -140,27 +156,13 @@ public final class KafkaContainerSpec extends GenericContainerSpec {
         }
 
         /**
-         * Sets the log consumer for container output.
+         * Sets the output consumer for container output.
          *
-         * @param consumer the log consumer
+         * @param consumer the output consumer
          * @return this builder
          */
-        public Builder logConsumer(Consumer<String> consumer) {
-            delegate.logConsumer(consumer);
-            return this;
-        }
-
-        public Builder startupDirectory(String hostPath) {
-            delegate.startupConsumer(container -> {
-                int hostPort = container.hostPort(KAFKA_PORT);
-                String script = "#!/bin/bash\n"
-                        + "export KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://localhost:"
-                        + hostPort
-                        + ",BROKER://localhost:9093\n"
-                        + "exec /etc/kafka/docker/run\n";
-                container.copyFileToContainer(
-                        "/tmp", "testcontainers_start.sh", script.getBytes(StandardCharsets.UTF_8), 0777);
-            });
+        public Builder outputConsumer(Consumer<OutputFrame> consumer) {
+            delegate.onOutput(consumer);
             return this;
         }
 

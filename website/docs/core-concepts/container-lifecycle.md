@@ -5,12 +5,12 @@ description: Understanding the Altcontainers container lifecycle from creation t
 
 # Container Lifecycle
 
-Altcontainers manages the full Docker container lifecycle through `Container.create()` and `Container.destroy()`.
+Altcontainers manages the full Docker container lifecycle through `Container.create()` and `Container.close()`.
 
 ## Lifecycle stages
 
 ```
-pull image → create container → start container → wait for readiness → use container → destroy container
+pull image → create container → start container → wait for readiness → use container → close container
 ```
 
 ### 1. Pull image
@@ -42,7 +42,7 @@ The returned `Container` handle provides:
 - `isRunning()` — whether the container is running
 - `hostPort(containerPort)` — the mapped host port
 
-### 6. Destroy container
+### 6. Close container
 
 The container is stopped and removed. Destruction is:
 - **Idempotent** — safe to call multiple times
@@ -85,15 +85,19 @@ Container container = Container.create(spec);
 try {
     // ... use container ...
 } finally {
-    Container.destroy(container);
+    Container.close(container);
 }
 ```
 
-Or call `container.destroy()` or `container.close()` directly.
+Or call `container.close()` directly.
 
 ## Automatic cleanup (Reaper)
 
-Altcontainers registers a JVM shutdown hook (the "reaper") that destroys all containers and networks created during the JVM session, even if `System.exit()` is called. You should still explicitly clean up resources when possible; the reaper is a safety net.
+Altcontainers launches a separate **reaper process** for each JVM session. The reaper is a standalone Java process that watches a persistent TCP connection for liveness. When the connection drops, the reaper cleans up all Docker resources labeled with the session ID.
+
+The JVM shutdown hook sends a `TERMINATE` message to the reaper process and closes the TCP connection, triggering cleanup. This ensures cleanup even if `System.exit()` is called.
+
+You should still explicitly clean up resources when possible; the reaper is a safety net. See [Cleanup](cleanup) for details on how the reaper works.
 
 ## Learn next
 

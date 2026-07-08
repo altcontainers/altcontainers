@@ -39,12 +39,12 @@ try (Container container = Container.create(containerSpec)) {
 ```java
 ContainerSpec containerSpec = ContainerSpec.builder("nginx:1.27")
     .exposePorts(80)
-    .logConsumer(line -> System.out.println("[NGINX] nginx:1.27 | " + line))
+    .onOutput(frame -> System.out.println("[NGINX] nginx:1.27 | " + frame.utf8StringWithoutLineEnding()))
     .waitForHttpResponse(80, "/")
     .build();
 ```
 
-Container logs are printed to stdout as `[NGINX] nginx:1.27 | <log line>`.
+Container output frames are printed to stdout as `[NGINX] nginx:1.27 | <output>`.
 
 ## Use a custom command
 

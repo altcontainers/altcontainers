@@ -21,6 +21,7 @@ import java.util.function.Consumer;
 import org.altcontainers.api.ContainerSpec;
 import org.altcontainers.api.GenericContainerSpec;
 import org.altcontainers.api.Network;
+import org.altcontainers.api.OutputFrame;
 
 /**
  * A {@link ContainerSpec} pre-configured for an {@code nginx} image.
@@ -34,7 +35,7 @@ import org.altcontainers.api.Network;
  * <pre>{@code
  * NginxContainerSpec spec = NginxContainerSpec.builder("nginx:1.27.5")
  *         .network(network, "nginx2")
- *         .logConsumer(ContainerConsumer.of("nginx", "1.27.5"))
+ *         .outputConsumer(ContainerConsumer.of("nginx", "1.27.5"))
  *         .build();
  * Container container = Container.create(spec);
  * }</pre>
@@ -68,7 +69,7 @@ public final class NginxContainerSpec extends GenericContainerSpec {
      *
      * <p>The builder pre-fills Nginx defaults: port 80, foreground command,
      * HTTP readiness check on {@code /}, 1-minute startup timeout, 3 startup attempts.
-     * Callers specify only image, network, and log consumer.
+     * Callers specify only image, network, and output consumer.
      *
      * <p>Instances are mutable and not thread-safe.
      */
@@ -82,7 +83,7 @@ public final class NginxContainerSpec extends GenericContainerSpec {
                     .exposePorts(NGINX_PORT)
                     .startupTimeout(STARTUP_TIMEOUT)
                     .startupAttempts(STARTUP_ATTEMPTS)
-                    .waitForHttpResponse(NGINX_PORT, "/");
+                    .waitForHttpResponse(NGINX_PORT);
         }
 
         /**
@@ -98,13 +99,13 @@ public final class NginxContainerSpec extends GenericContainerSpec {
         }
 
         /**
-         * Sets the log consumer for container output.
+         * Sets the output consumer for container output.
          *
-         * @param consumer the log consumer
+         * @param consumer the output consumer
          * @return this builder
          */
-        public Builder logConsumer(Consumer<String> consumer) {
-            delegate.logConsumer(consumer);
+        public Builder outputConsumer(Consumer<OutputFrame> consumer) {
+            delegate.onOutput(consumer);
             return this;
         }
 
