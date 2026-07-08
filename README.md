@@ -1,6 +1,8 @@
 # Altcontainers
 
+[![Build Status](https://github.com/altcontainers/altcontainers/actions/workflows/build.yaml/badge.svg)](https://github.com/altcontainers/altcontainers/actions)
 [![Java Version](https://img.shields.io/badge/Java-17%2B-007396?logo=openjdk&logoColor=white)](https://openjdk.org/projects/jdk/17/)
+[![Maven Central](https://img.shields.io/maven-central/v/org.altcontainers/core)](https://central.sonatype.com/search?namespace=org.altcontainers)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 Altcontainers is a lightweight Java 17+ Docker container lifecycle management library.
