@@ -47,6 +47,14 @@ const config = {
           routeBasePath: '/',
           sidebarPath: require.resolve('./sidebars.js'),
           editUrl: 'https://github.com/altcontainers/altcontainers/tree/main/website/',
+          lastVersion: '0.1.0',
+          versions: {
+            current: {
+              label: 'Next',
+              banner: 'unreleased',
+              badge: true,
+            },
+          },
         },
         theme: {
           customCss: require.resolve('./src/css/custom.css'),

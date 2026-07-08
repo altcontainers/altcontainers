@@ -5,11 +5,7 @@ description: Altcontainers release history and changelog.
 
 # Release Notes
 
-## 0.2.0 (Unreleased)
-
-TBD
-
-## 0.1.0
+## 0.1.0 (Unreleased)
 
 Initial release of Altcontainers as a standalone library.
 

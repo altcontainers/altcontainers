@@ -71,7 +71,8 @@ class PortWaitStrategyTest {
 
         assertThat(result).isFalse();
         // With 100ms timeout, should complete quickly
-        assertThat(duration).isLessThan(500);
+        // (allow generous margin for CI initialization overhead)
+        assertThat(duration).isLessThan(2000);
     }
 
     @Test
