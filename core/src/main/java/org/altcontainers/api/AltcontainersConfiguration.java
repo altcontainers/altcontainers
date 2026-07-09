@@ -120,7 +120,7 @@ public record AltcontainersConfiguration(
         private boolean reaperDisabled;
         private Duration reaperConnectionTimeout = Duration.ofSeconds(10);
         private Duration reaperStartupTimeout = Duration.ofSeconds(10);
-        private Duration reaperStopTimeout = Duration.ofSeconds(5);
+        private Duration reaperStopTimeout = Duration.ofSeconds(30);
         private Duration containerStartupTimeout = ContainerSpec.DEFAULT_STARTUP_TIMEOUT;
         private Duration containerReadinessPollInitial = Duration.ofMillis(10);
         private Duration containerReadinessPollMax = Duration.ofMillis(500);

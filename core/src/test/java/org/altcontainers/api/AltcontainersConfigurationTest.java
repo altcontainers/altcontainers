@@ -33,7 +33,7 @@ class AltcontainersConfigurationTest {
         assertThat(config.reaperDisabled()).isFalse();
         assertThat(config.reaperConnectionTimeout()).isEqualTo(Duration.ofSeconds(10));
         assertThat(config.reaperStartupTimeout()).isEqualTo(Duration.ofSeconds(10));
-        assertThat(config.reaperStopTimeout()).isEqualTo(Duration.ofSeconds(5));
+        assertThat(config.reaperStopTimeout()).isEqualTo(Duration.ofSeconds(30));
         assertThat(config.containerStartupTimeout()).isEqualTo(Duration.ofSeconds(60));
         assertThat(config.containerReadinessPollInitial()).isEqualTo(Duration.ofMillis(10));
         assertThat(config.containerReadinessPollMax()).isEqualTo(Duration.ofMillis(500));
