@@ -16,11 +16,20 @@
 
 package nonapi.org.altcontainers.api;
 
+import java.io.IOException;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.altcontainers.api.ContainerException;
 import org.altcontainers.api.Network;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Network lifecycle facade — uses docker-java directly.
@@ -28,6 +37,13 @@ import org.altcontainers.api.Network;
 public final class NetworkManager {
 
     private static final NetworkManager INSTANCE = new NetworkManager();
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(NetworkManager.class);
+    private static final ExecutorService STOP_EXECUTOR = Executors.newCachedThreadPool(r -> {
+        Thread t = new Thread(r, "altcontainers-network-remove");
+        t.setDaemon(true);
+        return t;
+    });
 
     private final Semaphore networkSemaphore;
     private final ConcurrentHashMap<String, Boolean> releasedIds = new ConcurrentHashMap<>();
@@ -91,6 +107,8 @@ public final class NetworkManager {
 
     /**
      * Destroys a Docker network via docker-java. Null-safe.
+     * On timeout or failure after handling known-safe results, delegates
+     * cleanup to the reaper process as a safety net.
      *
      * @param network the network to close; may be {@code null}
      */
@@ -98,14 +116,59 @@ public final class NetworkManager {
         if (network == null) {
             return;
         }
+        long stopTimeoutSeconds =
+                ReaperController.instance().configuration().reaperStopTimeout().toSeconds();
+        // Future timeout includes a buffer so Docker daemon latency doesn't
+        // race the Java timeout, avoiding unnecessary delegation to the reaper.
+        long futureTimeoutSeconds = Math.addExact(stopTimeoutSeconds, 10L);
         try {
-            DockerClientFactory.client().removeNetworkCmd(network.id()).exec();
-        } catch (RuntimeException e) {
-            // Best-effort
+            CompletableFuture<Void> future = CompletableFuture.runAsync(
+                    () -> DockerClientFactory.client()
+                            .removeNetworkCmd(network.id())
+                            .exec(),
+                    STOP_EXECUTOR);
+            future.get(futureTimeoutSeconds, TimeUnit.SECONDS);
+        } catch (TimeoutException e) {
+            LOGGER.debug(
+                    "Remove timed out for network {} after {}s, delegating to reaper",
+                    network.id(),
+                    futureTimeoutSeconds);
+            delegateTerminateNetworkToReaper(network.id());
+        } catch (ExecutionException e) {
+            if (e.getCause() instanceof com.github.dockerjava.api.exception.NotFoundException) {
+                LOGGER.debug("Network {} not found during remove (already removed)", network.id());
+            } else {
+                LOGGER.debug(
+                        "Remove failed for network {}, delegating to reaper: {}",
+                        network.id(),
+                        e.getCause() != null ? e.getCause().getMessage() : "unknown");
+                delegateTerminateNetworkToReaper(network.id());
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            LOGGER.debug("Interrupted during remove for network {}, delegating to reaper", network.id());
+            delegateTerminateNetworkToReaper(network.id());
         } finally {
             if (networkSemaphore != null && releasedIds.putIfAbsent(network.id(), Boolean.TRUE) == null) {
                 networkSemaphore.release();
                 releasedIds.remove(network.id());
+            }
+        }
+    }
+
+    /**
+     * Sends a TERMINATE_NETWORK command to the reaper process for
+     * asynchronous network cleanup.
+     *
+     * @param networkId the Docker network ID
+     */
+    private void delegateTerminateNetworkToReaper(String networkId) {
+        ReaperConnection conn = ReaperController.instance().reaperConnection();
+        if (conn != null) {
+            try {
+                conn.sendTerminateNetwork(networkId);
+            } catch (IOException e) {
+                LOGGER.warn("Failed to send TERMINATE_NETWORK to reaper for network {}: {}", networkId, e.getMessage());
             }
         }
     }

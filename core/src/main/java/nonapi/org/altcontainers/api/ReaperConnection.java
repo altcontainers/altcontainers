@@ -53,6 +53,30 @@ final class ReaperConnection implements AutoCloseable {
     }
 
     /**
+     * Sends TERMINATE_CONTAINER to delegate cleanup of a single container
+     * to the reaper without shutting it down.
+     *
+     * @param containerId the Docker container ID
+     * @throws IOException if the write fails
+     */
+    void sendTerminateContainer(String containerId) throws IOException {
+        writer.write("TERMINATE_CONTAINER " + containerId + "\n");
+        writer.flush();
+    }
+
+    /**
+     * Sends TERMINATE_NETWORK to delegate cleanup of a single network
+     * to the reaper without shutting it down.
+     *
+     * @param networkId the Docker network ID
+     * @throws IOException if the write fails
+     */
+    void sendTerminateNetwork(String networkId) throws IOException {
+        writer.write("TERMINATE_NETWORK " + networkId + "\n");
+        writer.flush();
+    }
+
+    /**
      * Closes the underlying TCP socket.
      */
     @Override

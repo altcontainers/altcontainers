@@ -107,7 +107,7 @@ public final class AltcontainersProperties {
             new KeyDef(REAPER_DISABLED, "false", Kind.BOOLEAN),
             new KeyDef(REAPER_CONNECTION_TIMEOUT_MS, "10000", Kind.DURATION_MS),
             new KeyDef(REAPER_STARTUP_TIMEOUT_MS, "10000", Kind.DURATION_MS),
-            new KeyDef(REAPER_STOP_TIMEOUT_MS, "5000", Kind.DURATION_MS),
+            new KeyDef(REAPER_STOP_TIMEOUT_MS, "30000", Kind.DURATION_MS),
             new KeyDef(
                     CONTAINER_STARTUP_TIMEOUT_MS,
                     String.valueOf(ContainerSpec.DEFAULT_STARTUP_TIMEOUT.toMillis()),

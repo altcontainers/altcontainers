@@ -25,6 +25,8 @@ import ch.qos.logback.core.rolling.RollingFileAppender;
 import ch.qos.logback.core.rolling.SizeBasedTriggeringPolicy;
 import ch.qos.logback.core.util.FileSize;
 import com.github.dockerjava.api.DockerClient;
+import com.github.dockerjava.api.exception.NotFoundException;
+import com.github.dockerjava.api.exception.NotModifiedException;
 import com.github.dockerjava.api.model.Container;
 import com.github.dockerjava.core.DockerClientImpl;
 import com.github.dockerjava.transport.DockerHttpClient;
@@ -68,7 +70,7 @@ public final class Reaper {
      * @return the stop timeout in milliseconds
      */
     private static int parseStopTimeoutMsFromProperty() {
-        String raw = System.getProperty("altcontainers.reaper.stop.timeout.ms", "5000");
+        String raw = System.getProperty("altcontainers.reaper.stop.timeout.ms", "30000");
         try {
             return parseStopTimeoutMs(raw);
         } catch (IllegalArgumentException e) {
@@ -214,7 +216,7 @@ public final class Reaper {
             System.exit(1);
             return;
         }
-        logger.info("Reaper listening on port {} for session {}", port, sessionId);
+        logger.info("Port {}", port);
 
         Socket clientSocket;
         try {
@@ -244,8 +246,9 @@ public final class Reaper {
 
         boolean receivedTerminate;
         try {
-            receivedTerminate = receiveSessionAndWatch(clientSocket, sessionId, HANDSHAKE_TIMEOUT_MILLISECONDS);
-            logger.info("Connection closed for session {} (terminate={})", sessionId, receivedTerminate);
+            receivedTerminate =
+                    receiveSessionAndWatch(clientSocket, sessionId, HANDSHAKE_TIMEOUT_MILLISECONDS, dockerClient);
+            logger.info("Disconnected (terminate={})", receivedTerminate);
         } catch (HandshakeException e) {
             logger.warn(e.getMessage());
             deletePortFile(sessionId);
@@ -282,17 +285,20 @@ public final class Reaper {
     }
 
     /**
-     * Performs the session ID handshake with the core module, then blocks
-     * reading from the socket until the connection drops or a TERMINATE
-     * message is received.
+     * Performs the session ID handshake with the core module, then enters a
+     * command loop reading from the socket. Processes TERMINATE_CONTAINER,
+     * TERMINATE_NETWORK, and TERMINATE commands. Returns when the connection
+     * drops or TERMINATE is received.
      *
      * @param clientSocket the connected client socket
      * @param sessionId the expected session ID
      * @param handshakeTimeoutMilliseconds the handshake read timeout
+     * @param dockerClient the Docker client used for per-resource cleanup
      * @return {@code true} if the client sent TERMINATE before disconnecting
      * @throws IOException if the handshake or read fails
      */
-    static boolean receiveSessionAndWatch(Socket clientSocket, String sessionId, int handshakeTimeoutMilliseconds)
+    static boolean receiveSessionAndWatch(
+            Socket clientSocket, String sessionId, int handshakeTimeoutMilliseconds, DockerClient dockerClient)
             throws IOException {
         clientSocket.setSoTimeout(handshakeTimeoutMilliseconds);
         var writer = new OutputStreamWriter(clientSocket.getOutputStream(), StandardCharsets.UTF_8);
@@ -306,10 +312,81 @@ public final class Reaper {
 
         writer.write("OK\n");
         writer.flush();
-        logger.info("Session {} connected", sessionId);
+        logger.info("Connected");
 
         clientSocket.setSoTimeout(0);
-        return "TERMINATE".equals(reader.readLine());
+        while (true) {
+            String line = reader.readLine();
+            if (line == null) {
+                return false; // connection dropped
+            }
+            if ("TERMINATE".equals(line)) {
+                return true; // explicit terminate
+            }
+            if (line.startsWith("TERMINATE_NETWORK ")) {
+                String networkId = line.substring(18).trim();
+                terminateNetworkSingle(dockerClient, networkId);
+                continue;
+            }
+            if (line.startsWith("TERMINATE_CONTAINER ")) {
+                String containerId = line.substring(20).trim();
+                stopAndRemoveSingle(dockerClient, containerId);
+                continue;
+            }
+            logger.warn("Unknown command: {}", line);
+        }
+    }
+
+    /**
+     * Stops and removes a single container. Non-existent containers are treated
+     * as success (already gone).
+     *
+     * @param client the Docker client
+     * @param containerId the container ID
+     */
+    private static void stopAndRemoveSingle(DockerClient client, String containerId) {
+        try {
+            client.stopContainerCmd(containerId)
+                    .withTimeout((int) (STOP_TIMEOUT_MS / 1000L))
+                    .exec();
+        } catch (NotFoundException e) {
+            logger.debug("Container {} not found during stop (already removed)", containerId);
+            return;
+        } catch (NotModifiedException e) {
+            logger.debug("Container {} already stopped (Status 304)", containerId);
+        } catch (RuntimeException e) {
+            logger.warn("Failed to stop container {}: {}", containerId, e.getMessage());
+        }
+        try {
+            client.removeContainerCmd(containerId).withForce(true).exec();
+            logger.info("Removed container {}", containerId);
+        } catch (NotFoundException e) {
+            logger.debug("Container {} not found during remove (already removed)", containerId);
+        } catch (NotModifiedException e) {
+            logger.debug("Container {} already removed (Status 304)", containerId);
+        } catch (RuntimeException e) {
+            logger.error("Failed to remove container {}: {}", containerId, e.getMessage());
+        }
+    }
+
+    /**
+     * Removes a single network. Non-existent networks are treated as success
+     * (already gone).
+     *
+     * @param client the Docker client
+     * @param networkId the network ID
+     */
+    private static void terminateNetworkSingle(DockerClient client, String networkId) {
+        try {
+            client.removeNetworkCmd(networkId).exec();
+            logger.info("Removed network {}", networkId);
+        } catch (NotFoundException e) {
+            logger.debug("Network {} not found (already removed)", networkId);
+        } catch (NotModifiedException e) {
+            logger.debug("Network {} already removed (Status 304)", networkId);
+        } catch (RuntimeException e) {
+            logger.error("Failed to remove network {}: {}", networkId, e.getMessage());
+        }
     }
 
     /**
@@ -337,12 +414,21 @@ public final class Reaper {
                 client.stopContainerCmd(id)
                         .withTimeout((int) (STOP_TIMEOUT_MS / 1000L))
                         .exec();
+            } catch (NotFoundException e) {
+                logger.debug("Container {} not found during stop (already removed)", id);
+                continue;
+            } catch (NotModifiedException e) {
+                logger.debug("Container {} already stopped (Status 304)", id);
             } catch (RuntimeException e) {
                 logger.warn("Failed to stop container {}: {}", id, e.getMessage());
             }
             try {
                 client.removeContainerCmd(id).withForce(true).exec();
                 logger.info("Removed container {}", id);
+            } catch (NotFoundException e) {
+                logger.debug("Container {} not found during remove (already removed)", id);
+            } catch (NotModifiedException e) {
+                logger.debug("Container {} already removed (Status 304)", id);
             } catch (RuntimeException e) {
                 logger.error("Failed to remove container {}: {}", id, e.getMessage());
             }
@@ -365,16 +451,14 @@ public final class Reaper {
             try {
                 client.removeNetworkCmd(id).exec();
                 logger.info("Removed network {}", id);
+            } catch (NotFoundException e) {
+                logger.debug("Network {} not found (already removed)", id);
             } catch (RuntimeException e) {
                 logger.error("Failed to remove network {}: {}", id, e.getMessage());
             }
         }
 
-        logger.info(
-                "Cleanup complete for session {}: {} containers, {} networks",
-                sessionId,
-                containerIds.size(),
-                networkIds.size());
+        logger.info("Session cleaned (networks={},containers={})", networkIds.size(), containerIds.size());
     }
 
     /**
@@ -501,15 +585,14 @@ public final class Reaper {
     }
 
     /**
-     * Logs the reaper startup banner with version, session ID, and PID.
+     * Logs the reaper startup banner with version, PID, and session ID
+     * each on its own line.
      *
      * @param sessionId the session UUID
      */
     static void logHeader(String sessionId) {
-        logger.info(
-                "Altcontainers Reaper v{} session={} pid={}",
-                Version.version(),
-                sessionId,
-                ProcessHandle.current().pid());
+        logger.info("Altcontainers Reaper v{}", Version.version());
+        logger.info("PID {}", ProcessHandle.current().pid());
+        logger.info("Session {}", sessionId);
     }
 }

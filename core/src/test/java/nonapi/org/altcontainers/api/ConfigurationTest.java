@@ -52,7 +52,7 @@ class ConfigurationTest {
         assertThat(properties.reaperDisabled()).isFalse();
         assertThat(properties.reaperConnectionTimeout()).isEqualTo(Duration.ofSeconds(10));
         assertThat(properties.reaperStartupTimeout()).isEqualTo(Duration.ofSeconds(10));
-        assertThat(properties.reaperStopTimeout()).isEqualTo(Duration.ofSeconds(5));
+        assertThat(properties.reaperStopTimeout()).isEqualTo(Duration.ofSeconds(30));
     }
 
     @Test

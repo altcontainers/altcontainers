@@ -53,7 +53,7 @@ class AltcontainersPropertiesTest {
         assertThat(p.reaperDisabled()).isFalse();
         assertThat(p.reaperConnectionTimeout()).isEqualTo(Duration.ofSeconds(10));
         assertThat(p.reaperStartupTimeout()).isEqualTo(Duration.ofSeconds(10));
-        assertThat(p.reaperStopTimeout()).isEqualTo(Duration.ofSeconds(5));
+        assertThat(p.reaperStopTimeout()).isEqualTo(Duration.ofSeconds(30));
         assertThat(p.containerStartupTimeout()).isEqualTo(Duration.ofSeconds(60));
         assertThat(p.containerReadinessPollInitial()).isEqualTo(Duration.ofMillis(10));
         assertThat(p.containerReadinessPollMax()).isEqualTo(Duration.ofMillis(500));

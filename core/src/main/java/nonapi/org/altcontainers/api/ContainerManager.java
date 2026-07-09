@@ -21,6 +21,7 @@ import com.github.dockerjava.api.async.ResultCallback;
 import com.github.dockerjava.api.command.CreateContainerResponse;
 import com.github.dockerjava.api.command.InspectContainerResponse;
 import com.github.dockerjava.api.exception.NotFoundException;
+import com.github.dockerjava.api.exception.NotModifiedException;
 import com.github.dockerjava.api.model.Bind;
 import com.github.dockerjava.api.model.ExposedPort;
 import com.github.dockerjava.api.model.Frame;
@@ -47,6 +48,8 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -86,6 +89,12 @@ public final class ContainerManager {
                 properties.containerStartupRetryBackoffMax().toMillis();
         PUT_ARCHIVE_PIPE_BUFFER_BYTES = properties.containerPutArchivePipeBufferBytes();
     }
+
+    private static final ExecutorService STOP_EXECUTOR = Executors.newCachedThreadPool(r -> {
+        Thread t = new Thread(r, "altcontainers-container-stop");
+        t.setDaemon(true);
+        return t;
+    });
 
     private final Map<String, LogHandle> logHandles = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CompletableFuture<Void>> inflightPulls = new ConcurrentHashMap<>();
@@ -435,23 +444,7 @@ public final class ContainerManager {
         }
         List<RuntimeException> closeFailures = fireOnClose(container.spec(), container);
         closeLogHandle(container.id());
-        long stopTimeoutSeconds =
-                ReaperController.instance().configuration().reaperStopTimeout().toSeconds();
-        try {
-            CompletableFuture<Void> future = CompletableFuture.runAsync(
-                    () -> dockerClient().stopContainerCmd(container.id()).exec());
-            future.get(stopTimeoutSeconds, TimeUnit.SECONDS);
-        } catch (TimeoutException e) {
-            logger.debug(
-                    "Stop timed out for container {} after {}s, will force remove", container.id(), stopTimeoutSeconds);
-        } catch (Exception e) {
-            // Best-effort
-        }
-        try {
-            dockerClient().removeContainerCmd(container.id()).withForce(true).exec();
-        } catch (RuntimeException e) {
-            // Best-effort
-        }
+        stopAndRemoveContainer(container.id());
         if (!closeFailures.isEmpty()) {
             ContainerException ex = new ContainerException("Container onClose callback failed", closeFailures.get(0));
             for (int i = 1; i < closeFailures.size(); i++) {
@@ -850,22 +843,130 @@ public final class ContainerManager {
             return;
         }
         closeLogHandle(container.id());
+        stopAndRemoveContainer(container.id());
+    }
+
+    private static final int CONTAINER_REMOVE_RETRY_COUNT = 3;
+    private static final long CONTAINER_REMOVE_RETRY_BASE_DELAY_MS = 200L;
+
+    /**
+     * Stops and removes a container via Docker, delegating cleanup to the
+     * reaper process only when the stop times out or the remove fails after
+     * retries.
+     *
+     * @param containerId the Docker container ID
+     */
+    private void stopAndRemoveContainer(String containerId) {
         long stopTimeoutSeconds =
                 ReaperController.instance().configuration().reaperStopTimeout().toSeconds();
+        int dockerStopTimeoutSeconds = (int) Math.min(stopTimeoutSeconds, Integer.MAX_VALUE);
+        // Future timeout includes a buffer so Docker's own stop timeout doesn't race
+        // the Java timeout, avoiding unnecessary delegation to the reaper.
+        long futureTimeoutSeconds = Math.addExact(stopTimeoutSeconds, 10L);
         try {
             CompletableFuture<Void> future = CompletableFuture.runAsync(
-                    () -> dockerClient().stopContainerCmd(container.id()).exec());
-            future.get(stopTimeoutSeconds, TimeUnit.SECONDS);
+                    () -> dockerClient()
+                            .stopContainerCmd(containerId)
+                            .withTimeout(dockerStopTimeoutSeconds)
+                            .exec(),
+                    STOP_EXECUTOR);
+            future.get(futureTimeoutSeconds, TimeUnit.SECONDS);
         } catch (TimeoutException e) {
             logger.debug(
-                    "Stop timed out for container {} after {}s, will force remove", container.id(), stopTimeoutSeconds);
-        } catch (Exception e) {
-            // Best-effort
+                    "Stop timed out for container {} after {}s, delegating to reaper",
+                    containerId,
+                    futureTimeoutSeconds);
+            delegateTerminateContainerToReaper(containerId);
+            return;
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof NotFoundException) {
+                logger.debug("Stop: container {} not found (already removed)", containerId);
+                return;
+            }
+            if (cause instanceof NotModifiedException) {
+                logger.debug("Stop: container {} already stopped (Status 304)", containerId);
+                // Container is already stopped — fall through to remove.
+            } else {
+                logger.debug(
+                        "Stop failed for container {}, delegating to reaper: {}",
+                        containerId,
+                        cause != null ? cause.getMessage() : "unknown");
+                delegateTerminateContainerToReaper(containerId);
+                return;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            logger.debug("Interrupted during stop for container {}, delegating to reaper", containerId);
+            delegateTerminateContainerToReaper(containerId);
+            return;
         }
-        try {
-            dockerClient().removeContainerCmd(container.id()).withForce(true).exec();
-        } catch (RuntimeException e) {
-            // Best-effort
+        // Stop succeeded — remove synchronously with retry for transient failures.
+        removeContainerWithRetry(containerId);
+    }
+
+    /**
+     * Removes a container with retry for transient Docker daemon failures,
+     * delegating to the reaper only as a last resort.
+     *
+     * @param containerId the Docker container ID
+     */
+    private void removeContainerWithRetry(String containerId) {
+        RuntimeException lastFailure = null;
+        for (int attempt = 0; attempt < CONTAINER_REMOVE_RETRY_COUNT; attempt++) {
+            try {
+                dockerClient().removeContainerCmd(containerId).withForce(true).exec();
+                return;
+            } catch (NotFoundException e) {
+                logger.debug("Remove: container {} not found (already removed)", containerId);
+                return;
+            } catch (NotModifiedException e) {
+                logger.debug("Remove: container {} already removed (Status 304)", containerId);
+                return;
+            } catch (RuntimeException e) {
+                lastFailure = e;
+                if (attempt < CONTAINER_REMOVE_RETRY_COUNT - 1) {
+                    logger.debug(
+                            "Remove attempt {}/{} failed for container {}, retrying",
+                            attempt + 1,
+                            CONTAINER_REMOVE_RETRY_COUNT,
+                            containerId);
+                    try {
+                        Thread.sleep(CONTAINER_REMOVE_RETRY_BASE_DELAY_MS * (attempt + 1));
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            }
+        }
+        logger.debug(
+                "Remove failed after {} retries for container {}, delegating to reaper: {}",
+                CONTAINER_REMOVE_RETRY_COUNT,
+                containerId,
+                lastFailure != null ? lastFailure.getMessage() : "unknown");
+        delegateTerminateContainerToReaper(containerId);
+    }
+
+    /**
+     * Sends a TERMINATE_CONTAINER command to the reaper process for
+     * asynchronous container cleanup.
+     *
+     * @param containerId the Docker container ID
+     */
+    private void delegateTerminateContainerToReaper(String containerId) {
+        ReaperConnection conn = ReaperController.instance().reaperConnection();
+        if (conn != null) {
+            try {
+                conn.sendTerminateContainer(containerId);
+            } catch (IOException e) {
+                logger.warn(
+                        "Failed to send TERMINATE_CONTAINER to reaper for container {}: {}",
+                        containerId,
+                        e.getMessage());
+            }
+        } else {
+            logger.warn("Reaper connection unavailable; container {} may not be cleaned up", containerId);
         }
     }
 
