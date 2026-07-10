@@ -27,6 +27,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
+import java.util.Map;
 import java.util.Objects;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
@@ -128,6 +129,19 @@ public final class HttpWaitStrategy implements ManagedWaitStrategy {
         }
     }
 
+    private static final Map<Protocol, HttpClient> HTTP_CLIENTS = Map.of(
+            Protocol.HTTP,
+                    buildHttpClient(
+                            Protocol.HTTP, AltcontainersProperties.instance().httpProbeTimeout()),
+            Protocol.HTTPS_INSECURE,
+                    buildHttpClient(
+                            Protocol.HTTPS_INSECURE,
+                            AltcontainersProperties.instance().httpProbeTimeout()),
+            Protocol.HTTPS_VERIFY,
+                    buildHttpClient(
+                            Protocol.HTTPS_VERIFY,
+                            AltcontainersProperties.instance().httpProbeTimeout()));
+
     private final int containerPort;
     private final String path;
     private final Protocol protocol;
@@ -136,6 +150,16 @@ public final class HttpWaitStrategy implements ManagedWaitStrategy {
     private final Duration requestTimeout;
     private final HttpClient httpClient;
     private volatile String lastUrl;
+
+    /**
+     * Returns the HTTP client. Package-private for testing.
+     *
+     * @return the HTTP client
+     */
+    HttpClient httpClient() {
+        return httpClient;
+    }
+
     private volatile Integer lastStatus;
     private volatile String lastError = "not probed yet";
 
@@ -184,7 +208,7 @@ public final class HttpWaitStrategy implements ManagedWaitStrategy {
         this.minStatus = minStatus;
         this.maxStatus = maxStatus;
         this.requestTimeout = AltcontainersProperties.instance().httpProbeTimeout();
-        this.httpClient = buildHttpClient(protocol, requestTimeout);
+        this.httpClient = HTTP_CLIENTS.get(protocol);
     }
 
     /**

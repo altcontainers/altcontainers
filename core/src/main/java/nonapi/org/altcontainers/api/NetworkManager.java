@@ -23,6 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -45,6 +46,8 @@ public final class NetworkManager {
         return t;
     });
 
+    private static volatile boolean shuttingDown;
+
     private final Semaphore networkSemaphore;
     private final ConcurrentHashMap<String, Boolean> releasedIds = new ConcurrentHashMap<>();
 
@@ -52,6 +55,26 @@ public final class NetworkManager {
         int p = readNetworkParallelism(System.getProperty(
                 "altcontainers.reaper.networks.parallelism", System.getProperty("altcontainers.networks.parallelism")));
         this.networkSemaphore = p > 0 ? new Semaphore(p) : null;
+        registerShutdownHook();
+    }
+
+    /**
+     * Registers a JVM shutdown hook that gracefully shuts down the stop executor.
+     */
+    private void registerShutdownHook() {
+        Runtime.getRuntime()
+                .addShutdownHook(new Thread(
+                        () -> {
+                            shuttingDown = true;
+                            STOP_EXECUTOR.shutdown();
+                            try {
+                                STOP_EXECUTOR.awaitTermination(10, TimeUnit.SECONDS);
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                                STOP_EXECUTOR.shutdownNow();
+                            }
+                        },
+                        "altcontainers-network-remove-shutdown"));
     }
 
     /**
@@ -116,6 +139,11 @@ public final class NetworkManager {
         if (network == null) {
             return;
         }
+        if (shuttingDown) {
+            LOGGER.debug("Shutdown in progress, delegating network {} remove to reaper", network.id());
+            delegateTerminateNetworkToReaper(network.id());
+            return;
+        }
         long stopTimeoutSeconds =
                 ReaperController.instance().configuration().reaperStopTimeout().toSeconds();
         // Future timeout includes a buffer so Docker daemon latency doesn't
@@ -128,6 +156,9 @@ public final class NetworkManager {
                             .exec(),
                     STOP_EXECUTOR);
             future.get(futureTimeoutSeconds, TimeUnit.SECONDS);
+        } catch (RejectedExecutionException e) {
+            LOGGER.debug("Executor shut down, delegating network {} remove to reaper", network.id());
+            delegateTerminateNetworkToReaper(network.id());
         } catch (TimeoutException e) {
             LOGGER.debug(
                     "Remove timed out for network {} after {}s, delegating to reaper",

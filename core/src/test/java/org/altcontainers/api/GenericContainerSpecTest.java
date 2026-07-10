@@ -189,4 +189,29 @@ class GenericContainerSpecTest {
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("consumer must not be null");
     }
+
+    @Test
+    void copyConstructorShouldProduceImmutableConsumerLists() {
+        ContainerSpec original = ContainerSpec.builder("alpine:latest")
+                .onOutput(frame -> {})
+                .onStart(ctx -> {})
+                .build();
+
+        // Exercise the protected copy constructor via a test subclass
+        ContainerSpec copied = new TestContainerSpec((GenericContainerSpec) original);
+
+        assertThatThrownBy(() -> copied.onOutputConsumers().add(frame -> {}))
+                .isInstanceOf(UnsupportedOperationException.class);
+        assertThatThrownBy(() -> copied.onStartConsumers().add(ctx -> {}))
+                .isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    /**
+     * Minimal subclass to exercise the protected copy constructor.
+     */
+    private static final class TestContainerSpec extends GenericContainerSpec {
+        TestContainerSpec(GenericContainerSpec spec) {
+            super(spec);
+        }
+    }
 }
