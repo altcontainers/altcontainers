@@ -1,0 +1,80 @@
+/*
+ * Copyright (c) 2026-present Douglas Hoard
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package nonapi.org.altcontainers.api;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.github.dockerjava.api.exception.NotFoundException;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import org.altcontainers.api.Container;
+import org.altcontainers.api.ContainerException;
+import org.altcontainers.api.ContainerSpec;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIf;
+
+/** Tests cleanup when startup metadata construction fails. */
+@Tag("docker")
+class ContainerManagerLifecycleTest {
+
+    static boolean dockerAndReaperAvailable() {
+        return ContainerManagerPullTest.dockerAndReaperAvailable();
+    }
+
+    @Test
+    @EnabledIf("dockerAndReaperAvailable")
+    void shouldCleanupCreatedContainerWhenPostStartInspectionFails() {
+        ContainerManager manager = ContainerManager.getInstance();
+        AtomicReference<String> createdId = new AtomicReference<>();
+        AtomicInteger startFailureCount = new AtomicInteger();
+        manager.setMetadataInspectorForTesting(id -> {
+            createdId.set(id);
+            throw new ContainerException("synthetic metadata failure");
+        });
+        ContainerSpec spec = ContainerSpec.builder("alpine:latest")
+                .command("sleep", "30")
+                .startupAttempts(1)
+                .onStartFailure(ctx -> startFailureCount.incrementAndGet())
+                .build();
+
+        try {
+            assertThatThrownBy(() -> Container.create(spec)).isInstanceOf(ContainerException.class);
+
+            String id = createdId.get();
+            assertThat(id).isNotNull();
+            assertThatThrownBy(() ->
+                            DockerClientFactory.client().inspectContainerCmd(id).exec())
+                    .isInstanceOf(NotFoundException.class);
+            assertThat(startFailureCount).hasValue(0);
+        } finally {
+            manager.resetMetadataInspectorForTesting();
+            String id = createdId.get();
+            if (id != null) {
+                try {
+                    DockerClientFactory.client()
+                            .removeContainerCmd(id)
+                            .withForce(true)
+                            .exec();
+                } catch (RuntimeException ignored) {
+                    // Best-effort cleanup for a failed reproduction.
+                }
+            }
+        }
+    }
+}
