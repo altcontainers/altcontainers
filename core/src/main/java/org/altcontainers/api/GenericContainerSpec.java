@@ -87,11 +87,11 @@ public class GenericContainerSpec implements ContainerSpec {
         this.networkMode = spec.networkMode;
         this.networkAliases = spec.networkAliases;
         this.workingDirectory = spec.workingDirectory;
-        this.onOutputConsumers = new ArrayList<>(spec.onOutputConsumers);
-        this.onStartConsumers = new ArrayList<>(spec.onStartConsumers);
-        this.onStartFailureConsumers = new ArrayList<>(spec.onStartFailureConsumers);
-        this.onReadyConsumers = new ArrayList<>(spec.onReadyConsumers);
-        this.onCloseConsumers = new ArrayList<>(spec.onCloseConsumers);
+        this.onOutputConsumers = List.copyOf(spec.onOutputConsumers);
+        this.onStartConsumers = List.copyOf(spec.onStartConsumers);
+        this.onStartFailureConsumers = List.copyOf(spec.onStartFailureConsumers);
+        this.onReadyConsumers = List.copyOf(spec.onReadyConsumers);
+        this.onCloseConsumers = List.copyOf(spec.onCloseConsumers);
         this.startupCheckStrategy = spec.startupCheckStrategy;
         this.startupTimeout = spec.startupTimeout;
         this.startupAttempts = spec.startupAttempts;

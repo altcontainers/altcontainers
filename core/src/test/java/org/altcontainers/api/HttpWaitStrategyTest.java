@@ -300,6 +300,14 @@ class HttpWaitStrategyTest {
         }
     }
 
+    @Test
+    void shouldShareHttpClientAcrossInstances() {
+        HttpWaitStrategy first = new HttpWaitStrategy(HttpWaitStrategy.Protocol.HTTP, 8080, "/health", 200, 399);
+        HttpWaitStrategy second = new HttpWaitStrategy(HttpWaitStrategy.Protocol.HTTP, 9090, "/ready", 200, 399);
+
+        assertThat(first.httpClient()).isSameAs(second.httpClient());
+    }
+
     private static HttpsServer createSelfSignedHttpsServer() throws Exception {
         KeyStore keyStore = KeyStore.getInstance("PKCS12");
         keyStore.load(Files.newInputStream(keystorePath), KEYSTORE_PASSWORD.toCharArray());

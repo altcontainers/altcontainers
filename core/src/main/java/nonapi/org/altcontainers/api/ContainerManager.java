@@ -50,6 +50,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -96,12 +97,33 @@ public final class ContainerManager {
         return t;
     });
 
+    private static volatile boolean shuttingDown;
+
     private final Map<String, LogHandle> logHandles = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CompletableFuture<Void>> inflightPulls = new ConcurrentHashMap<>();
     private final Set<String> localImageCache = ConcurrentHashMap.newKeySet();
 
     private ContainerManager() {
-        // Intentionally empty
+        registerShutdownHook();
+    }
+
+    /**
+     * Registers a JVM shutdown hook that gracefully shuts down the stop executor.
+     */
+    private void registerShutdownHook() {
+        Runtime.getRuntime()
+                .addShutdownHook(new Thread(
+                        () -> {
+                            shuttingDown = true;
+                            STOP_EXECUTOR.shutdown();
+                            try {
+                                STOP_EXECUTOR.awaitTermination(10, TimeUnit.SECONDS);
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                                STOP_EXECUTOR.shutdownNow();
+                            }
+                        },
+                        "altcontainers-container-stop-shutdown"));
     }
 
     /**
@@ -407,29 +429,35 @@ public final class ContainerManager {
      * @return post-start metadata including host, running flag, and port bindings
      */
     private ContainerMetadata inspectAfterStart(String containerId) {
+        InspectContainerResponse response;
         try {
-            InspectContainerResponse response =
-                    dockerClient().inspectContainerCmd(containerId).exec();
-            String host = host();
-            boolean running = Boolean.TRUE.equals(response.getState().getRunning());
-            var bindings = response.getNetworkSettings().getPorts().getBindings();
-            Map<Integer, Integer> portBindings = new HashMap<>();
-            if (bindings != null) {
-                for (var entry : bindings.entrySet()) {
-                    if (entry.getValue() != null && entry.getValue().length > 0) {
-                        try {
-                            portBindings.put(
-                                    entry.getKey().getPort(), Integer.parseInt(entry.getValue()[0].getHostPortSpec()));
-                        } catch (NumberFormatException ignored) {
-                        }
-                    }
-                }
-            }
-            return new ContainerMetadata(host, running, Map.copyOf(portBindings));
+            response = dockerClient().inspectContainerCmd(containerId).exec();
         } catch (RuntimeException e) {
             logger.warn("Failed to inspect container {} for start metadata: {}", containerId, e.getMessage());
             return new ContainerMetadata(host(), false, Map.of());
         }
+        String host = host();
+        boolean running = Boolean.TRUE.equals(response.getState().getRunning());
+        var bindings = response.getNetworkSettings().getPorts().getBindings();
+        Map<Integer, Integer> portBindings = new HashMap<>();
+        if (bindings != null) {
+            for (var entry : bindings.entrySet()) {
+                if (entry.getValue() != null && entry.getValue().length > 0) {
+                    try {
+                        portBindings.put(
+                                entry.getKey().getPort(), Integer.parseInt(entry.getValue()[0].getHostPortSpec()));
+                    } catch (NumberFormatException e) {
+                        throw new ContainerException(
+                                "Docker returned non-numeric host port spec '"
+                                        + entry.getValue()[0].getHostPortSpec()
+                                        + "' for container port "
+                                        + entry.getKey().getPort(),
+                                e);
+                    }
+                }
+            }
+        }
+        return new ContainerMetadata(host, running, Map.copyOf(portBindings));
     }
 
     /**
@@ -857,6 +885,11 @@ public final class ContainerManager {
      * @param containerId the Docker container ID
      */
     private void stopAndRemoveContainer(String containerId) {
+        if (shuttingDown) {
+            logger.debug("Shutdown in progress, delegating container {} stop to reaper", containerId);
+            delegateTerminateContainerToReaper(containerId);
+            return;
+        }
         long stopTimeoutSeconds =
                 ReaperController.instance().configuration().reaperStopTimeout().toSeconds();
         int dockerStopTimeoutSeconds = (int) Math.min(stopTimeoutSeconds, Integer.MAX_VALUE);
@@ -871,6 +904,10 @@ public final class ContainerManager {
                             .exec(),
                     STOP_EXECUTOR);
             future.get(futureTimeoutSeconds, TimeUnit.SECONDS);
+        } catch (RejectedExecutionException e) {
+            logger.debug("Executor shut down, delegating container {} stop to reaper", containerId);
+            delegateTerminateContainerToReaper(containerId);
+            return;
         } catch (TimeoutException e) {
             logger.debug(
                     "Stop timed out for container {} after {}s, delegating to reaper",
