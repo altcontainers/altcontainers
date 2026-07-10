@@ -55,6 +55,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import org.altcontainers.api.BindMount;
 import org.altcontainers.api.Container;
 import org.altcontainers.api.ContainerException;
@@ -101,6 +102,7 @@ public final class ContainerManager {
 
     private final Map<String, LogHandle> logHandles = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CompletableFuture<Void>> inflightPulls = new ConcurrentHashMap<>();
+    private volatile Function<String, ContainerMetadata> metadataInspector = this::inspectAfterStart;
     private final Set<String> localImageCache = ConcurrentHashMap.newKeySet();
 
     private ContainerManager() {
@@ -145,6 +147,22 @@ public final class ContainerManager {
     }
 
     /**
+     * Installs a post-start metadata inspector for internal lifecycle tests.
+     *
+     * @param inspector the metadata inspector
+     */
+    void setMetadataInspectorForTesting(Function<String, ContainerMetadata> inspector) {
+        metadataInspector = Objects.requireNonNull(inspector, "inspector must not be null");
+    }
+
+    /**
+     * Restores the production post-start metadata inspector.
+     */
+    void resetMetadataInspectorForTesting() {
+        metadataInspector = this::inspectAfterStart;
+    }
+
+    /**
      * Returns the Docker client.
      *
      * @return the Docker client
@@ -186,6 +204,7 @@ public final class ContainerManager {
                     dockerClient().pullImageCmd(image).start().awaitCompletion();
                     newFuture.complete(null);
                     localImageCache.add(image);
+                    inflightPulls.remove(image, newFuture);
                     return;
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
@@ -217,6 +236,55 @@ public final class ContainerManager {
     }
 
     /**
+     * Creates a container, recovering once when a cached image was removed from
+     * the Docker daemon.
+     *
+     * @param spec the container specification
+     * @param labels the resource labels
+     * @return the Docker container id
+     */
+    private String createContainerWithImageRecovery(ContainerSpec spec, Map<String, String> labels) {
+        try {
+            return createContainer(spec, labels);
+        } catch (RuntimeException e) {
+            String image = spec.image();
+            if (!isMissingImageFailure(e, image) || !localImageCache.contains(image)) {
+                throw e;
+            }
+            localImageCache.remove(image);
+            if (isImageAvailableLocally(image)) {
+                localImageCache.add(image);
+            } else {
+                pullImage(image);
+            }
+            return createContainer(spec, labels);
+        }
+    }
+
+    /**
+     * Returns whether a Docker failure identifies the requested image as
+     * unavailable.
+     *
+     * @param failure the Docker failure
+     * @param image the requested image
+     * @return {@code true} if the failure is an image-not-found failure
+     */
+    private static boolean isMissingImageFailure(Throwable failure, String image) {
+        String imageLower = image.toLowerCase(java.util.Locale.ROOT);
+        for (Throwable current = failure; current != null; current = current.getCause()) {
+            if (current instanceof NotFoundException notFound && notFound.getHttpStatus() == 404) {
+                String message = current.getMessage();
+                if (message == null) {
+                    return false;
+                }
+                String messageLower = message.toLowerCase(java.util.Locale.ROOT);
+                return messageLower.contains("no such image") || messageLower.contains(imageLower);
+            }
+        }
+        return false;
+    }
+
+    /**
      * Creates, starts, and waits for a container to become ready.
      *
      * @param spec the container spec; must not be {@code null}
@@ -238,10 +306,11 @@ public final class ContainerManager {
         ContainerException lastFailure = null;
         for (int attempt = 1; attempt <= spec.startupAttempts(); attempt++) {
             Container container = null;
+            String containerId = null;
             try {
                 Map<String, String> labels =
                         ReaperController.instance().ensureReady().labelsForNewResource();
-                String containerId = createContainer(spec, labels);
+                containerId = createContainerWithImageRecovery(spec, labels);
 
                 try {
                     dockerClient().startContainerCmd(containerId).exec();
@@ -249,13 +318,19 @@ public final class ContainerManager {
                     // Start failed: a container was created and is doomed. Build a handle so
                     // onStartFailure fires before destruction, then rethrow so the outer catch
                     // runs the standard notify -> destroy -> (retry | abort) path.
-                    container = new ConcreteContainer(containerId, spec.image(), spec, inspectAfterStart(containerId));
+                    try {
+                        container = new ConcreteContainer(
+                                containerId, spec.image(), spec, metadataInspector.apply(containerId));
+                    } catch (RuntimeException metadataFailure) {
+                        startEx.addSuppressed(metadataFailure);
+                    }
                     throw startEx instanceof ContainerException ce
                             ? ce
                             : new ContainerException("Failed to start container", startEx);
                 }
 
-                container = new ConcreteContainer(containerId, spec.image(), spec, inspectAfterStart(containerId));
+                container =
+                        new ConcreteContainer(containerId, spec.image(), spec, metadataInspector.apply(containerId));
 
                 List<WaitStrategy> waitConditions = newAttemptConditions(spec);
                 LogHandle logHandle = attachLogs(containerId, spec, waitConditions);
@@ -294,7 +369,7 @@ public final class ContainerManager {
                         throw callbackEx;
                     }
                 }
-                destroyAttempt(container);
+                destroyAttempt(container, containerId);
             } catch (RuntimeException e) {
                 lastFailure = new ContainerException("Container startup failed: " + e.getMessage(), e);
                 if (container != null) {
@@ -308,7 +383,7 @@ public final class ContainerManager {
                         throw callbackEx;
                     }
                 }
-                destroyAttempt(container);
+                destroyAttempt(container, containerId);
             }
             if (attempt < spec.startupAttempts()) {
                 sleepBeforeRetry(attempt);
@@ -872,6 +947,21 @@ public final class ContainerManager {
         }
         closeLogHandle(container.id());
         stopAndRemoveContainer(container.id());
+    }
+
+    /**
+     * Destroys a startup attempt using either its handle or its known Docker id.
+     *
+     * @param container the container handle, or {@code null}
+     * @param containerId the Docker container id, or {@code null}
+     */
+    private void destroyAttempt(Container container, String containerId) {
+        if (container != null) {
+            destroyAttempt(container);
+        } else if (containerId != null) {
+            closeLogHandle(containerId);
+            stopAndRemoveContainer(containerId);
+        }
     }
 
     private static final int CONTAINER_REMOVE_RETRY_COUNT = 3;
