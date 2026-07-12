@@ -47,12 +47,21 @@ const config = {
           routeBasePath: '/',
           sidebarPath: require.resolve('./sidebars.js'),
           editUrl: 'https://github.com/altcontainers/altcontainers/tree/main/website/',
-          lastVersion: '0.1.0',
+          lastVersion: '0.2.0',
           versions: {
             current: {
-              label: 'Next',
+              label: 'Unreleased',
+              path: 'unreleased',
               banner: 'unreleased',
               badge: true,
+            },
+            '0.2.0': {
+              banner: 'none',
+            },
+            '0.1.0': {
+              banner: 'unmaintained',
+              label: '0.1.0 (Unmaintained)',
+              className: 'notice-unmaintained',
             },
           },
         },
@@ -84,6 +93,10 @@ const config = {
             sidebarId: 'docsSidebar',
             position: 'left',
             label: 'Documentation',
+          },
+          {
+            type: 'docsVersionDropdown',
+            position: 'left',
           },
           {
             href: 'https://github.com/altcontainers/altcontainers',
