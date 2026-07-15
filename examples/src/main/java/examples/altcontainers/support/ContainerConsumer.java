@@ -61,13 +61,14 @@ public final class ContainerConsumer implements Consumer<OutputFrame> {
 
     /**
      * Prints a formatted line to {@link System#out} as {@code [prefix] image | line}. The frame is
-     * decoded as UTF-8 and stripped of trailing line endings. Blank output is silently ignored.
+     * decoded as UTF-8 with safe text conversion and stripped of trailing line endings. Blank output
+     * is silently ignored.
      *
      * @param frame the output frame
      */
     @Override
     public void accept(OutputFrame frame) {
-        String line = frame.utf8StringWithoutLineEnding();
+        String line = frame.safeUtf8StringWithoutLineEnding();
         if (!line.isBlank()) {
             System.out.println("[" + prefix + "] " + image + " | " + line);
         }

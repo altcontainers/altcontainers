@@ -39,7 +39,7 @@ try (Container container = Container.create(containerSpec)) {
 ```java
 ContainerSpec containerSpec = ContainerSpec.builder("nginx:1.27")
     .exposePorts(80)
-    .onOutput(frame -> System.out.println("[NGINX] nginx:1.27 | " + frame.utf8StringWithoutLineEnding()))
+    .onOutput(frame -> System.out.println("[NGINX] nginx:1.27 | " + frame.safeUtf8StringWithoutLineEnding()))
     .waitForHttpResponse(80, "/")
     .build();
 ```
