@@ -13,7 +13,7 @@ You can use a custom output consumer to format lines for display:
 
 ```java
 ContainerSpec containerSpec = ContainerSpec.builder("nginx:1.27")
-    .onOutput(frame -> System.out.println("[NGINX] nginx:1.27 | " + frame.utf8StringWithoutLineEnding()))
+    .onOutput(frame -> System.out.println("[NGINX] nginx:1.27 | " + frame.safeUtf8StringWithoutLineEnding()))
     .build();
 ```
 
@@ -30,13 +30,34 @@ Any `Consumer<OutputFrame>` can be used:
 ```java
 ContainerSpec containerSpec = ContainerSpec.builder("my-image")
     .onOutput(frame -> {
-        String text = frame.utf8StringWithoutLineEnding();
+        String text = frame.safeUtf8StringWithoutLineEnding();
         if (text.contains("ERROR")) {
             System.err.println("Container error: " + text);
         }
     })
     .build();
 ```
+
+## Safe vs. raw output
+
+`OutputFrame` provides two families of text conversion methods:
+
+| Method | Use case |
+|---|---|
+| `safeUtf8String()` / `safeUtf8StringWithoutLineEnding()` | Terminal display, text log files |
+| `utf8String()` / `utf8StringWithoutLineEnding()` | Raw decoding, binary processing, fidelity-sensitive consumers |
+| `bytes()` / `string(Charset)` | Byte-level access, non-UTF-8 charsets |
+
+Safe methods remove NUL, unsafe control characters, DEL, and ANSI terminal escape sequences
+(CSI and OSC) that can alter terminal state or cause tools like `grep` to classify captured output
+as binary. They preserve printable Unicode, tabs, line feeds, and carriage returns.
+
+Raw methods return the decoded frame payload without filtering. Use them when you need exact
+output — for example, when processing binary data, matching exact byte sequences, or forwarding
+frames to another system.
+
+Frames are arbitrary chunks from Docker's log stream and are not guaranteed to represent
+complete lines.
 
 ## Log stream lifecycle
 

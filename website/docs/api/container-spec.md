@@ -17,7 +17,7 @@ ContainerSpec containerSpec = ContainerSpec.builder("nginx:1.27")
     .waitForHttpResponse(80, "/")
     .startupTimeout(Duration.ofSeconds(30))
     .startupAttempts(2)
-    .onOutput(frame -> System.out.println("[NGINX] nginx:1.27 | " + frame.utf8StringWithoutLineEnding()))
+    .onOutput(frame -> System.out.println("[NGINX] nginx:1.27 | " + frame.safeUtf8StringWithoutLineEnding()))
     .memory(256 * 1024 * 1024)
     .build();
 ```

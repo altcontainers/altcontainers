@@ -24,7 +24,7 @@ The container started but the wait conditions were not satisfied within the `sta
   ```
 - Enable log output to see what the container is doing:
   ```java
-  .onOutput(frame -> System.out.println("[APP] my-image | " + frame.utf8StringWithoutLineEnding()))
+  .onOutput(frame -> System.out.println("[APP] my-image | " + frame.safeUtf8StringWithoutLineEnding()))
   ```
 - Verify the wait condition matches the service behavior
 
@@ -83,6 +83,26 @@ The container port is not in the cached bindings from startup inspection.
 - Always call `.exposePorts()` for ports you need to access
 - Check `container.isRunning()` before calling `hostPort()`
 - Check for `null` before using the host port value
+
+## Log output appears as binary
+
+### grep reports "binary file matches"
+
+When container output is captured to a log file, GNU `grep` may classify the file as binary and suppress matches with the message `binary file matches`.
+
+**Cause:** Container output frames may contain NUL bytes or unsafe control characters. When printed directly to a log file alongside test runner output, these bytes trigger binary classification.
+
+**Solution:** Use `OutputFrame.safeUtf8StringWithoutLineEnding()` instead of `utf8StringWithoutLineEnding()` in your output consumer. The safe method removes NUL, unsafe C0/C1 control characters, DEL, and ANSI escape sequences while preserving printable text.
+
+```java
+// Before (may cause binary log classification)
+.onOutput(frame -> System.out.println(frame.utf8StringWithoutLineEnding()))
+
+// After (safe for text log output)
+.onOutput(frame -> System.out.println(frame.safeUtf8StringWithoutLineEnding()))
+```
+
+For capture to a file, pipe safe output through your logging framework rather than printing raw frame text.
 
 ## Learn next
 
