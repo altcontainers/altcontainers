@@ -300,13 +300,7 @@ public final class Reaper {
             logger.info("Disconnected (terminate={})", receivedTerminate);
         } catch (HandshakeException e) {
             logger.warn(e.getMessage());
-            deletePortFile(sessionId);
-            try {
-                clientSocket.close();
-            } catch (IOException ignored) {
-                // Best-effort close before exiting after failed handshake.
-            }
-            executor.shutdown();
+            cleanupOnHandshakeFailure(sessionId, clientSocket, executor);
             System.exit(1);
             return;
         } catch (IOException e) {
@@ -508,6 +502,25 @@ public final class Reaper {
      */
     private static Path portFilePath(String sessionId) {
         return Paths.get(System.getProperty("java.io.tmpdir"), "altcontainers-reaper-" + sessionId + ".port");
+    }
+
+    /**
+     * Cleans up resources after a handshake failure: deletes discovery files,
+     * closes the client socket, and shuts down the executor.
+     *
+     * @param sessionId the session UUID
+     * @param clientSocket the connected client socket
+     * @param executor the cleanup executor
+     */
+    static void cleanupOnHandshakeFailure(String sessionId, Socket clientSocket, CleanupExecutor executor) {
+        deletePortFile(sessionId);
+        deleteJarFile(sessionId);
+        try {
+            clientSocket.close();
+        } catch (IOException ignored) {
+            // Best-effort close after failed handshake.
+        }
+        executor.shutdown();
     }
 
     /**

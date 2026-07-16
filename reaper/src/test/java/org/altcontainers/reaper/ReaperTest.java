@@ -59,8 +59,48 @@ import org.junit.jupiter.api.Test;
  */
 class ReaperTest {
 
+    @Test
+    void shouldCleanupJarFileOnHandshakeFailure() throws Exception {
+        String sessionId = UUID.randomUUID().toString();
+        Path portFile = portFilePath(sessionId);
+        Path jarFile = jarFilePath(sessionId);
+
+        // Create both discovery files
+        Files.writeString(portFile, "12345", StandardCharsets.UTF_8);
+        Files.createFile(jarFile);
+        assertThat(Files.exists(portFile)).isTrue();
+        assertThat(Files.exists(jarFile)).isTrue();
+
+        DockerClient mockClient = createSuccessMockClient();
+        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+        Clock clock = Clock.systemUTC();
+        CleanupExecutor executor = new CleanupExecutor(mockClient, 5, 5000L, 5000L, scheduler, clock);
+
+        // Create a connected socket pair for the cleanup method to close
+        var serverSocket = new java.net.ServerSocket(0, 1, java.net.InetAddress.getByName("localhost"));
+        int port = serverSocket.getLocalPort();
+        try (Socket clientSocket = new Socket("localhost", port);
+                Socket acceptedSocket = serverSocket.accept()) {
+            serverSocket.close();
+
+            // Call the extracted cleanup method directly — this is the code path
+            // exercised by run()'s HandshakeException catch block
+            Reaper.cleanupOnHandshakeFailure(sessionId, acceptedSocket, executor);
+
+            // Assert that both discovery files were deleted by the cleanup method
+            assertThat(Files.exists(portFile)).isFalse();
+            assertThat(Files.exists(jarFile)).isFalse();
+        }
+
+        scheduler.shutdownNow();
+    }
+
     private static Path portFilePath(String sessionId) {
         return Paths.get(System.getProperty("java.io.tmpdir"), "altcontainers-reaper-" + sessionId + ".port");
+    }
+
+    private static Path jarFilePath(String sessionId) {
+        return Paths.get(System.getProperty("java.io.tmpdir"), "altcontainers-reaper-" + sessionId + ".jar");
     }
 
     // ── Port file tests ──
