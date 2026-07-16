@@ -67,7 +67,7 @@ class ReaperConnectionTest {
             }
 
             @Override
-            public void close() throws IOException {
+            public synchronized void close() throws IOException {
                 pipedOut.close();
             }
         };
