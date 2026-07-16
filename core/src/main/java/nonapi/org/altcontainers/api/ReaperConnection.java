@@ -48,8 +48,10 @@ final class ReaperConnection implements AutoCloseable {
      * @throws IOException if the write fails
      */
     void sendTerminate() throws IOException {
-        writer.write("TERMINATE\n");
-        writer.flush();
+        synchronized (writer) {
+            writer.write("TERMINATE\n");
+            writer.flush();
+        }
     }
 
     /**
@@ -60,8 +62,10 @@ final class ReaperConnection implements AutoCloseable {
      * @throws IOException if the write fails
      */
     void sendTerminateContainer(String containerId) throws IOException {
-        writer.write("TERMINATE_CONTAINER " + containerId + "\n");
-        writer.flush();
+        synchronized (writer) {
+            writer.write("TERMINATE_CONTAINER " + containerId + "\n");
+            writer.flush();
+        }
     }
 
     /**
@@ -72,8 +76,10 @@ final class ReaperConnection implements AutoCloseable {
      * @throws IOException if the write fails
      */
     void sendTerminateNetwork(String networkId) throws IOException {
-        writer.write("TERMINATE_NETWORK " + networkId + "\n");
-        writer.flush();
+        synchronized (writer) {
+            writer.write("TERMINATE_NETWORK " + networkId + "\n");
+            writer.flush();
+        }
     }
 
     /**
