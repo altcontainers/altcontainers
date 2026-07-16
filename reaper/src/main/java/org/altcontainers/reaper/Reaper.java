@@ -25,8 +25,6 @@ import ch.qos.logback.core.rolling.RollingFileAppender;
 import ch.qos.logback.core.rolling.SizeBasedTriggeringPolicy;
 import ch.qos.logback.core.util.FileSize;
 import com.github.dockerjava.api.DockerClient;
-import com.github.dockerjava.api.exception.NotFoundException;
-import com.github.dockerjava.api.exception.NotModifiedException;
 import com.github.dockerjava.api.model.Container;
 import com.github.dockerjava.core.DockerClientImpl;
 import com.github.dockerjava.transport.DockerHttpClient;
@@ -43,8 +41,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Clock;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -59,9 +61,22 @@ public final class Reaper {
 
     private static final Logger logger = LoggerFactory.getLogger(Reaper.class);
     private static final long GRACE_PERIOD_MS = 30_000L;
-    private static final int STOP_TIMEOUT_MS = parseStopTimeoutMsFromProperty();
+    static final int STOP_TIMEOUT_MS = parseStopTimeoutMsFromProperty();
     private static final int HANDSHAKE_TIMEOUT_MILLISECONDS =
             parsePositiveMillisecondsProperty("altcontainers.reaper.connection.timeout.ms", "10000");
+
+    static final int MAX_ATTEMPTS;
+
+    static {
+        String raw = System.getProperty("altcontainers.reaper.cleanup.max.attempts", "5");
+        try {
+            MAX_ATTEMPTS = parseMaxAttempts(raw);
+        } catch (IllegalArgumentException e) {
+            System.err.println("Reaper: " + e.getMessage());
+            System.exit(1);
+            throw e; // unreachable, satisfies definite assignment
+        }
+    }
 
     /**
      * Parses the stop timeout from the system property, exiting the process
@@ -91,6 +106,21 @@ public final class Reaper {
         int value = parseIntegerProperty("altcontainers.reaper.stop.timeout.ms", raw);
         if (value <= 0) {
             throw new IllegalArgumentException("altcontainers.reaper.stop.timeout.ms must be positive");
+        }
+        return value;
+    }
+
+    /**
+     * Parses the maximum cleanup attempts from a raw string value.
+     *
+     * @param raw the raw system property value
+     * @return the parsed maximum attempts
+     * @throws IllegalArgumentException if the value is not an integer &gt;= 1
+     */
+    static int parseMaxAttempts(String raw) {
+        int value = parseIntegerProperty("altcontainers.reaper.cleanup.max.attempts", raw);
+        if (value < 1) {
+            throw new IllegalArgumentException("altcontainers.reaper.cleanup.max.attempts must be >= 1");
         }
         return value;
     }
@@ -184,6 +214,23 @@ public final class Reaper {
     private static final long ACCEPT_TIMEOUT_MS = 60_000L;
 
     /**
+     * Creates a cleanup executor with production defaults for timeout values.
+     *
+     * @param client the Docker client
+     * @param maxAttempts the maximum number of attempts per resource
+     * @return a new cleanup executor
+     */
+    static CleanupExecutor createCleanupExecutor(DockerClient client, int maxAttempts) {
+        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(CleanupExecutor.POOL_SIZE, r -> {
+            Thread t = new Thread(r, "altcontainers-reaper-cleanup-scheduler");
+            t.setDaemon(true);
+            return t;
+        });
+        return new CleanupExecutor(
+                client, maxAttempts, STOP_TIMEOUT_MS + 10_000L, 10_000L, scheduler, Clock.systemUTC());
+    }
+
+    /**
      * Runs the reaper lifecycle: binds a server socket, writes the port file,
      * accepts a connection, performs the session handshake, watches for
      * liveness, and cleans up resources on disconnect or termination.
@@ -244,10 +291,12 @@ public final class Reaper {
             return;
         }
 
+        CleanupExecutor executor = createCleanupExecutor(dockerClient, MAX_ATTEMPTS);
+
         boolean receivedTerminate;
         try {
             receivedTerminate =
-                    receiveSessionAndWatch(clientSocket, sessionId, HANDSHAKE_TIMEOUT_MILLISECONDS, dockerClient);
+                    receiveSessionAndWatch(clientSocket, sessionId, HANDSHAKE_TIMEOUT_MILLISECONDS, executor);
             logger.info("Disconnected (terminate={})", receivedTerminate);
         } catch (HandshakeException e) {
             logger.warn(e.getMessage());
@@ -257,6 +306,7 @@ public final class Reaper {
             } catch (IOException ignored) {
                 // Best-effort close before exiting after failed handshake.
             }
+            executor.shutdown();
             System.exit(1);
             return;
         } catch (IOException e) {
@@ -279,7 +329,7 @@ public final class Reaper {
             }
         }
 
-        cleanup(dockerClient, sessionId);
+        cleanup(dockerClient, sessionId, executor);
         deletePortFile(sessionId);
         deleteJarFile(sessionId);
     }
@@ -290,15 +340,18 @@ public final class Reaper {
      * TERMINATE_NETWORK, and TERMINATE commands. Returns when the connection
      * drops or TERMINATE is received.
      *
+     * <p>Cleanup commands are enqueued to the executor for asynchronous
+     * processing; the read loop never blocks on Docker calls.
+     *
      * @param clientSocket the connected client socket
      * @param sessionId the expected session ID
      * @param handshakeTimeoutMilliseconds the handshake read timeout
-     * @param dockerClient the Docker client used for per-resource cleanup
+     * @param executor the cleanup executor for async resource cleanup
      * @return {@code true} if the client sent TERMINATE before disconnecting
      * @throws IOException if the handshake or read fails
      */
     static boolean receiveSessionAndWatch(
-            Socket clientSocket, String sessionId, int handshakeTimeoutMilliseconds, DockerClient dockerClient)
+            Socket clientSocket, String sessionId, int handshakeTimeoutMilliseconds, CleanupExecutor executor)
             throws IOException {
         clientSocket.setSoTimeout(handshakeTimeoutMilliseconds);
         var writer = new OutputStreamWriter(clientSocket.getOutputStream(), StandardCharsets.UTF_8);
@@ -325,12 +378,12 @@ public final class Reaper {
             }
             if (line.startsWith("TERMINATE_NETWORK ")) {
                 String networkId = line.substring(18).trim();
-                terminateNetworkSingle(dockerClient, networkId);
+                executor.submit(new CleanupTask(networkId, CleanupTask.ResourceType.NETWORK, 0));
                 continue;
             }
             if (line.startsWith("TERMINATE_CONTAINER ")) {
                 String containerId = line.substring(20).trim();
-                stopAndRemoveSingle(dockerClient, containerId);
+                executor.submit(new CleanupTask(containerId, CleanupTask.ResourceType.CONTAINER, 0));
                 continue;
             }
             logger.warn("Unknown command: {}", line);
@@ -338,65 +391,15 @@ public final class Reaper {
     }
 
     /**
-     * Stops and removes a single container. Non-existent containers are treated
-     * as success (already gone).
-     *
-     * @param client the Docker client
-     * @param containerId the container ID
-     */
-    private static void stopAndRemoveSingle(DockerClient client, String containerId) {
-        try {
-            client.stopContainerCmd(containerId)
-                    .withTimeout((int) (STOP_TIMEOUT_MS / 1000L))
-                    .exec();
-        } catch (NotFoundException e) {
-            logger.debug("Container {} not found during stop (already removed)", containerId);
-            return;
-        } catch (NotModifiedException e) {
-            logger.debug("Container {} already stopped (Status 304)", containerId);
-        } catch (RuntimeException e) {
-            logger.warn("Failed to stop container {}: {}", containerId, e.getMessage());
-        }
-        try {
-            client.removeContainerCmd(containerId).withForce(true).exec();
-            logger.info("Removed container {}", containerId);
-        } catch (NotFoundException e) {
-            logger.debug("Container {} not found during remove (already removed)", containerId);
-        } catch (NotModifiedException e) {
-            logger.debug("Container {} already removed (Status 304)", containerId);
-        } catch (RuntimeException e) {
-            logger.error("Failed to remove container {}: {}", containerId, e.getMessage());
-        }
-    }
-
-    /**
-     * Removes a single network. Non-existent networks are treated as success
-     * (already gone).
-     *
-     * @param client the Docker client
-     * @param networkId the network ID
-     */
-    private static void terminateNetworkSingle(DockerClient client, String networkId) {
-        try {
-            client.removeNetworkCmd(networkId).exec();
-            logger.info("Removed network {}", networkId);
-        } catch (NotFoundException e) {
-            logger.debug("Network {} not found (already removed)", networkId);
-        } catch (NotModifiedException e) {
-            logger.debug("Network {} already removed (Status 304)", networkId);
-        } catch (RuntimeException e) {
-            logger.error("Failed to remove network {}: {}", networkId, e.getMessage());
-        }
-    }
-
-    /**
      * Cleans up all Docker resources (containers and networks) labeled with
-     * the given session ID.
+     * the given session ID by enqueuing them to the cleanup executor and
+     * draining before exit.
      *
      * @param client the Docker client
      * @param sessionId the session UUID
+     * @param executor the cleanup executor
      */
-    private static void cleanup(DockerClient client, String sessionId) {
+    private static void cleanup(DockerClient client, String sessionId, CleanupExecutor executor) {
         Map<String, String> filter = ResourceLabels.filterForSession(sessionId);
 
         // Phase 1: Containers
@@ -410,28 +413,7 @@ public final class Reaper {
         }
 
         for (String id : containerIds) {
-            try {
-                client.stopContainerCmd(id)
-                        .withTimeout((int) (STOP_TIMEOUT_MS / 1000L))
-                        .exec();
-            } catch (NotFoundException e) {
-                logger.debug("Container {} not found during stop (already removed)", id);
-                continue;
-            } catch (NotModifiedException e) {
-                logger.debug("Container {} already stopped (Status 304)", id);
-            } catch (RuntimeException e) {
-                logger.warn("Failed to stop container {}: {}", id, e.getMessage());
-            }
-            try {
-                client.removeContainerCmd(id).withForce(true).exec();
-                logger.info("Removed container {}", id);
-            } catch (NotFoundException e) {
-                logger.debug("Container {} not found during remove (already removed)", id);
-            } catch (NotModifiedException e) {
-                logger.debug("Container {} already removed (Status 304)", id);
-            } catch (RuntimeException e) {
-                logger.error("Failed to remove container {}: {}", id, e.getMessage());
-            }
+            executor.submit(new CleanupTask(id, CleanupTask.ResourceType.CONTAINER, 0));
         }
 
         // Phase 2: Networks
@@ -448,17 +430,21 @@ public final class Reaper {
         }
 
         for (String id : networkIds) {
-            try {
-                client.removeNetworkCmd(id).exec();
-                logger.info("Removed network {}", id);
-            } catch (NotFoundException e) {
-                logger.debug("Network {} not found (already removed)", id);
-            } catch (RuntimeException e) {
-                logger.error("Failed to remove network {}: {}", id, e.getMessage());
-            }
+            executor.submit(new CleanupTask(id, CleanupTask.ResourceType.NETWORK, 0));
         }
 
-        logger.info("Session cleaned (networks={},containers={})", networkIds.size(), containerIds.size());
+        logger.info("Session cleanup enqueued (containers={}, networks={})", containerIds.size(), networkIds.size());
+
+        executor.shutdown();
+        try {
+            boolean completed = executor.awaitTermination(CleanupExecutor.DRAIN_DEADLINE_MINUTES, TimeUnit.MINUTES);
+            if (!completed) {
+                logger.warn("drain incomplete; {} tasks abandoned", executor.getQueueSize());
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            logger.warn("Drain interrupted; {} tasks may remain", executor.getQueueSize());
+        }
     }
 
     /**

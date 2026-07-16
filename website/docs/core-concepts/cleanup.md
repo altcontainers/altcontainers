@@ -47,7 +47,7 @@ Container.close(container);
 
 ## Idempotent destruction
 
-Destroying an already-destroyed container or network is safe. Passing `null` is a no-op. All destroy methods block until Docker confirms removal.
+Destroying an already-destroyed container or network is safe. Passing `null` is a no-op.
 
 ## Automatic cleanup (Reaper)
 
@@ -75,8 +75,36 @@ Altcontainers launches a separate **reaper process** for each JVM session. The r
 - **Per-session**: Each JVM session gets its own reaper process with a unique session ID.
 - **No Docker sidecar**: Unlike Testcontainers' Ryuk, the reaper is a plain Java process, not a Docker container. No privileged sidecar is required.
 - **Liveness-based**: The reaper watches a TCP connection. When the connection drops, cleanup begins.
+- **Asynchronous with bounded retries**: Cleanup commands are enqueued for asynchronous processing. Each resource cleanup is retried up to a configurable maximum number of attempts with exponential backoff, so transient Docker daemon failures no longer cause permanent resource leaks.
 
 The reaper is a safety net. You should still explicitly clean up resources when possible; relying solely on the reaper can cause resource exhaustion in long-running processes.
+
+### Retry behavior
+
+When a cleanup operation fails (e.g., a network has active endpoints), the reaper retries with exponential backoff. Each resource follows an escalation ladder:
+
+1. **Graceful stop + remove** (containers): Attempts a graceful stop with a timeout, then removes the container.
+2. **Force remove** (containers): If the graceful path fails, force-removes the container.
+3. **Network remove**: Attempts to remove the network.
+4. **Network force-remove** (after threshold): If the network cannot be removed after several attempts (e.g., due to active endpoints), disconnects all endpoints with force and then removes the network.
+
+If all attempts are exhausted, the resource remains labeled for manual recovery via `docker ps -a --filter label=...`.
+
+### Configuration
+
+The reaper's retry behavior can be tuned via a system property on the application JVM:
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `altcontainers.reaper.cleanup.max.attempts` | `5` | Maximum cleanup attempts per resource before giving up. Must be >= 1. |
+
+Example:
+
+```bash
+java -Daltcontainers.reaper.cleanup.max.attempts=10 -jar myapp.jar
+```
+
+This property is automatically forwarded to the reaper process.
 
 ## Cleanup after startup failure
 
