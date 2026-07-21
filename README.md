@@ -37,7 +37,7 @@ try (Container container = Container.create(containerSpec)) {
 
 ## Features
 
-- **Shaded uber-JAR** — OkHttp, Gson, Okio, and other dependencies are relocated to prevent classpath conflicts
+- **Shaded uber-JAR** — docker-java, Jackson, Guava, Apache Commons, Bouncy Castle, and JNA are relocated under `nonapi.shaded.*` to prevent classpath conflicts; SLF4J is left unrelocated so applications can provide their own binding
 - **Automatic cleanup** — integrated reaper destroys containers and networks when the JVM exits
 - **Readiness waiting** — port probes, HTTP response checks, log message matching, and custom conditions
 - **Network management** — create and destroy Docker bridge networks
