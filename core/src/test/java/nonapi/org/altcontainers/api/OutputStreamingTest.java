@@ -58,7 +58,7 @@ class OutputStreamingTest {
         ContainerSpec spec = ContainerSpec.builder("alpine:latest")
                 .command("sh", "-c", COMMAND)
                 .waitForLogMessage(".*READY.*")
-                .onOutput(frame -> {
+                .outputListener(frame -> {
                     String line = frame.utf8StringWithoutLineEnding();
                     if (line.contains("TICK")) {
                         ticks.add(line);

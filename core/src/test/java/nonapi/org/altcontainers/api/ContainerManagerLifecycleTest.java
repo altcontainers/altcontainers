@@ -20,7 +20,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.github.dockerjava.api.exception.NotFoundException;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.altcontainers.api.Container;
 import org.altcontainers.api.ContainerException;
@@ -42,7 +41,6 @@ class ContainerManagerLifecycleTest {
     void shouldCleanupCreatedContainerWhenPostStartInspectionFails() {
         ContainerManager manager = ContainerManager.getInstance();
         AtomicReference<String> createdId = new AtomicReference<>();
-        AtomicInteger startFailureCount = new AtomicInteger();
         manager.setMetadataInspectorForTesting(id -> {
             createdId.set(id);
             throw new ContainerException("synthetic metadata failure");
@@ -50,7 +48,6 @@ class ContainerManagerLifecycleTest {
         ContainerSpec spec = ContainerSpec.builder("alpine:latest")
                 .command("sleep", "30")
                 .startupAttempts(1)
-                .onStartFailure(ctx -> startFailureCount.incrementAndGet())
                 .build();
 
         try {
@@ -61,7 +58,6 @@ class ContainerManagerLifecycleTest {
             assertThatThrownBy(() ->
                             DockerClientFactory.client().inspectContainerCmd(id).exec())
                     .isInstanceOf(NotFoundException.class);
-            assertThat(startFailureCount).hasValue(0);
         } finally {
             manager.resetMetadataInspectorForTesting();
             String id = createdId.get();

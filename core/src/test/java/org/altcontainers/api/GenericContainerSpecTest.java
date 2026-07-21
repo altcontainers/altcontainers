@@ -21,7 +21,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Duration;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -156,62 +155,50 @@ class GenericContainerSpecTest {
     }
 
     @Test
-    void onOutputShouldStoreConsumersInRegistrationOrder() {
-        AtomicInteger counter = new AtomicInteger(0);
-        Consumer<OutputFrame> first = frame -> counter.incrementAndGet();
-        Consumer<OutputFrame> second = frame -> counter.incrementAndGet();
-        Consumer<OutputFrame> third = frame -> counter.incrementAndGet();
+    void outputListenerShouldStoreListener() {
+        Consumer<OutputFrame> listener = frame -> {};
 
-        ContainerSpec spec = ContainerSpec.builder("alpine:latest")
-                .onOutput(first)
-                .onOutput(second)
-                .onOutput(third)
-                .build();
+        ContainerSpec spec =
+                ContainerSpec.builder("alpine:latest").outputListener(listener).build();
 
-        assertThat(spec.onOutputConsumers()).containsExactly(first, second, third);
+        assertThat(spec.outputListener()).isSameAs(listener);
     }
 
     @Test
-    void onOutputConsumersShouldBeCopiedThroughToBuilder() {
+    void outputListenerShouldBeCopiedThroughToBuilder() {
         Consumer<OutputFrame> consumer = frame -> {};
 
         ContainerSpec original =
-                ContainerSpec.builder("alpine:latest").onOutput(consumer).build();
+                ContainerSpec.builder("alpine:latest").outputListener(consumer).build();
 
         ContainerSpec rebuilt = original.toBuilder().build();
 
-        assertThat(rebuilt.onOutputConsumers()).containsExactly(consumer);
+        assertThat(rebuilt.outputListener()).isSameAs(consumer);
     }
 
     @Test
-    void onOutputNullShouldThrow() {
-        assertThatThrownBy(() -> ContainerSpec.builder("alpine:latest").onOutput(null))
+    void outputListenerNullShouldThrow() {
+        assertThatThrownBy(() -> ContainerSpec.builder("alpine:latest").outputListener(null))
                 .isInstanceOf(NullPointerException.class)
-                .hasMessage("consumer must not be null");
+                .hasMessage("listener must not be null");
     }
 
     @Test
-    void copyConstructorShouldProduceImmutableConsumerLists() {
-        ContainerSpec original = ContainerSpec.builder("alpine:latest")
-                .onOutput(frame -> {})
-                .onStart(ctx -> {})
-                .build();
+    void prepareShouldBeCopiedThroughToBuilder() {
+        Consumer<Container> consumer = c -> {};
 
-        // Exercise the protected copy constructor via a test subclass
-        ContainerSpec copied = new TestContainerSpec((GenericContainerSpec) original);
+        ContainerSpec original =
+                ContainerSpec.builder("alpine:latest").prepare(consumer).build();
 
-        assertThatThrownBy(() -> copied.onOutputConsumers().add(frame -> {}))
-                .isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> copied.onStartConsumers().add(ctx -> {}))
-                .isInstanceOf(UnsupportedOperationException.class);
+        ContainerSpec rebuilt = original.toBuilder().build();
+
+        assertThat(rebuilt.prepare()).isSameAs(consumer);
     }
 
-    /**
-     * Minimal subclass to exercise the protected copy constructor.
-     */
-    private static final class TestContainerSpec extends GenericContainerSpec {
-        TestContainerSpec(GenericContainerSpec spec) {
-            super(spec);
-        }
+    @Test
+    void prepareNullShouldThrow() {
+        assertThatThrownBy(() -> ContainerSpec.builder("alpine:latest").prepare(null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("prepare must not be null");
     }
 }
