@@ -70,15 +70,16 @@ public final class Launcher {
                 }
                 Path tmp = jarPath.resolveSibling(jarPath.getFileName() + ".tmp");
                 Files.copy(in, tmp, StandardCopyOption.REPLACE_EXISTING);
-                if (Files.exists(jarPath) && Files.mismatch(jarPath, tmp) == -1L) {
+                boolean unchanged = Files.exists(jarPath) && Files.mismatch(jarPath, tmp) == -1L;
+                if (unchanged) {
                     Files.deleteIfExists(tmp);
-                    return;
-                }
-                try {
-                    Files.move(tmp, jarPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-                } catch (AtomicMoveNotSupportedException e) {
-                    logger.debug("Atomic move not supported, falling back to non-atomic move");
-                    Files.move(tmp, jarPath, StandardCopyOption.REPLACE_EXISTING);
+                } else {
+                    try {
+                        Files.move(tmp, jarPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                    } catch (AtomicMoveNotSupportedException e) {
+                        logger.debug("Atomic move not supported, falling back to non-atomic move");
+                        Files.move(tmp, jarPath, StandardCopyOption.REPLACE_EXISTING);
+                    }
                 }
             }
         } catch (IOException e) {
