@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T05:52:21.538667557Z",
+  "turnSequence": 10,
+  "toolIndex": 0,
+  "callId": "call_00_nbzsBt4mGKTEHHtJCvXC1156",
+  "toolName": "grep",
+  "arguments": {
+    "pattern": "new KeyDef\\(DOCKER_HOST",
+    "path": "/home/dhoard/Development/github/altcontainers/altcontainers/core/src/main/java/nonapi/org/altcontainers/api/AltcontainersProperties.java"
+  },
+  "status": "ERROR",
+  "resultReference": "context/tool-results/turn-0010-tool-01-grep-call_00_nbzsBt4mGKTEHHtJCvXC1156.txt",
+  "sha256": "96524b55b7bf1630c7c2c3ab13ab53516445475ccb2262ba1914ded73b197968",
+  "bytes": 32
+}

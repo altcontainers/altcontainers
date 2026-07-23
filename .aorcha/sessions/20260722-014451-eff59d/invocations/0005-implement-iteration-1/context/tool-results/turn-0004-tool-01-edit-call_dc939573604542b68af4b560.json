@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T05:55:14.916650238Z",
+  "turnSequence": 4,
+  "toolIndex": 0,
+  "callId": "call_dc939573604542b68af4b560",
+  "toolName": "edit",
+  "arguments": {
+    "edits": [
+      {
+        "newText": "    @Test\n    void shouldResolveDockerHostFromSystemProperty() {\n        System.setProperty(\"altcontainers.docker.host\", \"tcp://10.0.0.1:2375\");\n        AltcontainersProperties p = AltcontainersProperties.forTesting(new Properties(), new Properties(), Map.of());\n        assertThat(p.dockerHost()).isEqualTo(\"tcp://10.0.0.1:2375\");\n    }\n\n    @Test\n    void shouldDefaultImagePullTimeout() {\n        AltcontainersProperties p = AltcontainersProperties.forTesting(new Properties(), new Properties(), Map.of());\n        assertThat(p.imagePullTimeout()).isEqualTo(Duration.ofMinutes(5));\n    }\n\n    @Test\n    void shouldResolveImagePullTimeoutFromEnv() {\n        Map<String, String> env = Map.of(\"ALTCONTAINERS_IMAGE_PULL_TIMEOUT_MS\", \"120000\");\n        AltcontainersProperties p = AltcontainersProperties.forTesting(new Properties(), new Properties(), env);\n        assertThat(p.imagePullTimeout()).isEqualTo(Duration.ofMinutes(2));\n    }\n\n    @Test\n    void shouldFailFastOnInvalidImagePullTimeout() {\n        Properties userHome = props(AltcontainersProperties.IMAGE_PULL_TIMEOUT_MS, \"abc\");\n        assertThatThrownBy(() -> AltcontainersProperties.forTesting(new Properties(), userHome, Map.of()))\n                .isInstanceOf(ContainerException.class)\n                .hasMessageContaining(AltcontainersProperties.IMAGE_PULL_TIMEOUT_MS);\n    }\n\n    @Test\n    void shouldFailFastOnNonPositiveImagePullTimeout() {\n        Properties userHomeZero = props(AltcontainersProperties.IMAGE_PULL_TIMEOUT_MS, \"0\");\n        assertThatThrownBy(() -> AltcontainersProperties.forTesting(new Properties(), userHomeZero, Map.of()))\n                .isInstanceOf(ContainerException.class)\n                .hasMessageContaining(AltcontainersProperties.IMAGE_PULL_TIMEOUT_MS);\n\n        Properties userHomeNeg = props(AltcontainersProperties.IMAGE_PULL_TIMEOUT_MS, \"-1\");\n        assertThatThrownBy(() -> AltcontainersProperties.forTesting(new Properties(), userHomeNeg, Map.of()))\n                .isInstanceOf(ContainerException.class)\n                .hasMessageContaining(AltcontainersProperties.IMAGE_PULL_TIMEOUT_MS);\n    }\n\n    private static Properties props",
+        "oldText": "    @Test\n    void shouldResolveDockerHostFromSystemProperty() {\n        System.setProperty(\"altcontainers.docker.host\", \"tcp://10.0.0.1:2375\");\n        AltcontainersProperties p = AltcontainersProperties.forTesting(new Properties(), new Properties(), Map.of());\n        assertThat(p.dockerHost()).isEqualTo(\"tcp://10.0.0.1:2375\");\n    }\n\n    private static Properties props"
+      },
+      {
+        "newText": "        System.clearProperty(AltcontainersProperties.DOCKER_HOST);\n        System.clearProperty(AltcontainersProperties.IMAGE_PULL_TIMEOUT_MS);\n    }",
+        "oldText": "        System.clearProperty(AltcontainersProperties.DOCKER_HOST);\n    }"
+      }
+    ],
+    "path": "/home/dhoard/Development/github/altcontainers/altcontainers/core/src/test/java/nonapi/org/altcontainers/api/AltcontainersPropertiesTest.java"
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0004-tool-01-edit-call_dc939573604542b68af4b560.txt",
+  "sha256": "12a4dfc50385f31051009a9a67e0115e1910bbdd6323134fbc2644cde337dbc0",
+  "bytes": 177
+}

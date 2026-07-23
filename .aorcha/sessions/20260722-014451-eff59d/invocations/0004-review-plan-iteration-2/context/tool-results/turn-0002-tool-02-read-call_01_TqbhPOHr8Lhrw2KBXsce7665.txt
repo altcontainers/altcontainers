@@ -1,0 +1,52 @@
+    /** Property key for {@link #containerPutArchivePipeBufferBytes()}. */
+    static final String CONTAINER_PUT_ARCHIVE_PIPE_BUFFER_BYTES =
+            "altcontainers.container.put.archive.pipe.buffer.bytes";
+
+    /** Property key for {@link #networksParallelism()}. */
+    static final String NETWORKS_PARALLELISM = "altcontainers.networks.parallelism";
+
+    /** Legacy key for {@link #networksParallelism()}. */
+    static final String LEGACY_NETWORKS_PARALLELISM = "altcontainers.reaper.networks.parallelism";
+
+    /** Property key for {@link #dockerHost()}. */
+    static final String DOCKER_HOST = "altcontainers.docker.host";
+
+    private static final List<KeyDef> KNOWN_KEYS = List.of(
+            new KeyDef(REAPER_DISABLED, "false", Kind.BOOLEAN),
+            new KeyDef(REAPER_CONNECTION_TIMEOUT_MS, "10000", Kind.DURATION_MS),
+            new KeyDef(REAPER_STARTUP_TIMEOUT_MS, "10000", Kind.DURATION_MS),
+            new KeyDef(REAPER_STOP_TIMEOUT_MS, "30000", Kind.DURATION_MS),
+            new KeyDef(
+                    CONTAINER_STARTUP_TIMEOUT_MS,
+                    String.valueOf(ContainerSpec.DEFAULT_STARTUP_TIMEOUT.toMillis()),
+                    Kind.DURATION_MS),
+            new KeyDef(CONTAINER_READINESS_POLL_INITIAL_MS, "10", Kind.DURATION_MS),
+            new KeyDef(CONTAINER_READINESS_POLL_MAX_MS, "500", Kind.DURATION_MS),
+            new KeyDef(CONTAINER_STARTUP_RETRY_BACKOFF_MULTIPLIER_MS, "1000", Kind.DURATION_MS),
+            new KeyDef(CONTAINER_STARTUP_RETRY_BACKOFF_MAX_MS, "5000", Kind.DURATION_MS),
+            new KeyDef(PORT_PROBE_TIMEOUT_MS, "500", Kind.DURATION_MS),
+            new KeyDef(HTTP_PROBE_TIMEOUT_MS, "2000", Kind.DURATION_MS),
+            new KeyDef(CONTAINER_PUT_ARCHIVE_PIPE_BUFFER_BYTES, "65536", Kind.BYTES),
+            new KeyDef(NETWORKS_PARALLELISM, "0", Kind.NONNEG_INT, LEGACY_NETWORKS_PARALLELISM),
+            new KeyDef(DOCKER_HOST, "", Kind.STRING));
+
+    private final Map<String, Object> resolved;
+
+    private AltcontainersProperties(Properties classpath, Properties userHome, Map<String, String> env) {
+        Map<String, Object> out = new HashMap<>();
+        for (KeyDef def : KNOWN_KEYS) {
+            String raw = resolveRaw(def, classpath, userHome, env);
+            out.put(def.key, parse(def, raw));
+        }
+        this.resolved = Collections.unmodifiableMap(out);
+    }
+
+    /**
+     * Returns the singleton instance, performing the eager file load on first
+     * reference.
+     *
+     * @return the singleton instance
+     */
+    public static AltcontainersProperties instance() {
+
+[323 more lines in file. Use offset=150 to continue.]

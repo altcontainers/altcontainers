@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T05:49:09.732818931Z",
+  "turnSequence": 5,
+  "toolIndex": 1,
+  "callId": "call_01_QSynfdbTrErU8PDD0s5J3545",
+  "toolName": "grep",
+  "arguments": {
+    "pattern": "pullImage",
+    "path": "/home/dhoard/Development/github/altcontainers/altcontainers/core/src/main/java/nonapi/org/altcontainers/api/ContainerManager.java",
+    "context": 5
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0005-tool-02-grep-call_01_QSynfdbTrErU8PDD0s5J3545.txt",
+  "sha256": "ce8d8b9ef36bb78b4c4857f8b4f672803c05bafe82009710caeb9c63988fc708",
+  "bytes": 2032
+}

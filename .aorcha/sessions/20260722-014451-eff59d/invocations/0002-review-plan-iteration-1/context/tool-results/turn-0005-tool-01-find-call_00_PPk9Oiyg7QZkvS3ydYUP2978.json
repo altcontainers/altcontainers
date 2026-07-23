@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T05:49:09.730964781Z",
+  "turnSequence": 5,
+  "toolIndex": 0,
+  "callId": "call_00_PPk9Oiyg7QZkvS3ydYUP2978",
+  "toolName": "find",
+  "arguments": {
+    "pattern": "**/AltcontainersConfigurationTest.java"
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0005-tool-01-find-call_00_PPk9Oiyg7QZkvS3ydYUP2978.txt",
+  "sha256": "1ad54d3d80e10349192ca23095d36a9527c8df539d3425bcccd0654dec5df408",
+  "bytes": 31
+}

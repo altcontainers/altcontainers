@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T05:54:22.060866460Z",
+  "turnSequence": 14,
+  "toolIndex": 0,
+  "callId": "call_00_hcSJ4Oh1pvhLoY1FklNF5585",
+  "toolName": "bash",
+  "arguments": {
+    "command": "ls -la /home/dhoard/Development/github/altcontainers/altcontainers/.aorcha/sessions/20260722-014451-eff59d/artifacts/review-plan.md /home/dhoard/Development/github/altcontainers/altcontainers/.aorcha/sessions/20260722-014451-eff59d/invocations/0004-review-plan-iteration-2/result.json"
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0014-tool-01-bash-call_00_hcSJ4Oh1pvhLoY1FklNF5585.txt",
+  "sha256": "23b1c97b1b9ef0ceb9db95bb90b2ce03da1b1a3cf7ac0299ed71c747755126a1",
+  "bytes": 367
+}

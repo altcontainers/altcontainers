@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T05:45:40.662162346Z",
+  "turnSequence": 8,
+  "toolIndex": 1,
+  "callId": "call_01_RwYDIpPJngvEdfH2zUjN3352",
+  "toolName": "read",
+  "arguments": {
+    "path": "/home/dhoard/Development/github/altcontainers/altcontainers/core/src/test/java/nonapi/org/altcontainers/api/ManagedWaitStrategyTest.java"
+  },
+  "status": "ERROR",
+  "resultReference": "context/tool-results/turn-0008-tool-02-read-call_01_RwYDIpPJngvEdfH2zUjN3352.txt",
+  "sha256": "c56da80c0911ab992bf9ed2575fe05447df9a0eebb1cb7c56295830287d3a602",
+  "bytes": 185
+}

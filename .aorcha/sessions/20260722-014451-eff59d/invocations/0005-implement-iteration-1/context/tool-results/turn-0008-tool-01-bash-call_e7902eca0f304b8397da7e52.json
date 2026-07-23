@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T06:01:08.134462302Z",
+  "turnSequence": 8,
+  "toolIndex": 0,
+  "callId": "call_e7902eca0f304b8397da7e52",
+  "toolName": "bash",
+  "arguments": {
+    "command": "cd /home/dhoard/Development/github/altcontainers/altcontainers && ./mvnw compile -pl core 2>&1 | tail -10",
+    "timeout": 120
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0008-tool-01-bash-call_e7902eca0f304b8397da7e52.txt",
+  "sha256": "db117e81d7a20a0d2d3ea70d03779e089a55e6d3cb3e1d1b2ac77815213f72c6",
+  "bytes": 546
+}

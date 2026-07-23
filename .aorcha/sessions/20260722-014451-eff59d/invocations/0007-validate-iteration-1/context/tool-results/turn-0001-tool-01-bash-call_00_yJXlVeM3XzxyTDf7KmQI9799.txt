@@ -1,0 +1,80 @@
+[PARAMIXEL]    │  │  │  └─ after[step]: PASSED tearDown 681 ms
+[PARAMIXEL]    │  │  └─ after[step]: PASSED [destroy] 0 ms
+[PARAMIXEL]    │  └─ instance: PASSED nginx:1.29.5 1898 ms
+[PARAMIXEL]    │     ├─ before[step]: PASSED [instantiate] 0 ms
+[PARAMIXEL]    │     ├─ body[scope]: PASSED nginx:1.29.5 1897 ms
+[PARAMIXEL]    │     │  ├─ before[step]: PASSED setUp 1378 ms
+[PARAMIXEL]    │     │  ├─ body[step]: PASSED testGet 13 ms
+[PARAMIXEL]    │     │  └─ after[step]: PASSED tearDown 504 ms
+[PARAMIXEL]    │     └─ after[step]: PASSED [destroy] 0 ms
+[PARAMIXEL]    └─ parallel: PASSED examples.altcontainers.nginx.NginxTest 3354 ms
+[PARAMIXEL]       ├─ instance: PASSED nginx:1.27.5 1992 ms
+[PARAMIXEL]       │  ├─ before[step]: PASSED [instantiate] 0 ms
+[PARAMIXEL]       │  ├─ body[scope]: PASSED [scenario] 1988 ms
+[PARAMIXEL]       │  │  ├─ before[step]: PASSED setUp() 1378 ms
+[PARAMIXEL]       │  │  ├─ body[step]: PASSED testGet() 13 ms
+[PARAMIXEL]       │  │  └─ after[step]: PASSED tearDown() 595 ms
+[PARAMIXEL]       │  └─ after[step]: PASSED [destroy] 0 ms
+[PARAMIXEL]       ├─ instance: PASSED nginx:1.28.2 2362 ms
+[PARAMIXEL]       │  ├─ before[step]: PASSED [instantiate] 0 ms
+[PARAMIXEL]       │  ├─ body[scope]: PASSED [scenario] 2358 ms
+[PARAMIXEL]       │  │  ├─ before[step]: PASSED setUp() 1450 ms
+[PARAMIXEL]       │  │  ├─ body[step]: PASSED testGet() 1 ms
+[PARAMIXEL]       │  │  └─ after[step]: PASSED tearDown() 906 ms
+[PARAMIXEL]       │  └─ after[step]: PASSED [destroy] 0 ms
+[PARAMIXEL]       └─ instance: PASSED nginx:1.29.5 2425 ms
+[PARAMIXEL]          ├─ before[step]: PASSED [instantiate] 0 ms
+[PARAMIXEL]          ├─ body[scope]: PASSED [scenario] 2193 ms
+[PARAMIXEL]          │  ├─ before[step]: PASSED setUp() 1378 ms
+[PARAMIXEL]          │  ├─ body[step]: PASSED testGet() 13 ms
+[PARAMIXEL]          │  └─ after[step]: PASSED tearDown() 801 ms
+[PARAMIXEL]          └─ after[step]: PASSED [destroy] 0 ms
+[PARAMIXEL] ------------------------------------
+[PARAMIXEL] Paramixel v6.2.1
+[PARAMIXEL] ------------------------------------
+[PARAMIXEL] Status      : PASSED
+[PARAMIXEL] Finished at : 2026-07-22 02:37:31
+[PARAMIXEL] Total time  : 26 s 709 ms (26709 ms)
+[PARAMIXEL] ------------------------------------
+[INFO] 
+[INFO] --- jar:3.5.0:jar (default-jar) @ examples ---
+[INFO] Building jar: /home/dhoard/Development/github/altcontainers/altcontainers/examples/target/examples-0.3.0-POST.jar
+[INFO] 
+[INFO] --- javadoc:3.12.0:jar (attach-javadocs) @ examples ---
+[INFO] Skipping javadoc generation
+[INFO] 
+[INFO] --- jacoco:0.8.15:prepare-agent-integration (jacoco-prepare-agent-integration) @ examples ---
+[INFO] argLine set to -javaagent:/home/dhoard/.m2/repository/org/jacoco/org.jacoco.agent/0.8.15/org.jacoco.agent-0.8.15-runtime.jar=destfile=/home/dhoard/Development/github/altcontainers/altcontainers/examples/target/jacoco-it.exec,excludes=reaper.jar
+[INFO] 
+[INFO] --- jacoco:0.8.15:merge (jacoco-merge) @ examples ---
+[INFO] Loading execution data file /home/dhoard/Development/github/altcontainers/altcontainers/examples/target/jacoco.exec
+[INFO] Writing merged execution data to /home/dhoard/Development/github/altcontainers/altcontainers/examples/target/jacoco-merged.exec
+[INFO] 
+[INFO] --- pmd:3.28.0:pmd (pmd-analyze) @ examples ---
+[INFO] PMD version: 7.26.0
+[INFO] Rendering content with org.apache.maven.skins:maven-fluido-skin:jar:2.0.0-M9 skin
+[INFO] 
+[INFO] --- jacoco:0.8.15:report (jacoco-report) @ examples ---
+[INFO] Loading execution data file /home/dhoard/Development/github/altcontainers/altcontainers/examples/target/jacoco-merged.exec
+[INFO] Analyzed bundle 'Altcontainers Examples' with 23 classes
+[INFO] 
+[INFO] --- spotless:3.8.0:check (default) @ examples ---
+[INFO] Index file does not exist. Fallback to an empty index
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::staticFieldBase has been called by com.diffplug.spotless.java.ModuleHelper (file:/home/dhoard/.m2/repository/com/diffplug/spotless/spotless-lib/4.8.0/spotless-lib-4.8.0.jar)
+WARNING: Please consider reporting this to the maintainers of class com.diffplug.spotless.java.ModuleHelper
+WARNING: sun.misc.Unsafe::staticFieldBase will be removed in a future release
+[INFO] Spotless.Java is keeping 24 files clean - 0 needs changes to be clean, 24 were already clean, 0 were skipped because caching determined they were already clean
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for Altcontainers Parent 0.3.0-POST:
+[INFO] 
+[INFO] Altcontainers Parent ............................... SUCCESS [  0.780 s]
+[INFO] Altcontainers Reaper ............................... SUCCESS [01:14 min]
+[INFO] Altcontainers Core ................................. SUCCESS [05:07 min]
+[INFO] Altcontainers Examples ............................. SUCCESS [ 31.337 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  06:54 min
+[INFO] Finished at: 2026-07-22T02:37:32-04:00
+[INFO] ------------------------------------------------------------------------

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T05:45:35.485342110Z",
+  "turnSequence": 7,
+  "toolIndex": 1,
+  "callId": "call_01_Yc036kqBKQZyBh4wRTIF7817",
+  "toolName": "grep",
+  "arguments": {
+    "-n": true,
+    "pattern": "reaper.stop.timeout",
+    "output_mode": "content",
+    "path": "/home/dhoard/Development/github/altcontainers/altcontainers",
+    "glob": "*.java"
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0007-tool-02-grep-call_01_Yc036kqBKQZyBh4wRTIF7817.txt",
+  "sha256": "056118938038c31256fbcddf732c1fda2b8c2c25ad4d2406eead3d46fe4c82f2",
+  "bytes": 3092
+}

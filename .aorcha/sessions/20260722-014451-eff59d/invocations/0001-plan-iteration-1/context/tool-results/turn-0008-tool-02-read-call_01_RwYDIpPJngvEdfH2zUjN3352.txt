@@ -1,0 +1,1 @@
+Tool error: File is not a readable regular file: /home/dhoard/Development/github/altcontainers/altcontainers/core/src/test/java/nonapi/org/altcontainers/api/ManagedWaitStrategyTest.java

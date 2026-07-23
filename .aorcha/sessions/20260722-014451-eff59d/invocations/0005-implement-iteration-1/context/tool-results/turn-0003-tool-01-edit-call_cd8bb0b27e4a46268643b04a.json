@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T05:54:55.949159577Z",
+  "turnSequence": 3,
+  "toolIndex": 0,
+  "callId": "call_cd8bb0b27e4a46268643b04a",
+  "toolName": "edit",
+  "arguments": {
+    "path": "/home/dhoard/Development/github/altcontainers/altcontainers/core/src/main/java/nonapi/org/altcontainers/api/AltcontainersProperties.java",
+    "edits": [
+      {
+        "oldText": "    /** Property key for {@link #dockerHost()}. */\n    static final String DOCKER_HOST = \"altcontainers.docker.host\";",
+        "newText": "    /** Property key for {@link #dockerHost()}. */\n    static final String DOCKER_HOST = \"altcontainers.docker.host\";\n\n    /** Property key for {@link #imagePullTimeout()}. */\n    static final String IMAGE_PULL_TIMEOUT_MS = \"altcontainers.image.pull.timeout.ms\";"
+      },
+      {
+        "oldText": "            new KeyDef(DOCKER_HOST, \"\", Kind.STRING));",
+        "newText": "            new KeyDef(DOCKER_HOST, \"\", Kind.STRING),\n            new KeyDef(IMAGE_PULL_TIMEOUT_MS, \"300000\", Kind.DURATION_MS));"
+      },
+      {
+        "oldText": "    public String dockerHost() {\n        return (String) resolved.get(DOCKER_HOST);\n    }\n\n    private static String resolveRaw",
+        "newText": "    public String dockerHost() {\n        return (String) resolved.get(DOCKER_HOST);\n    }\n\n    /**\n     * Returns the image pull timeout.\n     *\n     * @return the image pull timeout\n     */\n    public Duration imagePullTimeout() {\n        return (Duration) resolved.get(IMAGE_PULL_TIMEOUT_MS);\n    }\n\n    private static String resolveRaw"
+      }
+    ]
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0003-tool-01-edit-call_cd8bb0b27e4a46268643b04a.txt",
+  "sha256": "af83bbb0e6db16d8dcee3fb66527a61366fa4f9403b7cf4334b2bb9a8e1ac0c7",
+  "bytes": 173
+}

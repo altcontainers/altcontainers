@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T05:44:57.449263205Z",
+  "turnSequence": 1,
+  "toolIndex": 0,
+  "callId": "call_00_g3ZpzOgdGiiakI4xm3587803",
+  "toolName": "read",
+  "arguments": {
+    "path": "/home/dhoard/Development/github/altcontainers/altcontainers/plans/fix-image-pull-no-timeout.md"
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0001-tool-01-read-call_00_g3ZpzOgdGiiakI4xm3587803.txt",
+  "sha256": "d0df97ebc5c248e302cc8e54d797655d03827cc39cede62b30d75e4ad2cb0cb3",
+  "bytes": 6630
+}

@@ -1,0 +1,52 @@
+     */
+    private void pullImage(String image) {
+        while (true) {
+            CompletableFuture<Void> newFuture = new CompletableFuture<>();
+            CompletableFuture<Void> existing = inflightPulls.putIfAbsent(image, newFuture);
+            if (existing == null) {
+                try {
+                    dockerClient().pullImageCmd(image).start().awaitCompletion();
+                    newFuture.complete(null);
+                    localImageCache.add(image);
+                    inflightPulls.remove(image, newFuture);
+                    return;
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    newFuture.completeExceptionally(e);
+                    inflightPulls.remove(image);
+                    throw new ContainerException("Image pull interrupted: " + image, e);
+                } catch (RuntimeException e) {
+                    newFuture.completeExceptionally(e);
+                    inflightPulls.remove(image);
+                    throw e instanceof ContainerException ce
+                            ? ce
+                            : new ContainerException("Image pull failed: " + image, e);
+                }
+            }
+            try {
+                existing.get();
+                return;
+            } catch (ExecutionException e) {
+                Throwable cause = e.getCause();
+                if (cause instanceof ContainerException ce) {
+                    throw ce;
+                }
+                throw new ContainerException("Image pull failed: " + image, cause);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new ContainerException("Interrupted while waiting for image pull", e);
+            }
+        }
+    }
+
+    /**
+     * Creates a container, recovering once when a cached image was removed from
+     * the Docker daemon.
+     *
+     * @param spec the container specification
+     * @param labels the resource labels
+     * @return the Docker container id
+     */
+    private String createContainerWithImageRecovery(ContainerSpec spec, Map<String, String> labels) {
+
+[1017 more lines in file. Use offset=245 to continue.]

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T05:54:34.654022040Z",
+  "turnSequence": 2,
+  "toolIndex": 1,
+  "callId": "call_1b7dc9f46aee4823b95b631f",
+  "toolName": "read",
+  "arguments": {
+    "path": "/home/dhoard/Development/github/altcontainers/altcontainers/website/versioned_docs/version-0.3.0/guides/configuration.md"
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0002-tool-02-read-call_1b7dc9f46aee4823b95b631f.txt",
+  "sha256": "b4775dcc4a6f9a87d0e7d94be8d2799ad7f6c1f4e4ccd805ae1a6117761559c3",
+  "bytes": 15652
+}

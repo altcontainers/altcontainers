@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T05:53:38.343709119Z",
+  "turnSequence": 7,
+  "toolIndex": 1,
+  "callId": "call_01_GSEOrZHHqP3aKhl749rz8002",
+  "toolName": "bash",
+  "arguments": {
+    "command": "find ~/.m2/repository/com/github/docker-java -path '*/docker-java-api/*.jar' | head -3 && jar tf ~/.m2/repository/com/github/docker-java/docker-java-api/3.4.1/docker-java-api-3.4.1.jar | grep -i 'PullImageResultCallback' 2>/dev/null || echo \"jar not found\"; find ~/.m2/repository/com/github/docker-java -name 'docker-java-api*.jar' -not -name '*-sources*' 2>/dev/null | head -1"
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0007-tool-02-bash-call_01_GSEOrZHHqP3aKhl749rz8002.txt",
+  "sha256": "7ff3d6bf23bd6a5968ff11b4e02a76523ef23a31ebdc3bc9a510c4a88161a679",
+  "bytes": 1658
+}

@@ -1,0 +1,40 @@
+[PARAMIXEL]    │  └─ instance: PASSED nginx:1.29.5 3351 ms
+[PARAMIXEL]    │     ├─ before[step]: PASSED [instantiate] 0 ms
+[PARAMIXEL]    │     ├─ body[scope]: PASSED nginx:1.29.5 2574 ms
+[PARAMIXEL]    │     │  ├─ before[step]: PASSED setUp 1542 ms
+[PARAMIXEL]    │     │  ├─ body[step]: PASSED testGet 0 ms
+[PARAMIXEL]    │     │  └─ after[step]: PASSED tearDown 1030 ms
+[PARAMIXEL]    │     └─ after[step]: PASSED [destroy] 0 ms
+[PARAMIXEL]    └─ parallel: PASSED examples.altcontainers.nginx.NginxTest 3895 ms
+[PARAMIXEL]       ├─ instance: PASSED nginx:1.27.5 2351 ms
+[PARAMIXEL]       │  ├─ before[step]: PASSED [instantiate] 0 ms
+[PARAMIXEL]       │  ├─ body[scope]: PASSED [scenario] 1906 ms
+[PARAMIXEL]       │  │  ├─ before[step]: PASSED setUp() 1348 ms
+[PARAMIXEL]       │  │  ├─ body[step]: PASSED testGet() 26 ms
+[PARAMIXEL]       │  │  └─ after[step]: PASSED tearDown() 531 ms
+[PARAMIXEL]       │  └─ after[step]: PASSED [destroy] 0 ms
+[PARAMIXEL]       ├─ instance: PASSED nginx:1.28.2 2287 ms
+[PARAMIXEL]       │  ├─ before[step]: PASSED [instantiate] 0 ms
+[PARAMIXEL]       │  ├─ body[scope]: PASSED [scenario] 2116 ms
+[PARAMIXEL]       │  │  ├─ before[step]: PASSED setUp() 1347 ms
+[PARAMIXEL]       │  │  ├─ body[step]: PASSED testGet() 25 ms
+[PARAMIXEL]       │  │  └─ after[step]: PASSED tearDown() 742 ms
+[PARAMIXEL]       │  └─ after[step]: PASSED [destroy] 0 ms
+[PARAMIXEL]       └─ instance: PASSED nginx:1.29.5 2575 ms
+[PARAMIXEL]          ├─ before[step]: PASSED [instantiate] 0 ms
+[PARAMIXEL]          ├─ body[scope]: PASSED [scenario] 2444 ms
+[PARAMIXEL]          │  ├─ before[step]: PASSED setUp() 1485 ms
+[PARAMIXEL]          │  ├─ body[step]: PASSED testGet() 0 ms
+[PARAMIXEL]          │  └─ after[step]: PASSED tearDown() 957 ms
+[PARAMIXEL]          └─ after[step]: PASSED [destroy] 0 ms
+[PARAMIXEL] ------------------------------------
+[PARAMIXEL] Paramixel v6.2.1
+[PARAMIXEL] ------------------------------------
+[PARAMIXEL] Status      : PASSED
+[PARAMIXEL] Finished at : 2026-07-22 02:15:59
+[PARAMIXEL] Total time  : 26 s 706 ms (26706 ms)
+[PARAMIXEL] ------------------------------------
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::staticFieldBase has been called by com.diffplug.spotless.java.ModuleHelper (file:/home/dhoard/.m2/repository/com/diffplug/spotless/spotless-lib/4.8.0/spotless-lib-4.8.0.jar)
+WARNING: Please consider reporting this to the maintainers of class com.diffplug.spotless.java.ModuleHelper
+WARNING: sun.misc.Unsafe::staticFieldBase will be removed in a future release

@@ -1,0 +1,15 @@
+/home/dhoard/Development/github/altcontainers/altcontainers/core/src/main/java/nonapi/org/altcontainers/api/Configuration.java:28: * @param reaperStopTimeout the reaper stop timeout
+/home/dhoard/Development/github/altcontainers/altcontainers/core/src/main/java/nonapi/org/altcontainers/api/Configuration.java:41:     * @param reaperStopTimeout the reaper stop timeout
+/home/dhoard/Development/github/altcontainers/altcontainers/core/src/main/java/nonapi/org/altcontainers/api/Launcher.java:136:     * @param reaperStopTimeout the resolved reaper stop timeout
+/home/dhoard/Development/github/altcontainers/altcontainers/core/src/main/java/nonapi/org/altcontainers/api/Launcher.java:162:        cmd.add("-Daltcontainers.reaper.stop.timeout.ms=" + reaperStopTimeout.toMillis());
+/home/dhoard/Development/github/altcontainers/altcontainers/core/src/main/java/nonapi/org/altcontainers/api/Launcher.java:194:                || "altcontainers.reaper.stop.timeout.ms".equals(key);
+/home/dhoard/Development/github/altcontainers/altcontainers/core/src/main/java/nonapi/org/altcontainers/api/AltcontainersProperties.java:75:    static final String REAPER_STOP_TIMEOUT_MS = "altcontainers.reaper.stop.timeout.ms";
+/home/dhoard/Development/github/altcontainers/altcontainers/core/src/main/java/nonapi/org/altcontainers/api/AltcontainersProperties.java:205:     * Returns the reaper stop timeout used when stopping containers.
+/home/dhoard/Development/github/altcontainers/altcontainers/core/src/main/java/nonapi/org/altcontainers/api/AltcontainersProperties.java:207:     * @return the reaper stop timeout
+/home/dhoard/Development/github/altcontainers/altcontainers/core/src/test/java/nonapi/org/altcontainers/api/LauncherTest.java:60:        assertThat(cmd).contains("-Daltcontainers.reaper.stop.timeout.ms=7000");
+/home/dhoard/Development/github/altcontainers/altcontainers/core/src/test/java/nonapi/org/altcontainers/api/LauncherTest.java:72:        assertThat(Launcher.shouldForwardSystemProperty("altcontainers.reaper.stop.timeout.ms"))
+/home/dhoard/Development/github/altcontainers/altcontainers/core/src/test/java/nonapi/org/altcontainers/api/AltcontainersPropertiesTest.java:268:        System.clearProperty("altcontainers.reaper.stop.timeout.ms");
+/home/dhoard/Development/github/altcontainers/altcontainers/core/src/test/java/nonapi/org/altcontainers/api/ReaperLifecycleTest.java:645:        cmd.add("-Daltcontainers.reaper.stop.timeout.ms=30000");
+/home/dhoard/Development/github/altcontainers/altcontainers/reaper/src/main/java/org/altcontainers/reaper/Reaper.java:88:        String raw = System.getProperty("altcontainers.reaper.stop.timeout.ms", "30000");
+/home/dhoard/Development/github/altcontainers/altcontainers/reaper/src/main/java/org/altcontainers/reaper/Reaper.java:106:        int value = parseIntegerProperty("altcontainers.reaper.stop.timeout.ms", raw);
+/home/dhoard/Development/github/altcontainers/altcontainers/reaper/src/main/java/org/altcontainers/reaper/Reaper.java:108:            throw new IllegalArgumentException("altcontainers.reaper.stop.timeout.ms must be positive");

@@ -1,0 +1,55 @@
+diff --git a/website/versioned_docs/version-0.3.0/guides/configuration.md b/website/versioned_docs/version-0.3.0/guides/configuration.md
+index c631534a..313f8419 100644
+--- a/website/versioned_docs/version-0.3.0/guides/configuration.md
++++ b/website/versioned_docs/version-0.3.0/guides/configuration.md
+@@ -35,6 +35,7 @@ Environment variables are derived from property keys by:
+ | `altcontainers.container.startup.timeout.ms` | `ALTCONTAINERS_CONTAINER_STARTUP_TIMEOUT_MS` |
+ | `altcontainers.wait.http.probe.timeout.ms` | `ALTCONTAINERS_WAIT_HTTP_PROBE_TIMEOUT_MS` |
+ | `altcontainers.networks.parallelism` | `ALTCONTAINERS_NETWORKS_PARALLELISM` |
++| `altcontainers.image.pull.timeout.ms` | `ALTCONTAINERS_IMAGE_PULL_TIMEOUT_MS` |
+ 
+ ### Properties files
+ 
+@@ -304,6 +305,32 @@ altcontainers.container.put.archive.pipe.buffer.bytes=131072
+ 
+ ---
+ 
++### Image
++
++| Property Key | Type | Default | Configuration Methods | Purpose |
++|---|---|---|---|---|
++| `altcontainers.image.pull.timeout.ms` | Duration (ms) | `300000` | Programmatic, Environment, Properties file | Maximum time to wait for an image pull to complete |
++
++#### `altcontainers.image.pull.timeout.ms`
++
++Maximum time the library waits for a Docker image pull to complete. If a pull exceeds this timeout, the pull is treated as failed and all threads waiting for the same image receive a `ContainerException`.
++
++Concurrent callers that request the same image while a pull is in progress wait for the in-flight pull (rather than starting a duplicate pull). Their wait is bounded by this timeout plus a small slack (10 seconds).
++
++**Values:** Positive integer (milliseconds)
++
++**Properties file:**
++```properties
++altcontainers.image.pull.timeout.ms=600000
++```
++
++**Environment variable:**
++```bash
++ALTCONTAINERS_IMAGE_PULL_TIMEOUT_MS=600000
++```
++
++---
++
+ ### Wait strategy probes
+ 
+ | Property Key | Type | Default | Configuration Methods | Purpose |
+@@ -434,6 +461,9 @@ altcontainers.container.put.archive.pipe.buffer.bytes=65536
+ # --- Wait strategy probes ---
+ altcontainers.wait.port.probe.timeout.ms=500
+ altcontainers.wait.http.probe.timeout.ms=2000
++
++# --- Image pull ---
++altcontainers.image.pull.timeout.ms=300000
+ ```
+ 
+ ---

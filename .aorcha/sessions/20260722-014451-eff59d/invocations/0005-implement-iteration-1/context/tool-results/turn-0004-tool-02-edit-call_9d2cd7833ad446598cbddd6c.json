@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T05:55:14.917225995Z",
+  "turnSequence": 4,
+  "toolIndex": 1,
+  "callId": "call_9d2cd7833ad446598cbddd6c",
+  "toolName": "edit",
+  "arguments": {
+    "edits": [
+      {
+        "newText": "import static org.assertj.core.api.Assertions.assertThat;\n\nimport java.lang.reflect.Field;\nimport java.time.Duration;\nimport java.util.Map;\nimport java.util.concurrent.CompletableFuture;\nimport java.util.concurrent.ConcurrentHashMap;\nimport java.util.concurrent.CountDownLatch;\nimport java.util.concurrent.atomic.AtomicReference;\nimport org.altcontainers.api.Container;\nimport org.altcontainers.api.ContainerSpec;\nimport org.junit.jupiter.api.Test;\nimport org.junit.jupiter.api.condition.EnabledIf;",
+        "oldText": "import static org.assertj.core.api.Assertions.assertThat;\n\nimport java.lang.reflect.Field;\nimport java.util.Map;\nimport java.util.concurrent.CompletableFuture;\nimport java.util.concurrent.ConcurrentHashMap;\nimport java.util.concurrent.CountDownLatch;\nimport java.util.concurrent.atomic.AtomicReference;\nimport org.altcontainers.api.Container;\nimport org.altcontainers.api.ContainerSpec;\nimport org.junit.jupiter.api.Test;\nimport org.junit.jupiter.api.condition.EnabledIf;"
+      },
+      {
+        "newText": "    @Test\n    @EnabledIf(\"dockerAvailable\")\n    void shouldCompletePullWithinConfiguredTimeout() throws Exception {\n        String image = \"alpine:latest\";\n        ContainerManager manager = ContainerManager.getInstance();\n\n        long start = System.currentTimeMillis();\n        manager.triggerPullImage(image);\n        long elapsed = System.currentTimeMillis() - start;\n\n        assertThat(elapsed).isLessThan(Duration.ofMinutes(4).toMillis());\n\n        Field field = ContainerManager.class.getDeclaredField(\"inflightPulls\");\n        field.setAccessible(true);\n        @SuppressWarnings(\"unchecked\")\n        Map<String, CompletableFuture<Void>> inflight =\n                (ConcurrentHashMap<String, CompletableFuture<Void>>) field.get(manager);\n        assertThat(inflight).doesNotContainKey(image);\n    }\n\n    @Test\n    @EnabledIf(\"dockerAndReaperAvailable\")\n    void shouldRecoverWhenCachedImageWasRemoved() {",
+        "oldText": "    @Test\n    @EnabledIf(\"dockerAndReaperAvailable\")\n    void shouldRecoverWhenCachedImageWasRemoved() {"
+      }
+    ],
+    "path": "/home/dhoard/Development/github/altcontainers/altcontainers/core/src/test/java/nonapi/org/altcontainers/api/ContainerManagerPullTest.java"
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0004-tool-02-edit-call_9d2cd7833ad446598cbddd6c.txt",
+  "sha256": "d5c3d80370ad9b684e2742f265db080fe91c2a1bcf0af35aae4cb781f296546b",
+  "bytes": 174
+}

@@ -1,0 +1,62 @@
+     * Returns the startup retry backoff maximum.
+     *
+     * @return the startup retry backoff maximum
+     */
+    public Duration containerStartupRetryBackoffMax() {
+        return (Duration) resolved.get(CONTAINER_STARTUP_RETRY_BACKOFF_MAX_MS);
+    }
+
+    /**
+     * Returns the port probe timeout.
+     *
+     * @return the port probe timeout
+     */
+    public Duration portProbeTimeout() {
+        return (Duration) resolved.get(PORT_PROBE_TIMEOUT_MS);
+    }
+
+    /**
+     * Returns the HTTP probe timeout.
+     *
+     * @return the HTTP probe timeout
+     */
+    public Duration httpProbeTimeout() {
+        return (Duration) resolved.get(HTTP_PROBE_TIMEOUT_MS);
+    }
+
+    /**
+     * Returns the put-archive pipe buffer size in bytes.
+     *
+     * @return the put-archive pipe buffer size in bytes
+     */
+    public int containerPutArchivePipeBufferBytes() {
+        return (Integer) resolved.get(CONTAINER_PUT_ARCHIVE_PIPE_BUFFER_BYTES);
+    }
+
+    /**
+     * Returns the maximum number of concurrent network creations.
+     * A value of 0 means no limit.
+     *
+     * @return the network parallelism
+     */
+    public int networksParallelism() {
+        return (Integer) resolved.get(NETWORKS_PARALLELISM);
+    }
+
+    /**
+     * Returns the Docker host URI, or an empty string if not configured.
+     *
+     * @return the Docker host URI, or empty string
+     */
+    public String dockerHost() {
+        return (String) resolved.get(DOCKER_HOST);
+    }
+
+    private static String resolveRaw(KeyDef def, Properties classpath, Properties userHome, Map<String, String> env) {
+        // 1. System property (primary key)
+        String sysPropValue = System.getProperty(def.key);
+        if (sysPropValue != null && !sysPropValue.isEmpty()) {
+            return sysPropValue;
+        }
+
+[163 more lines in file. Use offset=310 to continue.]

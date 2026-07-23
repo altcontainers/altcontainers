@@ -315,9 +315,6 @@ public final class ContainerManager {
                 try {
                     dockerClient().startContainerCmd(containerId).exec();
                 } catch (RuntimeException startEx) {
-                    // Start failed: a container was created and is doomed. Build a handle so
-                    // onStartFailure fires before destruction, then rethrow so the outer catch
-                    // runs the standard notify -> destroy -> (retry | abort) path.
                     try {
                         container = new ConcreteContainer(
                                 containerId, spec.image(), spec, metadataInspector.apply(containerId));
@@ -371,7 +368,9 @@ public final class ContainerManager {
                 }
                 destroyAttempt(container, containerId);
             } catch (RuntimeException e) {
-                lastFailure = new ContainerException("Container startup failed: " + e.getMessage(), e);
+                String message =
+                        e.getMessage() != null ? e.getMessage() : e.getClass().getName();
+                lastFailure = new ContainerException("Container startup failed: " + message, e);
                 if (container != null) {
                     try {
                         fireOnStartFailure(
@@ -876,7 +875,7 @@ public final class ContainerManager {
                         try {
                             lineSplitter.accept(text);
                         } catch (RuntimeException e) {
-                            logger.warn("Log raw consumer failed: {}", e.getMessage());
+                            logger.warn("Log raw consumer failed", e);
                         }
                     }
                     if (!outputConsumers.isEmpty() && !handle.isClosed()) {
@@ -884,7 +883,7 @@ public final class ContainerManager {
                             try {
                                 consumer.accept(outputFrame);
                             } catch (RuntimeException e) {
-                                logger.error("Container output callback failed: {}", e.getMessage());
+                                logger.error("Container output callback failed", e);
                                 handle.setCallbackFailure(e);
                                 closeQuietly(this);
                                 complete.set(true);
@@ -904,7 +903,7 @@ public final class ContainerManager {
                     try {
                         lineSplitter.flush();
                     } catch (RuntimeException e) {
-                        logger.warn("Log raw consumer failed during error flush: {}", e.getMessage());
+                        logger.warn("Log raw consumer failed during error flush", e);
                     }
                 }
                 if (shouldSuppressLogError(handle, throwable)) {
@@ -922,7 +921,6 @@ public final class ContainerManager {
                                     ? throwable.getMessage()
                                     : throwable.getClass().getName());
                 }
-                complete.set(true);
             }
 
             @Override
@@ -931,7 +929,7 @@ public final class ContainerManager {
                     try {
                         lineSplitter.flush();
                     } catch (RuntimeException e) {
-                        logger.warn("Log raw consumer failed during flush: {}", e.getMessage());
+                        logger.warn("Log raw consumer failed during flush", e);
                     }
                 }
                 complete.set(true);
@@ -1063,6 +1061,7 @@ public final class ContainerManager {
     }
 
     private static final int CONTAINER_REMOVE_RETRY_COUNT = 3;
+
     private static final long CONTAINER_REMOVE_RETRY_BASE_DELAY_MS = 200L;
 
     /**
@@ -1235,6 +1234,98 @@ public final class ContainerManager {
     }
 
     /**
+     * Returns {@code true} if the throwable chain contains a
+     * {@link java.nio.channels.ClosedByInterruptException}.
+     *
+     * @param t the throwable to inspect
+     * @return {@code true} if the chain contains a closed-by-interrupt exception
+     */
+    static boolean isClosedByInterrupt(Throwable t) {
+        for (Throwable current = t; current != null; current = current.getCause()) {
+            if (current instanceof java.nio.channels.ClosedByInterruptException) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Returns {@code true} if the log error should be suppressed because the
+     * handle is already closed or the error was caused by an interrupt.
+     *
+     * @param handle the log handle, or {@code null}
+     * @param throwable the error thrown by the log stream
+     * @return {@code true} if the error should be suppressed
+     */
+    static boolean shouldSuppressLogError(LogHandle handle, Throwable throwable) {
+        if (handle == null) {
+            return false;
+        }
+        if (handle.isClosed()) {
+            return true;
+        }
+        if (isClosedByInterrupt(throwable)) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Lightweight handle for an attached log stream.
+     */
+    static final class LogHandle {
+        private volatile ResultCallback<Frame> callback;
+        private volatile boolean closed;
+        private volatile RuntimeException callbackFailure;
+
+        /**
+         * Returns whether this handle has been closed.
+         *
+         * @return {@code true} if closed
+         */
+        boolean isClosed() {
+            return closed;
+        }
+
+        /**
+         * Closes this handle and the underlying log stream callback.
+         */
+        void close() {
+            closed = true;
+            if (callback != null) {
+                closeQuietly(callback);
+            }
+        }
+
+        /**
+         * Records a callback failure.
+         *
+         * @param failure the callback failure
+         */
+        void setCallbackFailure(RuntimeException failure) {
+            this.callbackFailure = failure;
+        }
+
+        /**
+         * Returns the recorded callback failure.
+         *
+         * @return the callback failure, or {@code null}
+         */
+        RuntimeException callbackFailure() {
+            return callbackFailure;
+        }
+
+        /**
+         * Returns whether a callback failure has been recorded.
+         *
+         * @return {@code true} if a callback failure has been recorded
+         */
+        boolean hasCallbackFailure() {
+            return callbackFailure != null;
+        }
+    }
+
+    /**
      * Fires all {@code onStart} callbacks in registration order.
      * First callback failure is fatal.
      *
@@ -1328,97 +1419,5 @@ public final class ContainerManager {
      */
     private static ContainerException toContainerException(String message, RuntimeException cause) {
         return cause instanceof ContainerException ce ? ce : new ContainerException(message, cause);
-    }
-
-    /**
-     * Returns {@code true} if the throwable chain contains a
-     * {@link java.nio.channels.ClosedByInterruptException}.
-     *
-     * @param t the throwable to inspect
-     * @return {@code true} if the chain contains a closed-by-interrupt exception
-     */
-    static boolean isClosedByInterrupt(Throwable t) {
-        for (Throwable current = t; current != null; current = current.getCause()) {
-            if (current instanceof java.nio.channels.ClosedByInterruptException) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Returns {@code true} if the log error should be suppressed because the
-     * handle is already closed or the error was caused by an interrupt.
-     *
-     * @param handle the log handle, or {@code null}
-     * @param throwable the error thrown by the log stream
-     * @return {@code true} if the error should be suppressed
-     */
-    static boolean shouldSuppressLogError(LogHandle handle, Throwable throwable) {
-        if (handle == null) {
-            return false;
-        }
-        if (handle.isClosed()) {
-            return true;
-        }
-        if (isClosedByInterrupt(throwable)) {
-            return true;
-        }
-        return false;
-    }
-
-    /**
-     * Lightweight handle for an attached log stream.
-     */
-    static final class LogHandle {
-        private volatile ResultCallback<Frame> callback;
-        private volatile boolean closed;
-        private volatile RuntimeException callbackFailure;
-
-        /**
-         * Returns whether this handle has been closed.
-         *
-         * @return {@code true} if closed
-         */
-        boolean isClosed() {
-            return closed;
-        }
-
-        /**
-         * Closes this handle and the underlying log stream callback.
-         */
-        void close() {
-            closed = true;
-            if (callback != null) {
-                closeQuietly(callback);
-            }
-        }
-
-        /**
-         * Records a callback failure.
-         *
-         * @param failure the callback failure
-         */
-        void setCallbackFailure(RuntimeException failure) {
-            this.callbackFailure = failure;
-        }
-
-        /**
-         * Returns the recorded callback failure.
-         *
-         * @return the callback failure, or {@code null}
-         */
-        RuntimeException callbackFailure() {
-            return callbackFailure;
-        }
-
-        /**
-         * Returns whether a callback failure has been recorded.
-         *
-         * @return {@code true} if a callback failure has been recorded
-         */
-        boolean hasCallbackFailure() {
-            return callbackFailure != null;
-        }
     }
 }

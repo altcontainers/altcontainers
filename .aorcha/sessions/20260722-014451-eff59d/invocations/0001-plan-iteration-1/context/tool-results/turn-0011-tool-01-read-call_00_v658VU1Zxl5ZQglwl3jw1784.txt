@@ -1,0 +1,311 @@
+# Implementation Plan: Image Pull Timeout
+
+## 1. Summary
+
+Add a configurable timeout to `ContainerManager.pullImage()` to prevent indefinitely blocking threads when the Docker daemon hangs during an image pull. Introduce a new `altcontainers.image.pull.timeout.ms` property (default 600000 ms = 10 minutes), apply it to both the `awaitCompletion()` call and the `CompletableFuture.get()` waiter path, and document the new key in the website configuration guide. All changes follow existing patterns in `AltcontainersProperties` and the configuration documentation.
+
+## 2. Files to Modify
+
+| File | What Changes | Why |
+|---|---|---|
+| `core/src/main/java/nonapi/org/altcontainers/api/AltcontainersProperties.java` | Add `IMAGE_PULL_TIMEOUT_MS` constant, `KeyDef` entry, and `imagePullTimeout()` accessor | Plugs the new timeout into the existing config resolution system |
+| `core/src/main/resources/altcontainers.properties` | Add `altcontainers.image.pull.timeout.ms=600000` line | Sets the classpath default (lowest-precedence layer) |
+| `core/src/main/java/nonapi/org/altcontainers/api/ContainerManager.java` | Modify `pullImage()` to use timed `awaitCompletion` and timed `get()` | Applies the timeout at both the pull and waiter levels |
+| `core/src/test/java/nonapi/org/altcontainers/api/AltcontainersPropertiesTest.java` | Add tests for default value, env override, and invalid values | Validates property parsing and eager validation |
+| `core/src/test/java/nonapi/org/altcontainers/api/ContainerManagerPullTest.java` | Add test verifying successful pull with timeout, verify inflightPulls cleanup | Confirms timeout does not break normal pull behavior |
+| `website/docs/guides/configuration.md` | Add new **Image** section with key table and documentation subsection | Documents the new property for users |
+| `website/versioned_docs/version-0.3.0/guides/configuration.md` | Same as above | Keep versioned docs in sync |
+
+## 3. Step-by-Step Implementation
+
+### Step 1: Add property key and accessor to `AltcontainersProperties.java`
+
+**File:** `core/src/main/java/nonapi/org/altcontainers/api/AltcontainersProperties.java`
+
+Add the following in order:
+
+1. **Property key constant** (after `DOCKER_HOST` constant, ~line 110):
+
+```java
+/** Property key for {@link #imagePullTimeout()}. */
+static final String IMAGE_PULL_TIMEOUT_MS = "altcontainers.image.pull.timeout.ms";
+```
+
+2. **KeyDef entry** in `KNOWN_KEYS` list (after the `DOCKER_HOST` entry, ~line 126):
+
+```java
+new KeyDef(IMAGE_PULL_TIMEOUT_MS, "600000", Kind.DURATION_MS),
+```
+
+3. **Accessor method** (after `dockerHost()` method, before the private methods, ~line 258):
+
+```java
+/**
+ * Returns the image pull timeout.
+ *
+ * @return the image pull timeout
+ */
+public Duration imagePullTimeout() {
+    return (Duration) resolved.get(IMAGE_PULL_TIMEOUT_MS);
+}
+```
+
+**Expected outcome:** `./mvnw compile -pl core` passes. The new key is parsed with the same `DURATION_MS` validation (must be positive integer in ms). Invalid values (`abc`, `-1`, `0`) fail fast with `ContainerException`.
+
+### Step 2: Add default to classpath properties file
+
+**File:** `core/src/main/resources/altcontainers.properties`
+
+Add after the wait strategy probes section (before `# --- Docker host ---`), following the existing comment style:
+
+```properties
+# --- Image pull ---
+altcontainers.image.pull.timeout.ms=600000
+```
+
+**Expected outcome:** The default is visible in the bundled resource. Since classpath is the second-lowest precedence, it can be overridden by user-home, env, or system property.
+
+### Step 3: Modify `pullImage()` in `ContainerManager.java`
+
+**File:** `core/src/main/java/nonapi/org/altcontainers/api/ContainerManager.java`
+
+The `pullImage(String image)` method is at lines 195-236. Modify two locations:
+
+**3a. Apply timeout to `awaitCompletion` (line 204):**
+
+Replace:
+```java
+dockerClient().pullImageCmd(image).start().awaitCompletion();
+```
+
+With:
+```java
+long pullTimeoutMs = AltcontainersProperties.instance().imagePullTimeout().toMillis();
+boolean completed =
+        dockerClient().pullImageCmd(image).start().awaitCompletion(pullTimeoutMs, TimeUnit.MILLISECONDS);
+if (!completed) {
+    String message = "Image pull timed out after " + pullTimeoutMs + " ms: " + image;
+    newFuture.completeExceptionally(new ContainerException(message));
+    inflightPulls.remove(image);
+    throw new ContainerException(message);
+}
+```
+
+The `newFuture.completeExceptionally(...)` ensures all waiters blocked on `existing.get()` receive the timeout exception. The `inflightPulls.remove(image)` allows subsequent callers to retry.
+
+**3b. Apply timeout to `existing.get()` (line 223):**
+
+Replace:
+```java
+existing.get();
+```
+
+With:
+```java
+try {
+    existing.get(pullTimeoutMs + 10_000, TimeUnit.MILLISECONDS);
+} catch (TimeoutException e) {
+    throw new ContainerException(
+            "Timed out waiting for in-flight image pull: " + image, e);
+}
+```
+
+The `+ 10_000` (10 second slack) accounts for the pulling thread's own timeout plus head-of-line scheduling variance. On `TimeoutException`, do NOT remove the in-flight future — the pull may still succeed and benefit later callers.
+
+**3c. Add import for `TimeoutException` if not present:**
+
+Check imports: `TimeoutException` is already imported at line 53. `TimeUnit` is already imported at line 54. No new imports needed.
+
+**Expected outcome:** The `pullImage()` method now has bounded waits at both levels. All three existing exception handlers (`InterruptedException`, `RuntimeException`, `ExecutionException`) remain unchanged and continue to work.
+
+### Step 4: Add tests to `AltcontainersPropertiesTest.java`
+
+**File:** `core/src/test/java/nonapi/org/altcontainers/api/AltcontainersPropertiesTest.java`
+
+Add four new test methods following existing patterns:
+
+**4a. Default value test** (add to `shouldApplyDefaultsWhenNoSourceSet` or as separate test):
+
+```java
+@Test
+void shouldDefaultImagePullTimeout() {
+    AltcontainersProperties p = AltcontainersProperties.forTesting(new Properties(), new Properties(), Map.of());
+    assertThat(p.imagePullTimeout()).isEqualTo(Duration.ofMinutes(10));
+}
+```
+
+**4b. Environment variable override** (add to `shouldDeriveEnvVarNameAcrossNamespaces` or as separate test):
+
+```java
+@Test
+void shouldResolveImagePullTimeoutFromEnv() {
+    Map<String, String> env = Map.of("ALTCONTAINERS_IMAGE_PULL_TIMEOUT_MS", "300000");
+    AltcontainersProperties p = AltcontainersProperties.forTesting(new Properties(), new Properties(), env);
+    assertThat(p.imagePullTimeout()).isEqualTo(Duration.ofMinutes(5));
+}
+```
+
+**4c. Invalid non-numeric value** (follow pattern of `shouldFailFastOnInvalidValueInUserHome`):
+
+```java
+@Test
+void shouldFailFastOnInvalidImagePullTimeout() {
+    Properties userHome = props(AltcontainersProperties.IMAGE_PULL_TIMEOUT_MS, "abc");
+    assertThatThrownBy(() -> AltcontainersProperties.forTesting(new Properties(), userHome, Map.of()))
+            .isInstanceOf(ContainerException.class)
+            .hasMessageContaining(AltcontainersProperties.IMAGE_PULL_TIMEOUT_MS);
+}
+```
+
+**4d. Invalid non-positive value** (follow pattern of `shouldFailFastOnNonPositiveValue`):
+
+```java
+@Test
+void shouldFailFastOnNonPositiveImagePullTimeout() {
+    Properties userHomeZero = props(AltcontainersProperties.IMAGE_PULL_TIMEOUT_MS, "0");
+    assertThatThrownBy(() -> AltcontainersProperties.forTesting(new Properties(), userHomeZero, Map.of()))
+            .isInstanceOf(ContainerException.class)
+            .hasMessageContaining(AltcontainersProperties.IMAGE_PULL_TIMEOUT_MS);
+
+    Properties userHomeNeg = props(AltcontainersProperties.IMAGE_PULL_TIMEOUT_MS, "-1");
+    assertThatThrownBy(() -> AltcontainersProperties.forTesting(new Properties(), userHomeNeg, Map.of()))
+            .isInstanceOf(ContainerException.class)
+            .hasMessageContaining(AltcontainersProperties.IMAGE_PULL_TIMEOUT_MS);
+}
+```
+
+**Note:** No existing test method needs to be modified. `shouldApplyDefaultsWhenNoSourceSet` checks all current properties but does not assert on an exhaustive list — the new key automatically gets its default and won't break existing assertions.
+
+### Step 5: Add/update tests in `ContainerManagerPullTest.java`
+
+**File:** `core/src/test/java/nonapi/org/altcontainers/api/ContainerManagerPullTest.java`
+
+**5a. Verify existing test still works:** The `shouldRemoveCompletedPullFromInflightMap` test pulls `alpine:latest` via `triggerPullImage()` and checks that `inflightPulls` is cleaned up. This test now exercises the new timeout path implicitly — if the pull completes within the default 10-minute timeout (which it will on any reasonable connection), the behavior is identical. No changes needed.
+
+**5b. Add a timeout configuration test** (optional, Docker-gated):
+
+```java
+@Test
+@EnabledIf("dockerAvailable")
+void shouldCompletePullWithinConfiguredTimeout() throws Exception {
+    // Sanity check: alpine:latest pull completes well within 10 minutes
+    String image = "alpine:latest";
+    ContainerManager manager = ContainerManager.getInstance();
+
+    long start = System.currentTimeMillis();
+    manager.triggerPullImage(image);
+    long elapsed = System.currentTimeMillis() - start;
+
+    assertThat(elapsed).isLessThan(Duration.ofMinutes(5).toMillis());
+
+    // Cleanup: verify inflightPulls is empty
+    Field field = ContainerManager.class.getDeclaredField("inflightPulls");
+    field.setAccessible(true);
+    @SuppressWarnings("unchecked")
+    Map<String, CompletableFuture<Void>> inflight =
+            (ConcurrentHashMap<String, CompletableFuture<Void>>) field.get(manager);
+    assertThat(inflight).doesNotContainKey(image);
+}
+```
+
+**Expected outcome:** All existing pull tests pass. The new test confirms pulls complete within a reasonable time and inflight cleanup works.
+
+### Step 6: Update website documentation
+
+**File:** `website/docs/guides/configuration.md`
+
+**6a. Add `altcontainers.image.pull.timeout.ms` to the "Environment variable naming" table** (after the Networks row):
+
+```markdown
+| `altcontainers.image.pull.timeout.ms` | `ALTCONTAINERS_IMAGE_PULL_TIMEOUT_MS` |
+```
+
+**6b. Add new "Image" section** after "Container lifecycle" section and before "Wait strategy probes" section, following the same structure:
+
+```markdown
+---
+
+### Image
+
+| Property Key | Type | Default | Configuration Methods | Purpose |
+|---|---|---|---|---|
+| `altcontainers.image.pull.timeout.ms` | Duration (ms) | `600000` | Environment, Properties file | Maximum time to wait for an image pull to complete |
+
+#### `altcontainers.image.pull.timeout.ms`
+
+Maximum time the library waits for a Docker image pull to complete. If a pull exceeds this timeout, the pull is treated as failed and all threads waiting for the same image receive a `ContainerException`.
+
+Concurrent callers that request the same image while a pull is in progress wait for the in-flight pull (rather than starting a duplicate pull). Their wait is bounded by this timeout plus a small slack (10 seconds).
+
+**Values:** Positive integer (milliseconds)
+
+**Properties file:**
+```properties
+altcontainers.image.pull.timeout.ms=300000
+```
+
+**Environment variable:**
+```bash
+ALTCONTAINERS_IMAGE_PULL_TIMEOUT_MS=300000
+```
+```
+
+**6c. Add the new key to the "Complete default configuration" code block** (after the wait strategy probes):
+
+```properties
+# --- Image pull ---
+altcontainers.image.pull.timeout.ms=600000
+```
+
+**6d. Update the "All configuration keys" table of contents** — add "Image" between "Container lifecycle" and "Wait strategy probes" in the section listing if one exists (current structure uses `---` separators between sections, so this is naturally handled by adding a new `### Image` section).
+
+**File:** `website/versioned_docs/version-0.3.0/guides/configuration.md`
+
+Apply the same changes as 6a-6d to keep the versioned docs consistent.
+
+## 4. Test Plan
+
+| Test | File | Proves |
+|---|---|---|
+| `shouldDefaultImagePullTimeout` | `AltcontainersPropertiesTest.java` (new) | Default value is 600000 ms (10 minutes) |
+| `shouldResolveImagePullTimeoutFromEnv` | `AltcontainersPropertiesTest.java` (new) | Env var `ALTCONTAINERS_IMAGE_PULL_TIMEOUT_MS` overrides default |
+| `shouldFailFastOnInvalidImagePullTimeout` | `AltcontainersPropertiesTest.java` (new) | Non-numeric value `"abc"` throws `ContainerException` |
+| `shouldFailFastOnNonPositiveImagePullTimeout` | `AltcontainersPropertiesTest.java` (new) | Zero and negative values rejected eagerly |
+| `shouldRemoveCompletedPullFromInflightMap` | `ContainerManagerPullTest.java` (existing) | Successful pull within timeout cleans up `inflightPulls` |
+| `shouldPropagatePullFailureToAllWaiters` | `ContainerManagerPullTest.java` (existing) | Concurrent waiters receive failure from the shared future |
+| `shouldCompletePullWithinConfiguredTimeout` | `ContainerManagerPullTest.java` (new, optional) | Alpine pull completes well within the 10-minute default |
+
+**Note about `AltcontainersConfigurationTest`:** The input plan mentions extending `AltcontainersConfigurationTest` for configuration validation, but this test class does not exist in the repository. Configuration validation for the new key is handled entirely by the existing `DURATION_MS` kind in `AltcontainersProperties.parse()`, which validates `millis > 0` and rejects non-numeric values. The `AltcontainersPropertiesTest` additions in step 4 cover all validation scenarios.
+
+**Note about simulating a daemon hang:** Not practical in unit tests. The timeout branches are verified through:
+- Code review of the `pullImage()` modification (Steps 3a, 3b)
+- The `DURATION_MS` validation tests (prevent zero/negative/invalid timeouts)
+- Docker-gated tests confirming the happy path still works
+
+## 5. Validation
+
+Run the following commands in order:
+
+```bash
+# 1. Format code
+./mvnw spotless:apply
+
+# 2. Run core module tests (includes the new properties tests and Docker-gated pull tests)
+./mvnw test -pl core
+
+# 3. Full Maven validation (compiles all modules, runs all tests, static analysis, Javadoc)
+./mvnw clean install
+```
+
+All three commands must pass with exit code 0.
+
+## 6. Risks and Mitigations
+
+| Risk | Mitigation |
+|---|---|
+| **Default too short for slow links**: 10 minutes may be insufficient on very slow connections | Configurable via all standard precedence layers. Users on slow links can set `ALTCONTAINERS_IMAGE_PULL_TIMEOUT_MS=1800000` (30 min). The 10-minute default matches the existing `container.startup.timeout.ms` at 1 minute per startup attempt — a pull is a significantly longer operation. |
+| **Waiter timeout concurrent with pull completion**: A waiter's `get(timeout + slack)` times out, but the pulling thread completes the future milliseconds later | The waiter gets a `TimeoutException` → `ContainerException`. The pull may still succeed in the background and populate `localImageCache`. The in-flight entry is cleaned up by the pulling thread. This is correct: the waiter got a bounded wait and the system state remains consistent. |
+| **`awaitCompletion` timeout leaves dangling HTTP connection**: docker-java's zerodep HTTP client may leave a socket open after `CountDownLatch.await()` times out | docker-java internally uses a `CountDownLatch` in `PullImageResultCallback`. When `await(timeout)` returns false, the callback is abandoned but the HTTP response stream may still be active. The JVM will eventually close the connection via socket GC/finalization. This is an acceptable trade-off vs. indefinite blocking. The `ZerodepDockerHttpClient` is a docker-java internal and its socket timeout behavior is not within altcontainers' control. |
+| **Race: pull times out, `newFuture.completeExceptionally()` is called, but a waiter was just about to call `existing.get()`** | The `inflightPulls.remove(image)` runs after `completeExceptionally()`. A waiter that calls `putIfAbsent` after the remove will start a new pull (correct). A waiter that got the old future before the remove will see the exception immediately from `get(timeout+slack)` — also correct. |
+| **Javadoc strictness**: The new `imagePullTimeout()` method needs a `@return` tag | Follow existing pattern: `@return the image pull timeout` |
+| **Spotless formatting**: Modified files must be formatted before building | Always run `./mvnw spotless:apply` before any `./mvnw` build command |

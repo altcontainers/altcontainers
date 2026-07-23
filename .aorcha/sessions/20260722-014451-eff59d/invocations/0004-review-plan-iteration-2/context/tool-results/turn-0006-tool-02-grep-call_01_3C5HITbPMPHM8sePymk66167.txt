@@ -1,0 +1,5 @@
+57- * <p>Instances are immutable and thread-safe after construction.
+58- */
+59:public final class AltcontainersProperties {
+60-
+61-    private static final String CLASSPATH_RESOURCE = "altcontainers.properties";

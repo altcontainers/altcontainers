@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T05:45:23.920756396Z",
+  "turnSequence": 5,
+  "toolIndex": 1,
+  "callId": "call_01_HsIbuvJSV9rHFoQBcpIn7167",
+  "toolName": "find",
+  "arguments": {
+    "pattern": "altcontainers.properties",
+    "path": "/home/dhoard/Development/github/altcontainers/altcontainers/core"
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0005-tool-02-find-call_01_HsIbuvJSV9rHFoQBcpIn7167.txt",
+  "sha256": "bcfe9ec8134e5527c7261f8970191775162a1c46fcc9e4d5ad0ce1de371d3de4",
+  "bytes": 43
+}

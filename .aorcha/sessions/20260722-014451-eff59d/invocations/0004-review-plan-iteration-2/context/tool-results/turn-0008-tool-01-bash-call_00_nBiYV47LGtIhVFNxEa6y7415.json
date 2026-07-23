@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T05:53:40.848636406Z",
+  "turnSequence": 8,
+  "toolIndex": 0,
+  "callId": "call_00_nBiYV47LGtIhVFNxEa6y7415",
+  "toolName": "bash",
+  "arguments": {
+    "command": "jar tf /home/dhoard/.m2/repository/com/github/docker-java/docker-java-api/3.7.1/docker-java-api-3.7.1.jar | grep 'PullImageResultCallback' 2>/dev/null"
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0008-tool-01-bash-call_00_nBiYV47LGtIhVFNxEa6y7415.txt",
+  "sha256": "0761f9650721a546a1bdf9b37554cf4fb13b3a02705ee141922e26d772efd9c9",
+  "bytes": 63
+}

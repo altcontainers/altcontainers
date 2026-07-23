@@ -1,0 +1,13 @@
+Compiled from "ResultCallback.java"
+public interface com.github.dockerjava.api.async.ResultCallback<A_RES_T> extends java.io.Closeable {
+  public abstract void onStart(java.io.Closeable);
+  public abstract void onNext(A_RES_T);
+  public abstract void onError(java.lang.Throwable);
+  public abstract void onComplete();
+}
+=== Adapter ===
+Compiled from "ResultCallback.java"
+public class com.github.dockerjava.api.async.ResultCallback$Adapter<A_RES_T> extends com.github.dockerjava.api.async.ResultCallbackTemplate<com.github.dockerjava.api.async.ResultCallback$Adapter<A_RES_T>, A_RES_T> {
+  public com.github.dockerjava.api.async.ResultCallback$Adapter();
+  public void onNext(A_RES_T);
+}

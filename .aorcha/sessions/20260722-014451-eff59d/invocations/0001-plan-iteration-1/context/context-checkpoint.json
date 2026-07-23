@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "summary": {
+    "schemaVersion": 1,
+    "turns": []
+  },
+  "recentCompleteTurns": 15,
+  "interruptedDiagnosticTurns": 0,
+  "noProgressTurns": 0
+}

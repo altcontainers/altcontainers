@@ -1,0 +1,62 @@
+24-import java.util.Properties;
+25-import org.altcontainers.api.ContainerException;
+26-import org.junit.jupiter.api.AfterEach;
+27-import org.junit.jupiter.api.BeforeEach;
+28-import org.junit.jupiter.api.Test;
+29-
+30-/**
+31- * Tests for {@link AltcontainersProperties} resolution precedence and eager
+32- * validation. Uses the package-private {@link AltcontainersProperties#forTesting}
+33- * factory to avoid JVM-global state.
+34- */
+35-class AltcontainersPropertiesTest {
+36-
+37-    @BeforeEach
+38-    void setUp() {
+39:        clearSystemPropertyKeys();
+40-        AltcontainersProperties.reset();
+41-    }
+42-
+43-    @AfterEach
+44-    void tearDown() {
+45:        clearSystemPropertyKeys();
+46-        AltcontainersProperties.reset();
+47-    }
+48-
+49-    @Test
+50-    void shouldApplyDefaultsWhenNoSourceSet() {
+51-        AltcontainersProperties p = AltcontainersProperties.forTesting(new Properties(), new Properties(), Map.of());
+52-        assertThat(p.reaperDisabled()).isFalse();
+53-        assertThat(p.reaperConnectionTimeout()).isEqualTo(Duration.ofSeconds(10));
+54-        assertThat(p.reaperStartupTimeout()).isEqualTo(Duration.ofSeconds(10));
+55-        assertThat(p.reaperStopTimeout()).isEqualTo(Duration.ofSeconds(30));
+56-        assertThat(p.containerStartupTimeout()).isEqualTo(Duration.ofSeconds(60));
+57-        assertThat(p.containerReadinessPollInitial()).isEqualTo(Duration.ofMillis(10));
+58-        assertThat(p.containerReadinessPollMax()).isEqualTo(Duration.ofMillis(500));
+59-        assertThat(p.containerStartupRetryBackoffMultiplier()).isEqualTo(Duration.ofMillis(1000));
+60-        assertThat(p.containerStartupRetryBackoffMax()).isEqualTo(Duration.ofMillis(5000));
+--
+251-    @Test
+252-    void shouldResolveDockerHostFromSystemProperty() {
+253-        System.setProperty("altcontainers.docker.host", "tcp://10.0.0.1:2375");
+254-        AltcontainersProperties p = AltcontainersProperties.forTesting(new Properties(), new Properties(), Map.of());
+255-        assertThat(p.dockerHost()).isEqualTo("tcp://10.0.0.1:2375");
+256-    }
+257-
+258-    private static Properties props(String... keyValuePairs) {
+259-        Properties properties = new Properties();
+260-        for (int i = 0; i + 1 < keyValuePairs.length; i += 2) {
+261-            properties.setProperty(keyValuePairs[i], keyValuePairs[i + 1]);
+262-        }
+263-        return properties;
+264-    }
+265-
+266:    private static void clearSystemPropertyKeys() {
+267-        System.clearProperty("altcontainers.reaper.connection.timeout.ms");
+268-        System.clearProperty("altcontainers.reaper.stop.timeout.ms");
+269-        System.clearProperty("altcontainers.reaper.disabled");
+270-        System.clearProperty(AltcontainersProperties.NETWORKS_PARALLELISM);
+271-        System.clearProperty(AltcontainersProperties.LEGACY_NETWORKS_PARALLELISM);
+272-        System.clearProperty(AltcontainersProperties.DOCKER_HOST);
+273-    }
+274-}

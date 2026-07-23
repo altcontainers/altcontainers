@@ -1,0 +1,39 @@
+{
+  "provider": "deepseek",
+  "model": "deepseek-v4-flash",
+  "tools": [
+    "read",
+    "bash",
+    "grep",
+    "rg",
+    "find",
+    "ls",
+    "write"
+  ],
+  "workingDirectory": "/home/dhoard/Development/github/altcontainers/altcontainers",
+  "contextManagement": {
+    "contextWindowTokens": 1000000,
+    "maxInputTokens": 500000,
+    "reservedCompletionTokens": 131072,
+    "compactionTriggerTokens": 450000,
+    "postCompactionTargetTokens": 350000,
+    "retainRecentTurns": 20,
+    "maxSummaryTokens": 6000,
+    "maxInlineToolResultBytes": 16384,
+    "maxSessionKnowledgeBytes": 65536,
+    "maxRepeatedEquivalentCalls": 4,
+    "maxNoProgressTurns": 8,
+    "enableConversationCompaction": true,
+    "enableToolResultCompaction": true,
+    "enableSessionKnowledge": true,
+    "enableInspectionCache": true,
+    "maxKnowledgeFiles": 192,
+    "maxKnowledgeValidations": 96,
+    "maxKnowledgeUnresolved": 48,
+    "maxKnowledgeCheckpoints": 48,
+    "tokenEstimator": "calibrated",
+    "maxScannedFiles": 20000
+  },
+  "agentTimeoutSeconds": 900,
+  "toolTimeoutSeconds": 600
+}

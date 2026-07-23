@@ -1,0 +1,28 @@
+# Altcontainers default configuration (classpath). Lowest precedence.
+# Override per-user in ~/.altcontainers.properties or via ALTCONTAINERS_* env vars.
+# All time-oriented values are in milliseconds.
+
+# --- Reaper (resource-cleanup watchdog) ---
+altcontainers.reaper.disabled=false
+altcontainers.reaper.connection.timeout.ms=10000
+altcontainers.reaper.startup.timeout.ms=10000
+altcontainers.reaper.stop.timeout.ms=5000
+
+# --- Container lifecycle defaults ---
+altcontainers.container.startup.timeout.ms=60000
+altcontainers.container.startup.readiness.poll.initial.ms=10
+altcontainers.container.startup.readiness.poll.max.ms=500
+altcontainers.container.startup.retry.backoff.multiplier.ms=1000
+altcontainers.container.startup.retry.backoff.max.ms=5000
+altcontainers.container.put.archive.pipe.buffer.bytes=65536
+
+# --- Wait strategy probes ---
+altcontainers.wait.port.probe.timeout.ms=500
+altcontainers.wait.http.probe.timeout.ms=2000
+
+# --- Image pull ---
+altcontainers.image.pull.timeout.ms=300000
+
+# --- Docker host ---
+# Docker host URI (optional). Empty = use the Docker daemon defaults via docker-java.
+# altcontainers.docker.host=

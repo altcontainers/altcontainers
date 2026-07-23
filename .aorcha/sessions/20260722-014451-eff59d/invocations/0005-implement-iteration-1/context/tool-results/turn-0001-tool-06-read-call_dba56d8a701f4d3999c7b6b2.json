@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T05:54:30.989245056Z",
+  "turnSequence": 1,
+  "toolIndex": 5,
+  "callId": "call_dba56d8a701f4d3999c7b6b2",
+  "toolName": "read",
+  "arguments": {
+    "path": "/home/dhoard/Development/github/altcontainers/altcontainers/core/src/test/java/nonapi/org/altcontainers/api/ContainerManagerPullTest.java"
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0001-tool-06-read-call_dba56d8a701f4d3999c7b6b2.txt",
+  "sha256": "8181f0705cd9bd17514f20da4a6049821c2b5db59ea7a4f24370595c78f40cf9",
+  "bytes": 6341
+}

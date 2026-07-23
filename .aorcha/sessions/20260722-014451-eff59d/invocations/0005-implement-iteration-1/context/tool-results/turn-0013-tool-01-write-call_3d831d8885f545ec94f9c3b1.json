@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T06:08:39.325728278Z",
+  "turnSequence": 13,
+  "toolIndex": 0,
+  "callId": "call_3d831d8885f545ec94f9c3b1",
+  "toolName": "write",
+  "arguments": {
+    "content": "{\n  \"schemaVersion\": 1,\n  \"outcome\": \"SUCCESS\",\n  \"summary\": \"Implemented configurable image pull timeout (altcontainers.image.pull.timeout.ms, default 300000ms). Modified 7 files: AltcontainersProperties (new key + accessor), altcontainers.properties (classpath default), ContainerManager (timed awaitCompletion + timed get), AltcontainersPropertiesTest (4 new tests), ContainerManagerPullTest (1 new test), and both configuration.md docs. All 28 properties tests pass. Full clean verify BUILD SUCCESS.\",\n  \"nextAction\": null,\n  \"artifacts\": [\"artifacts/implementation-report.md\"]\n}\n",
+    "path": "/home/dhoard/Development/github/altcontainers/altcontainers/.aorcha/sessions/20260722-014451-eff59d/invocations/0005-implement-iteration-1/result.json"
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0013-tool-01-write-call_3d831d8885f545ec94f9c3b1.txt",
+  "sha256": "bb2adba748ac068bc14cf5062af1519407bc59a970633b70d550f43155a90af6",
+  "bytes": 182
+}

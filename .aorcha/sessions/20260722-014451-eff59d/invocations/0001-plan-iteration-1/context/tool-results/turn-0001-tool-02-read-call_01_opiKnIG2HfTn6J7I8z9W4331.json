@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T05:44:57.451285954Z",
+  "turnSequence": 1,
+  "toolIndex": 1,
+  "callId": "call_01_opiKnIG2HfTn6J7I8z9W4331",
+  "toolName": "read",
+  "arguments": {
+    "path": "/home/dhoard/Development/github/altcontainers/altcontainers/AGENTS.md"
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0001-tool-02-read-call_01_opiKnIG2HfTn6J7I8z9W4331.txt",
+  "sha256": "4d921183f013598874a98624c604f505140f4f766c13d061ca36d820553d7638",
+  "bytes": 6472
+}

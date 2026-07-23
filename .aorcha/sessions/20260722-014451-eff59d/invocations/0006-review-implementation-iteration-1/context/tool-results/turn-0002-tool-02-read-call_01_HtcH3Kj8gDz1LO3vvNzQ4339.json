@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T06:08:54.002274782Z",
+  "turnSequence": 2,
+  "toolIndex": 1,
+  "callId": "call_01_HtcH3Kj8gDz1LO3vvNzQ4339",
+  "toolName": "read",
+  "arguments": {
+    "path": "/home/dhoard/Development/github/altcontainers/altcontainers/core/src/main/resources/altcontainers.properties"
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0002-tool-02-read-call_01_HtcH3Kj8gDz1LO3vvNzQ4339.txt",
+  "sha256": "9d780da96f2dca0c6f3ac30ff7f53277d3a4013d7fc02fff4c5fabd9c24d2cf3",
+  "bytes": 1138
+}

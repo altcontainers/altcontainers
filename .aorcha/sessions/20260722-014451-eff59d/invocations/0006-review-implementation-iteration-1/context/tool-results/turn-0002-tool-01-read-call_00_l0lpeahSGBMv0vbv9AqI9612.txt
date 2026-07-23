@@ -1,0 +1,484 @@
+/*
+ * Copyright (c) 2026-present Douglas Hoard
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package nonapi.org.altcontainers.api;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.time.Duration;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Properties;
+import org.altcontainers.api.ContainerException;
+import org.altcontainers.api.ContainerSpec;
+
+/**
+ * Resolves Altcontainers configuration from properties files, environment
+ * variables, system properties, and hardcoded defaults.
+ *
+ * <p>Resolution precedence for each value (first wins):
+ *
+ * <ol>
+ *   <li>System property ({@code -D} flag).</li>
+ *   <li>Environment variable, derived from the property key by uppercasing and
+ *       replacing {@code .} with {@code _}, prefixed with {@code ALTCONTAINERS_}
+ *       when it does not already start with it.</li>
+ *   <li>{@code ~/.altcontainers.properties} (user home dot-file).</li>
+ *   <li>The bundled classpath resource {@code altcontainers.properties}.</li>
+ *   <li>The hardcoded default for the key.</li>
+ * </ol>
+ *
+ * <p>For keys with a legacy alias, the legacy key is checked at every layer
+ * after the primary key has been exhausted at all layers.
+ *
+ * <p>The properties files are loaded and every known-key value is validated
+ * <em>eagerly</em> the first time {@link #instance()} is referenced, so
+ * malformed files or invalid values fail fast with a {@link ContainerException}
+ * rather than surfacing mid-operation.
+ *
+ * <p>Instances are immutable and thread-safe after construction.
+ */
+public final class AltcontainersProperties {
+
+    private static final String CLASSPATH_RESOURCE = "altcontainers.properties";
+    private static final String USER_HOME_FILE_NAME = ".altcontainers.properties";
+    private static final String ENV_PREFIX = "ALTCONTAINERS_";
+
+    /** Property key for {@link #reaperDisabled()}. */
+    static final String REAPER_DISABLED = "altcontainers.reaper.disabled";
+
+    /** Property key for {@link #reaperConnectionTimeout()}. */
+    static final String REAPER_CONNECTION_TIMEOUT_MS = "altcontainers.reaper.connection.timeout.ms";
+
+    /** Property key for {@link #reaperStartupTimeout()}. */
+    static final String REAPER_STARTUP_TIMEOUT_MS = "altcontainers.reaper.startup.timeout.ms";
+
+    /** Property key for {@link #reaperStopTimeout()}. */
+    static final String REAPER_STOP_TIMEOUT_MS = "altcontainers.reaper.stop.timeout.ms";
+
+    /** Property key for {@link #containerStartupTimeout()}. */
+    static final String CONTAINER_STARTUP_TIMEOUT_MS = "altcontainers.container.startup.timeout.ms";
+
+    /** Property key for {@link #containerReadinessPollInitial()}. */
+    static final String CONTAINER_READINESS_POLL_INITIAL_MS =
+            "altcontainers.container.startup.readiness.poll.initial.ms";
+
+    /** Property key for {@link #containerReadinessPollMax()}. */
+    static final String CONTAINER_READINESS_POLL_MAX_MS = "altcontainers.container.startup.readiness.poll.max.ms";
+
+    /** Property key for {@link #containerStartupRetryBackoffMultiplier()}. */
+    static final String CONTAINER_STARTUP_RETRY_BACKOFF_MULTIPLIER_MS =
+            "altcontainers.container.startup.retry.backoff.multiplier.ms";
+
+    /** Property key for {@link #containerStartupRetryBackoffMax()}. */
+    static final String CONTAINER_STARTUP_RETRY_BACKOFF_MAX_MS = "altcontainers.container.startup.retry.backoff.max.ms";
+
+    /** Property key for {@link #portProbeTimeout()}. */
+    static final String PORT_PROBE_TIMEOUT_MS = "altcontainers.wait.port.probe.timeout.ms";
+
+    /** Property key for {@link #httpProbeTimeout()}. */
+    static final String HTTP_PROBE_TIMEOUT_MS = "altcontainers.wait.http.probe.timeout.ms";
+
+    /** Property key for {@link #containerPutArchivePipeBufferBytes()}. */
+    static final String CONTAINER_PUT_ARCHIVE_PIPE_BUFFER_BYTES =
+            "altcontainers.container.put.archive.pipe.buffer.bytes";
+
+    /** Property key for {@link #networksParallelism()}. */
+    static final String NETWORKS_PARALLELISM = "altcontainers.networks.parallelism";
+
+    /** Legacy key for {@link #networksParallelism()}. */
+    static final String LEGACY_NETWORKS_PARALLELISM = "altcontainers.reaper.networks.parallelism";
+
+    /** Property key for {@link #dockerHost()}. */
+    static final String DOCKER_HOST = "altcontainers.docker.host";
+
+    /** Property key for {@link #imagePullTimeout()}. */
+    static final String IMAGE_PULL_TIMEOUT_MS = "altcontainers.image.pull.timeout.ms";
+
+    private static final List<KeyDef> KNOWN_KEYS = List.of(
+            new KeyDef(REAPER_DISABLED, "false", Kind.BOOLEAN),
+            new KeyDef(REAPER_CONNECTION_TIMEOUT_MS, "10000", Kind.DURATION_MS),
+            new KeyDef(REAPER_STARTUP_TIMEOUT_MS, "10000", Kind.DURATION_MS),
+            new KeyDef(REAPER_STOP_TIMEOUT_MS, "30000", Kind.DURATION_MS),
+            new KeyDef(
+                    CONTAINER_STARTUP_TIMEOUT_MS,
+                    String.valueOf(ContainerSpec.DEFAULT_STARTUP_TIMEOUT.toMillis()),
+                    Kind.DURATION_MS),
+            new KeyDef(CONTAINER_READINESS_POLL_INITIAL_MS, "10", Kind.DURATION_MS),
+            new KeyDef(CONTAINER_READINESS_POLL_MAX_MS, "500", Kind.DURATION_MS),
+            new KeyDef(CONTAINER_STARTUP_RETRY_BACKOFF_MULTIPLIER_MS, "1000", Kind.DURATION_MS),
+            new KeyDef(CONTAINER_STARTUP_RETRY_BACKOFF_MAX_MS, "5000", Kind.DURATION_MS),
+            new KeyDef(PORT_PROBE_TIMEOUT_MS, "500", Kind.DURATION_MS),
+            new KeyDef(HTTP_PROBE_TIMEOUT_MS, "2000", Kind.DURATION_MS),
+            new KeyDef(CONTAINER_PUT_ARCHIVE_PIPE_BUFFER_BYTES, "65536", Kind.BYTES),
+            new KeyDef(NETWORKS_PARALLELISM, "0", Kind.NONNEG_INT, LEGACY_NETWORKS_PARALLELISM),
+            new KeyDef(DOCKER_HOST, "", Kind.STRING),
+            new KeyDef(IMAGE_PULL_TIMEOUT_MS, "300000", Kind.DURATION_MS));
+
+    private final Map<String, Object> resolved;
+
+    private AltcontainersProperties(Properties classpath, Properties userHome, Map<String, String> env) {
+        Map<String, Object> out = new HashMap<>();
+        for (KeyDef def : KNOWN_KEYS) {
+            String raw = resolveRaw(def, classpath, userHome, env);
+            out.put(def.key, parse(def, raw));
+        }
+        this.resolved = Collections.unmodifiableMap(out);
+    }
+
+    /**
+     * Returns the singleton instance, performing the eager file load on first
+     * reference.
+     *
+     * @return the singleton instance
+     */
+    public static AltcontainersProperties instance() {
+        return Holder.INSTANCE;
+    }
+
+    /**
+     * Resets the singleton instance. Intended for testing only.
+     *
+     * <p>After calling this method, the next call to {@link #instance()}
+     * will re-read classpath resources, user-home files, environment
+     * variables, and system properties.
+     */
+    public static void reset() {
+        Holder.INSTANCE = create();
+    }
+
+    /**
+     * Constructs an instance from explicit sources for testing.
+     *
+     * @param classpath the classpath properties (may be empty)
+     * @param userHome the user-home properties (may be empty)
+     * @param env the environment variable map
+     * @return a new instance
+     */
+    static AltcontainersProperties forTesting(Properties classpath, Properties userHome, Map<String, String> env) {
+        return new AltcontainersProperties(classpath, userHome, env);
+    }
+
+    /**
+     * Returns whether the reaper is disabled.
+     *
+     * @return {@code true} if the reaper is disabled
+     */
+    public boolean reaperDisabled() {
+        return (Boolean) resolved.get(REAPER_DISABLED);
+    }
+
+    /**
+     * Returns the reaper connection/handshake timeout.
+     *
+     * @return the connection timeout
+     */
+    public Duration reaperConnectionTimeout() {
+        return (Duration) resolved.get(REAPER_CONNECTION_TIMEOUT_MS);
+    }
+
+    /**
+     * Returns the reaper startup timeout (how long the client waits for the
+     * reaper process to bind).
+     *
+     * @return the reaper startup timeout
+     */
+    public Duration reaperStartupTimeout() {
+        return (Duration) resolved.get(REAPER_STARTUP_TIMEOUT_MS);
+    }
+
+    /**
+     * Returns the reaper stop timeout used when stopping containers.
+     *
+     * @return the reaper stop timeout
+     */
+    public Duration reaperStopTimeout() {
+        return (Duration) resolved.get(REAPER_STOP_TIMEOUT_MS);
+    }
+
+    /**
+     * Returns the default container startup timeout.
+     *
+     * @return the default container startup timeout
+     */
+    public Duration containerStartupTimeout() {
+        return (Duration) resolved.get(CONTAINER_STARTUP_TIMEOUT_MS);
+    }
+
+    /**
+     * Returns the initial readiness poll interval.
+     *
+     * @return the initial readiness poll interval
+     */
+    public Duration containerReadinessPollInitial() {
+        return (Duration) resolved.get(CONTAINER_READINESS_POLL_INITIAL_MS);
+    }
+
+    /**
+     * Returns the maximum readiness poll interval.
+     *
+     * @return the maximum readiness poll interval
+     */
+    public Duration containerReadinessPollMax() {
+        return (Duration) resolved.get(CONTAINER_READINESS_POLL_MAX_MS);
+    }
+
+    /**
+     * Returns the startup retry backoff multiplier.
+     *
+     * @return the startup retry backoff multiplier
+     */
+    public Duration containerStartupRetryBackoffMultiplier() {
+        return (Duration) resolved.get(CONTAINER_STARTUP_RETRY_BACKOFF_MULTIPLIER_MS);
+    }
+
+    /**
+     * Returns the startup retry backoff maximum.
+     *
+     * @return the startup retry backoff maximum
+     */
+    public Duration containerStartupRetryBackoffMax() {
+        return (Duration) resolved.get(CONTAINER_STARTUP_RETRY_BACKOFF_MAX_MS);
+    }
+
+    /**
+     * Returns the port probe timeout.
+     *
+     * @return the port probe timeout
+     */
+    public Duration portProbeTimeout() {
+        return (Duration) resolved.get(PORT_PROBE_TIMEOUT_MS);
+    }
+
+    /**
+     * Returns the HTTP probe timeout.
+     *
+     * @return the HTTP probe timeout
+     */
+    public Duration httpProbeTimeout() {
+        return (Duration) resolved.get(HTTP_PROBE_TIMEOUT_MS);
+    }
+
+    /**
+     * Returns the put-archive pipe buffer size in bytes.
+     *
+     * @return the put-archive pipe buffer size in bytes
+     */
+    public int containerPutArchivePipeBufferBytes() {
+        return (Integer) resolved.get(CONTAINER_PUT_ARCHIVE_PIPE_BUFFER_BYTES);
+    }
+
+    /**
+     * Returns the maximum number of concurrent network creations.
+     * A value of 0 means no limit.
+     *
+     * @return the network parallelism
+     */
+    public int networksParallelism() {
+        return (Integer) resolved.get(NETWORKS_PARALLELISM);
+    }
+
+    /**
+     * Returns the Docker host URI, or an empty string if not configured.
+     *
+     * @return the Docker host URI, or empty string
+     */
+    public String dockerHost() {
+        return (String) resolved.get(DOCKER_HOST);
+    }
+
+    /**
+     * Returns the image pull timeout.
+     *
+     * @return the image pull timeout
+     */
+    public Duration imagePullTimeout() {
+        return (Duration) resolved.get(IMAGE_PULL_TIMEOUT_MS);
+    }
+
+    private static String resolveRaw(KeyDef def, Properties classpath, Properties userHome, Map<String, String> env) {
+        // 1. System property (primary key)
+        String sysPropValue = System.getProperty(def.key);
+        if (sysPropValue != null && !sysPropValue.isEmpty()) {
+            return sysPropValue;
+        }
+        // 2. Environment variable (primary key)
+        String envValue = env.get(envVarName(def.key));
+        if (envValue != null && !envValue.isEmpty()) {
+            return envValue;
+        }
+        // 3. User-home file (primary key)
+        String userHomeValue = userHome.getProperty(def.key);
+        if (userHomeValue != null) {
+            return userHomeValue;
+        }
+        // 4. Classpath resource (primary key)
+        String classpathValue = classpath.getProperty(def.key);
+        if (classpathValue != null) {
+            return classpathValue;
+        }
+        // 5-8. Legacy key fallback (same order)
+        if (def.legacyKey != null) {
+            String legacySysProp = System.getProperty(def.legacyKey);
+            if (legacySysProp != null && !legacySysProp.isEmpty()) {
+                return legacySysProp;
+            }
+            String legacyEnvValue = env.get(envVarName(def.legacyKey));
+            if (legacyEnvValue != null && !legacyEnvValue.isEmpty()) {
+                return legacyEnvValue;
+            }
+            String legacyUserHome = userHome.getProperty(def.legacyKey);
+            if (legacyUserHome != null) {
+                return legacyUserHome;
+            }
+            String legacyClasspath = classpath.getProperty(def.legacyKey);
+            if (legacyClasspath != null) {
+                return legacyClasspath;
+            }
+        }
+        // 9. Hardcoded default
+        return def.defaultValue;
+    }
+
+    private static Object parse(KeyDef def, String raw) {
+        return switch (def.kind) {
+            case BOOLEAN -> {
+                String trimmed = raw.trim().toLowerCase(Locale.ROOT);
+                if (!trimmed.equals("true") && !trimmed.equals("false")) {
+                    throw new ContainerException(def.key + " must be 'true' or 'false', got '" + raw + "'");
+                }
+                yield Boolean.parseBoolean(trimmed);
+            }
+            case DURATION_MS -> {
+                long millis;
+                try {
+                    millis = Long.parseLong(raw.trim());
+                } catch (NumberFormatException e) {
+                    throw new ContainerException(
+                            def.key + " must be a valid integer (milliseconds), got '" + raw + "'", e);
+                }
+                if (millis <= 0) {
+                    throw new ContainerException(def.key + " must be positive, got " + millis);
+                }
+                yield Duration.ofMillis(millis);
+            }
+            case BYTES -> {
+                int value;
+                try {
+                    value = Integer.parseInt(raw.trim());
+                } catch (NumberFormatException e) {
+                    throw new ContainerException(def.key + " must be a valid integer, got '" + raw + "'", e);
+                }
+                if (value <= 0) {
+                    throw new ContainerException(def.key + " must be positive, got " + value);
+                }
+                yield value;
+            }
+            case NONNEG_INT -> {
+                int value;
+                try {
+                    value = Integer.parseInt(raw.trim());
+                } catch (NumberFormatException e) {
+                    throw new ContainerException(def.key + " must be a valid integer, got '" + raw + "'", e);
+                }
+                if (value < 0) {
+                    throw new ContainerException(def.key + " must be non-negative, got " + value);
+                }
+                yield value;
+            }
+            case STRING -> raw;
+        };
+    }
+
+    private static String envVarName(String key) {
+        String name = key.replace('.', '_').toUpperCase(Locale.ROOT);
+        if (!name.startsWith(ENV_PREFIX)) {
+            name = ENV_PREFIX + name;
+        }
+        return name;
+    }
+
+    private static Properties loadClasspathResource(String name) {
+        Properties props = new Properties();
+        try (InputStream in = AltcontainersProperties.class.getClassLoader().getResourceAsStream(name)) {
+            if (in != null) {
+                props.load(in);
+            }
+        } catch (IOException e) {
+            throw new ContainerException("Failed to load classpath resource " + name, e);
+        }
+        return props;
+    }
+
+    private static Properties loadUserHomeFile(String fileName) {
+        Properties props = new Properties();
+        File file = new File(System.getProperty("user.home"), fileName);
+        if (!file.isFile()) {
+            return props;
+        }
+        try (InputStream in = Files.newInputStream(file.toPath())) {
+            props.load(in);
+        } catch (IOException e) {
+            throw new ContainerException("Failed to load " + file, e);
+        }
+        return props;
+    }
+
+    private static AltcontainersProperties create() {
+        Properties classpath = loadClasspathResource(CLASSPATH_RESOURCE);
+        Properties userHome = loadUserHomeFile(USER_HOME_FILE_NAME);
+        return new AltcontainersProperties(classpath, userHome, System.getenv());
+    }
+
+    private static final class Holder {
+        static AltcontainersProperties INSTANCE = create();
+
+        private Holder() {
+            // Intentionally empty
+        }
+    }
+
+    private enum Kind {
+        DURATION_MS,
+        BOOLEAN,
+        BYTES,
+        NONNEG_INT,
+        STRING
+    }
+
+    private static final class KeyDef {
+        private final String key;
+        private final String defaultValue;
+        private final Kind kind;
+        private final String legacyKey;
+
+        KeyDef(String key, String defaultValue, Kind kind) {
+            this(key, defaultValue, kind, null);
+        }
+
+        KeyDef(String key, String defaultValue, Kind kind, String legacyKey) {
+            this.key = key;
+            this.defaultValue = defaultValue;
+            this.kind = kind;
+            this.legacyKey = legacyKey;
+        }
+    }
+}

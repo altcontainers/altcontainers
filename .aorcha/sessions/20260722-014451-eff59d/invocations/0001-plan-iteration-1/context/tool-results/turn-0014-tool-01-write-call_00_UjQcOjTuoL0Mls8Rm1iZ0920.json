@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T05:48:14.770413420Z",
+  "turnSequence": 14,
+  "toolIndex": 0,
+  "callId": "call_00_UjQcOjTuoL0Mls8Rm1iZ0920",
+  "toolName": "write",
+  "arguments": {
+    "content": "{\n  \"schemaVersion\": 1,\n  \"outcome\": \"SUCCESS\",\n  \"summary\": \"Created implementation plan for adding a configurable image pull timeout (altcontainers.image.pull.timeout.ms, default 60000ms) to ContainerManager.pullImage(). Plan covers 7 files: AltcontainersProperties.java (new key + accessor), altcontainers.properties (classpath default), ContainerManager.java (timed awaitCompletion + timed get()), AltcontainersPropertiesTest.java (4 new tests), ContainerManagerPullTest.java (1 new test), and configuration.md docs (website + versioned).\",\n  \"nextAction\": null,\n  \"artifacts\": [\"artifacts/plan.md\"]\n}\n",
+    "path": "/home/dhoard/Development/github/altcontainers/altcontainers/.aorcha/sessions/20260722-014451-eff59d/invocations/0001-plan-iteration-1/result.json"
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0014-tool-01-write-call_00_UjQcOjTuoL0Mls8Rm1iZ0920.txt",
+  "sha256": "75ff6255fc4b95fb44e4fdf63126c0d964db992c072481046a670b523fb5e03e",
+  "bytes": 177
+}

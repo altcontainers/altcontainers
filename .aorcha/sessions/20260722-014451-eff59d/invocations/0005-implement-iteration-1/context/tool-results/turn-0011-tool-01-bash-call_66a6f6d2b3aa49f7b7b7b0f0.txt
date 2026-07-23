@@ -1,0 +1,8 @@
+ .../altcontainers/api/AltcontainersProperties.java | 15 +++++++++-
+ .../org/altcontainers/api/ContainerManager.java    | 17 +++++++++--
+ core/src/main/resources/altcontainers.properties   |  3 ++
+ .../api/AltcontainersPropertiesTest.java           | 35 ++++++++++++++++++++++
+ .../api/ContainerManagerPullTest.java              | 21 +++++++++++++
+ website/docs/guides/configuration.md               | 30 +++++++++++++++++++
+ .../version-0.3.0/guides/configuration.md          | 30 +++++++++++++++++++
+ 7 files changed, 148 insertions(+), 3 deletions(-)

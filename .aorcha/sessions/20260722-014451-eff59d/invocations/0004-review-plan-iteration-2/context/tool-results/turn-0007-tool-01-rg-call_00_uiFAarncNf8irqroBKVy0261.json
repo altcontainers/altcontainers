@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T05:53:38.303152807Z",
+  "turnSequence": 7,
+  "toolIndex": 0,
+  "callId": "call_00_uiFAarncNf8irqroBKVy0261",
+  "toolName": "rg",
+  "arguments": {
+    "pattern": "awaitCompletion",
+    "path": "/home/dhoard/Development/github/altcontainers/altcontainers/core/src/main/java",
+    "context": 2
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0007-tool-01-rg-call_00_uiFAarncNf8irqroBKVy0261.txt",
+  "sha256": "ea8e2e6df5a8cb888c14904a5e780cdd6746dbde6c7abcfdae361de9ed12d7ca",
+  "bytes": 903
+}
