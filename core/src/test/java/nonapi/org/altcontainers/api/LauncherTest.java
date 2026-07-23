@@ -48,7 +48,6 @@ class LauncherTest {
     private static final int SOCKET_READ_TIMEOUT_MS = 2_000;
     private static final long CLEANUP_PORT_WAIT_MS = 30_000;
 
-
     static boolean reaperJarAvailable() {
         return LauncherTest.class.getClassLoader().getResource("reaper.jar") != null;
     }
