@@ -757,8 +757,91 @@ public final class ContainerManager {
     }
 
     /**
+     * Wraps a downstream consumer with line-splitting semantics.
+     *
+     * <p>Frames are buffered and complete lines (terminated by {@code \n})
+     * are dispatched to the downstream consumer. Partial lines are retained
+     * across frames. Call {@link LineSplittingConsumer#flush()} on stream
+     * completion or error to emit any remaining partial line.
+     *
+     * <p>Line splitting applies only to the raw log consumer path used by
+     * {@link LogWaitStrategy}. {@link OutputFrame} consumers continue to
+     * receive raw Docker frames with no line-buffering, matching
+     * testcontainers-java behavior.
+     *
+     * @param downstream the consumer that receives complete lines; must not
+     *     be {@code null}
+     * @return a line-splitting consumer wrapper
+     */
+    static LineSplittingConsumer lineSplitting(Consumer<String> downstream) {
+        return new LineSplittingConsumer(downstream);
+    }
+
+    /**
+     * A consumer that buffers incoming text and dispatches complete
+     * newline-terminated lines to a downstream consumer.
+     *
+     * <p>Multi-line frames are split into individual lines. Split lines
+     * across frames are reassembled. On {@link #flush()}, any non-empty
+     * buffer remainder is dispatched as a final line without a trailing
+     * newline.
+     *
+     * <p>Thread confinement: instances are only called from the single-threaded
+     * {@code onNext}/{@code onComplete}/{@code onError} callbacks in a log-stream
+     * subscription.
+     */
+    static final class LineSplittingConsumer implements Consumer<String> {
+        private final Consumer<String> downstream;
+        private final StringBuilder buffer = new StringBuilder();
+
+        LineSplittingConsumer(Consumer<String> downstream) {
+            this.downstream = Objects.requireNonNull(downstream, "downstream must not be null");
+        }
+
+        @Override
+        public void accept(String text) {
+            if (text == null || text.isEmpty()) {
+                return;
+            }
+            int prevLength = buffer.length();
+            buffer.append(text);
+            int start = 0;
+            java.util.List<String> lines = new java.util.ArrayList<>();
+            for (int i = prevLength; i < buffer.length(); i++) {
+                if (buffer.charAt(i) == '\n') {
+                    lines.add(buffer.substring(start, i + 1));
+                    start = i + 1;
+                }
+            }
+            buffer.delete(0, start);
+            for (String line : lines) {
+                downstream.accept(line);
+            }
+        }
+
+        /**
+         * Flushes any remaining buffered text as a final line.
+         * Called when the log stream completes or errors.
+         */
+        void flush() {
+            if (!buffer.isEmpty()) {
+                downstream.accept(buffer.toString());
+                buffer.setLength(0);
+            }
+        }
+    }
+
+    /**
      * Starts a log stream for the container, dispatching to output frame
      * consumers and raw log consumers.
+     *
+     * <p>Output frame consumers receive raw Docker frames matching
+     * testcontainers-java {@code OutputFrame} semantics — the framework
+     * does not strip, filter, decode, or line-buffer frames before
+     * invoking output consumers.
+     *
+     * <p>The raw log consumer path (used by {@link LogWaitStrategy})
+     * is wrapped with line-splitting to deliver complete lines.
      *
      * @param containerId the Docker container id
      * @param outputConsumers the output frame consumers (non-null, may be empty)
@@ -769,6 +852,7 @@ public final class ContainerManager {
             String containerId, List<Consumer<OutputFrame>> outputConsumers, Consumer<String> rawConsumer) {
         LogHandle handle = new LogHandle();
         AtomicBoolean complete = new AtomicBoolean(false);
+        LineSplittingConsumer lineSplitter = rawConsumer != null ? lineSplitting(rawConsumer) : null;
         ResultCallback.Adapter<Frame> callback = new ResultCallback.Adapter<>() {
             @Override
             public void onNext(Frame frame) {
@@ -788,9 +872,9 @@ public final class ContainerManager {
                     OutputFrame outputFrame = new OutputFrame(outputType, payload != null ? payload : new byte[0]);
 
                     String text = new String(payload != null ? payload : new byte[0], StandardCharsets.UTF_8);
-                    if (rawConsumer != null) {
+                    if (lineSplitter != null) {
                         try {
-                            rawConsumer.accept(text);
+                            lineSplitter.accept(text);
                         } catch (RuntimeException e) {
                             logger.warn("Log raw consumer failed: {}", e.getMessage());
                         }
@@ -816,6 +900,13 @@ public final class ContainerManager {
 
             @Override
             public void onError(Throwable throwable) {
+                if (lineSplitter != null) {
+                    try {
+                        lineSplitter.flush();
+                    } catch (RuntimeException e) {
+                        logger.warn("Log raw consumer failed during error flush: {}", e.getMessage());
+                    }
+                }
                 if (shouldSuppressLogError(handle, throwable)) {
                     logger.debug(
                             "Log stream closed during shutdown for container {}: {}",
@@ -836,6 +927,13 @@ public final class ContainerManager {
 
             @Override
             public void onComplete() {
+                if (lineSplitter != null) {
+                    try {
+                        lineSplitter.flush();
+                    } catch (RuntimeException e) {
+                        logger.warn("Log raw consumer failed during flush: {}", e.getMessage());
+                    }
+                }
                 complete.set(true);
             }
         };
