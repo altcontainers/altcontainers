@@ -802,12 +802,12 @@ public final class ContainerManager {
             if (text == null || text.isEmpty()) {
                 return;
             }
+            int prevLength = buffer.length();
             buffer.append(text);
             int start = 0;
-            for (int i = 0; i < buffer.length(); i++) {
+            for (int i = prevLength; i < buffer.length(); i++) {
                 if (buffer.charAt(i) == '\n') {
-                    String line = buffer.substring(start, i + 1);
-                    downstream.accept(line);
+                    downstream.accept(buffer.substring(start, i + 1));
                     start = i + 1;
                 }
             }
@@ -895,6 +895,13 @@ public final class ContainerManager {
 
             @Override
             public void onError(Throwable throwable) {
+                if (lineSplitter != null) {
+                    try {
+                        lineSplitter.flush();
+                    } catch (RuntimeException e) {
+                        logger.warn("Log raw consumer failed during error flush: {}", e.getMessage());
+                    }
+                }
                 if (shouldSuppressLogError(handle, throwable)) {
                     logger.debug(
                             "Log stream closed during shutdown for container {}: {}",
@@ -916,7 +923,11 @@ public final class ContainerManager {
             @Override
             public void onComplete() {
                 if (lineSplitter != null) {
-                    lineSplitter.flush();
+                    try {
+                        lineSplitter.flush();
+                    } catch (RuntimeException e) {
+                        logger.warn("Log raw consumer failed during flush: {}", e.getMessage());
+                    }
                 }
                 complete.set(true);
             }
