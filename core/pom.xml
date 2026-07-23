@@ -27,6 +27,7 @@
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
         </dependency>
+        <!-- slf4j-api is intentionally NOT shaded: applications provide their own SLF4J binding -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
@@ -62,6 +63,9 @@
                         <goals><goal>shade</goal></goals>
                         <configuration>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <excludes>
+                                <exclude>org.slf4j:slf4j-api</exclude>
+                            </excludes>
                             <filters>
                                 <filter>
                                     <artifact>*:*</artifact>

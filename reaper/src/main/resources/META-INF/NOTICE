@@ -1,8 +1,8 @@
-Altcontainers
-Copyright 2006-present Douglas Hoard
+Altcontainers Reaper
+Copyright (c) 2026-present Douglas Hoard
 
-This project is licensed under the Apache License, Version 2.0.
-See: LICENSE
+Licensed under the Apache License, Version 2.0 (the "License");
+see META-INF/LICENSE for the full license text.
 
 This product includes embedded and relocated source code from the following
 third-party projects. The original package names have been relocated under
@@ -10,7 +10,10 @@ nonapi.shaded.* as noted below.
 
 Third-Party Notices
 
-Core Module Dependencies
+Embedded / Shaded Dependencies (in the reaper uber-JAR)
+
+The reaper artifact is a shaded uber-JAR that embeds and relocates the following
+components. Their original packages are not present in the published artifact.
 
 - docker-java
   - Coordinates: com.github.docker-java:docker-java-core,
@@ -19,26 +22,6 @@ Core Module Dependencies
     com.github.docker-java:docker-java-transport-zerodep
   - Website: https://github.com/docker-java/docker-java
   - License: Apache License 2.0
-
-- SLF4J
-  - Coordinates: org.slf4j:slf4j-api
-  - Website: https://www.slf4j.org/
-  - License: MIT
-
-- JUnit Platform / JUnit Jupiter (JUnit Project)
-  - Coordinates: org.junit.platform:* and org.junit.jupiter:*
-  - Website: https://junit.org/
-  - License: Eclipse Public License 2.0 (EPL-2.0)
-
-- AssertJ
-  - Coordinates: org.assertj:assertj-core
-  - Website: https://assertj.github.io/doc/
-  - License: Apache License 2.0
-
-Embedded / Shaded Dependencies (in the core uber-JAR)
-
-The core artifact is a shaded uber-JAR that embeds and relocates the following
-components. Their original packages are not present in the published artifact.
 
 - Jackson (JSON processing)
   - Coordinates: com.fasterxml.jackson.core:jackson-core,
@@ -91,6 +74,18 @@ components. Their original packages are not present in the published artifact.
   - Website: https://github.com/java-native-access/jna
   - License: Apache License 2.0 (dual-licensed under LGPL 2.1; the Apache
     2.0 license is used here)
+
+- Logback
+  - Coordinates: ch.qos.logback:logback-classic,
+    ch.qos.logback:logback-core
+  - Website: https://logback.qos.ch/
+  - License: Eclipse Public License 1.0 (EPL-1.0) / GNU Lesser General
+    Public License 2.1 (LGPL-2.1)
+
+- SLF4J
+  - Coordinates: org.slf4j:slf4j-api
+  - Website: https://www.slf4j.org/
+  - License: MIT
 
 Note: Transitive dependencies pulled in by the above components may carry
 additional license obligations. When redistributing binaries, you must ensure
