@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T05:51:03.521055293Z",
+  "turnSequence": 6,
+  "toolIndex": 0,
+  "callId": "call_00_pcuep4LEFpN6wF1W8Zjs5495",
+  "toolName": "grep",
+  "arguments": {
+    "pattern": "import java.util.concurrent.TimeoutException",
+    "path": "/home/dhoard/Development/github/altcontainers/altcontainers/core/src/main/java/nonapi/org/altcontainers/api/ContainerManager.java"
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0006-tool-01-grep-call_00_pcuep4LEFpN6wF1W8Zjs5495.txt",
+  "sha256": "a63365fe33e44f6c27ee7671141ca885f5b530f92dd65fd8add3a87cf67435d3",
+  "bytes": 48
+}

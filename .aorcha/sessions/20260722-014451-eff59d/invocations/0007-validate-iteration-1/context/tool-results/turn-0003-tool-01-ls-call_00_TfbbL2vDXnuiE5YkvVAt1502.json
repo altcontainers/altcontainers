@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T06:44:32.054071944Z",
+  "turnSequence": 3,
+  "toolIndex": 0,
+  "callId": "call_00_TfbbL2vDXnuiE5YkvVAt1502",
+  "toolName": "ls",
+  "arguments": {
+    "path": "/home/dhoard/Development/github/altcontainers/altcontainers/.aorcha/sessions/20260722-014451-eff59d/artifacts"
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0003-tool-01-ls-call_00_TfbbL2vDXnuiE5YkvVAt1502.txt",
+  "sha256": "36a0a2934b63f055b38ae8ae83754306707aac40b32d19a2fc695ad526ae28b9",
+  "bytes": 72
+}

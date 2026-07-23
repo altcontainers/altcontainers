@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T05:53:59.495189519Z",
+  "turnSequence": 11,
+  "toolIndex": 0,
+  "callId": "call_00_XRAJhrCKQQme4c4ueSkv3297",
+  "toolName": "bash",
+  "arguments": {
+    "command": "cd /tmp && jar xf /home/dhoard/.m2/repository/com/github/docker-java/docker-java-api/3.7.1/docker-java-api-3.7.1.jar 'com/github/dockerjava/api/async/ResultCallbackTemplate.class' 2>/dev/null; javap -p com/github/dockerjava/api/async/ResultCallbackTemplate.class 2>/dev/null | grep -i 'await'"
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0011-tool-01-bash-call_00_XRAJhrCKQQme4c4ueSkv3297.txt",
+  "sha256": "49b008bcd74ca7ef72b5d4a391ddfe7c7f29f7f148eb303893d11ec0d8b4fb2c",
+  "bytes": 353
+}

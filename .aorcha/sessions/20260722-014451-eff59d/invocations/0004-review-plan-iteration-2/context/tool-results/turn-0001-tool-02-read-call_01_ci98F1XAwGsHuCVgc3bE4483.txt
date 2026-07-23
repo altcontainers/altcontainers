@@ -1,0 +1,124 @@
+# Review: Image Pull Timeout Implementation Plan
+
+## Verdict: CHANGES_REQUESTED
+
+---
+
+## Summary
+
+The plan is well-structured and follows existing codebase patterns correctly. It identifies the correct files, uses the right API patterns (`KeyDef`, `DURATION_MS` kind, `forTesting` factory, etc.), and provides appropriate test coverage. However, two issues require resolution before implementation: (1) a variable scope error where `pullTimeoutMs` is declared in the wrong block, and (2) the default value needs to be changed from 60,000 ms to 300,000 ms (5 minutes) as requested in the human feedback.
+
+---
+
+## Issues
+
+### Issue 1 (blocking): `pullTimeoutMs` variable scope error
+
+**What's wrong:** Step 3a declares `long pullTimeoutMs = ...` inside the `if (existing == null)` block (the puller path, lines 200-219), but Step 3b uses `pullTimeoutMs` in the waiter path (lines 221-230) which is *outside* that `if` block. The variable is out of scope at the point of use.
+
+The actual code structure is:
+
+```java
+if (existing == null) {          // line 200
+    try {
+        // Step 3a: pullTimeoutMs declared here (inside if block)
+        dockerClient().pullImageCmd(image).start().awaitCompletion();
+        ...
+    } catch (...) { ... }
+}                                // line 219 — variable scope ends here
+                                 // line 220
+try {                            // line 221 — WAITER PATH, outside if block
+    existing.get();              // Step 3b: pullTimeoutMs used here — NOT IN SCOPE
+    ...
+```
+
+**What to change:** Move the `pullTimeoutMs` declaration to the method level, before the `while (true)` loop. This makes it accessible to both the puller and waiter paths. The fix is:
+
+```java
+private void pullImage(String image) {
+    long pullTimeoutMs = AltcontainersProperties.instance().imagePullTimeout().toMillis();
+    while (true) {
+        CompletableFuture<Void> newFuture = new CompletableFuture<>();
+        CompletableFuture<Void> existing = inflightPulls.putIfAbsent(image, newFuture);
+        if (existing == null) {
+            try {
+                boolean completed = dockerClient()
+                        .pullImageCmd(image).start().awaitCompletion(pullTimeoutMs, TimeUnit.MILLISECONDS);
+                if (!completed) {
+                    String message = "Image pull timed out after " + pullTimeoutMs + " ms: " + image;
+                    newFuture.completeExceptionally(new ContainerException(message));
+                    inflightPulls.remove(image);
+                    throw new ContainerException(message);
+                }
+                newFuture.complete(null);
+                localImageCache.add(image);
+                inflightPulls.remove(image, newFuture);
+                return;
+            } catch (InterruptedException e) { ... } catch (RuntimeException e) { ... }
+        }
+        try {
+            existing.get(pullTimeoutMs + 10_000, TimeUnit.MILLISECONDS);
+            return;
+        } catch (TimeoutException e) {
+            throw new ContainerException("Timed out waiting for in-flight image pull: " + image, e);
+        } catch (ExecutionException e) { ... } catch (InterruptedException e) { ... }
+    }
+}
+```
+
+This is the most important fix — without it the code won't compile.
+
+### Issue 2 (important): Default value too short — 1 minute → 5 minutes
+
+**What's wrong:** The plan sets `altcontainers.image.pull.timeout.ms=60000` (1 minute). As noted in the human feedback, 1 minute is too short for slow links or large images. The input plan originally proposed 10 minutes (600,000 ms). A middle ground of 5 minutes (300,000 ms) is more appropriate.
+
+**What to change:** Update all references to the default value from `60000` to `300000`:
+
+| Location | Change |
+|---|---|
+| `AltcontainersProperties.java` — `KeyDef` default | `"300000"` |
+| `altcontainers.properties` | `altcontainers.image.pull.timeout.ms=300000` |
+| `AltcontainersPropertiesTest.java` — `shouldDefaultImagePullTimeout` assertion | `Duration.ofMinutes(5)` |
+| `AltcontainersPropertiesTest.java` — `shouldResolveImagePullTimeoutFromEnv` test value | « already `300000` — no change needed, but the assertion should check `Duration.ofMinutes(5)` |
+| `ContainerManagerPullTest.java` — `shouldCompletePullWithinConfiguredTimeout` assertion | `assertThat(elapsed).isLessThan(Duration.ofSeconds(50).toMillis())` — change to `isLessThan(Duration.ofMinutes(4).toMillis())` or keep `50s` as a sanity check since alpine pulls are fast |
+| `website/docs/guides/configuration.md` — Default column | `300000` |
+| `website/versioned_docs/version-0.3.0/guides/configuration.md` — Default column | `300000` |
+
+### Issue 3 (minor): Declare `pullTimeoutMs` explicitly in Step 1 list
+
+**What's wrong:** The plan doesn't explicitly list the `IMAGE_PULL_TIMEOUT_MS` constant's placement in the constant declarations section of `AltcontainersProperties.java`. The `DOCKER_HOST` constant is currently the last constant before the `KNOWN_KEYS` list.
+
+**What to change:** Add a note that the new constant should be placed *after* `DOCKER_HOST` (the last existing constant) and *before* the `KNOWN_KEYS` list. The plan already shows this position in the code snippet, but an explicit step note would prevent ambiguity.
+
+---
+
+## What the plan gets right
+
+1. **Pattern consistency:** The plan correctly follows existing conventions for `KeyDef`, `Kind.DURATION_MS`, the accessor method pattern, and the `forTesting()` test factory. All code snippets match the existing codebase idioms.
+
+2. **Import verification:** Correctly identifies that `TimeoutException` (line 53) and `TimeUnit` (line 54) are already imported in `ContainerManager.java`.
+
+3. **Test adequacy:** Tests cover all four property validation scenarios (default, env override, invalid non-numeric, invalid non-positive). The Docker-gated test provides a sanity check on the happy path.
+
+4. **Waiter path design:** The plan correctly notes not to remove the in-flight future on waiter timeout (line 223) — the pull may still succeed for later callers. This is the right behavior.
+
+5. **`AltcontainersConfigurationTest` note:** The plan correctly identifies that this test class doesn't exist (verified via `find`), confirming that all config validation is handled by `AltcontainersProperties.parse()` with the `DURATION_MS` kind.
+
+6. **Risk identification:** The risks section covers the key edge cases (concurrent waiter timeout vs. pull completion, dangling HTTP connections, race with `completeExceptionally`/`remove`, etc.) with honest assessments and mitigations.
+
+7. **Documentation structure:** The plan correctly identifies the section ordering in both doc versions. The "Environment variable naming" table correctly ends with `altcontainers.networks.parallelism` in both files.
+
+---
+
+## Verification summary
+
+| Check | Result |
+|---|---|
+| `AltcontainersProperties.java` constants, `KNOWN_KEYS`, accessors | Verified — pattern confirmed |
+| `ContainerManager.pullImage()` structure | Verified — scope issue identified above |
+| `altcontainers.properties` existing content | Verified — sections match plan's placement |
+| `AltcontainersPropertiesTest.java` existing tests | Verified — `shouldApplyDefaultsWhenNoSourceSet` is non-exhaustive; new tests won't break it |
+| `ContainerManagerPullTest.java` existing tests | Verified — patterns match; `triggerPullImage` is package-private |
+| `AltcontainersConfigurationTest` existence | Verified — does not exist |
+| `TimeoutException` import in `ContainerManager.java` | Verified — present at line 53 |
+| Website docs latest vs version-0.3.0 structure | Verified — section ordering confirmed |

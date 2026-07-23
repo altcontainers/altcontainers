@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T06:08:54.001757895Z",
+  "turnSequence": 2,
+  "toolIndex": 0,
+  "callId": "call_00_l0lpeahSGBMv0vbv9AqI9612",
+  "toolName": "read",
+  "arguments": {
+    "path": "/home/dhoard/Development/github/altcontainers/altcontainers/core/src/main/java/nonapi/org/altcontainers/api/AltcontainersProperties.java"
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0002-tool-01-read-call_00_l0lpeahSGBMv0vbv9AqI9612.txt",
+  "sha256": "b2d522596ad96136d2106526ab4ae7e8dec67e224c7054bc6547c2d8a0f21091",
+  "bytes": 18006
+}

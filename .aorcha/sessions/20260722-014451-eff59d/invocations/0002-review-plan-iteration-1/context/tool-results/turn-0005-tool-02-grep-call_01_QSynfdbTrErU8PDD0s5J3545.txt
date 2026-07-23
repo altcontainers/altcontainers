@@ -1,0 +1,58 @@
+134-    public static ContainerManager getInstance() {
+135-        return INSTANCE;
+136-    }
+137-
+138-    /**
+139:     * Exposes pullImage for testing. Package-private.
+140-     *
+141-     * @param image the image name
+142-     */
+143-    void triggerPullImage(String image) {
+144:        pullImage(image);
+145-    }
+146-
+147-    /**
+148-     * Installs a post-start metadata inspector for internal lifecycle tests.
+149-     *
+--
+191-     * Pulls an image with deduplication. Concurrent callers for the same image
+192-     * wait for the in-flight pull.
+193-     *
+194-     * @param image the image name
+195-     */
+196:    private void pullImage(String image) {
+197-        while (true) {
+198-            CompletableFuture<Void> newFuture = new CompletableFuture<>();
+199-            CompletableFuture<Void> existing = inflightPulls.putIfAbsent(image, newFuture);
+200-            if (existing == null) {
+201-                try {
+202:                    dockerClient().pullImageCmd(image).start().awaitCompletion();
+203-                    newFuture.complete(null);
+204-                    localImageCache.add(image);
+205-                    inflightPulls.remove(image, newFuture);
+206-                    return;
+207-                } catch (InterruptedException e) {
+--
+251-            }
+252-            localImageCache.remove(image);
+253-            if (isImageAvailableLocally(image)) {
+254-                localImageCache.add(image);
+255-            } else {
+256:                pullImage(image);
+257-            }
+258-            return createContainer(spec, labels);
+259-        }
+260-    }
+261-
+--
+294-        ReaperController ctrl = ReaperController.instance();
+295-        ResourceSession session = ctrl.ensureReady();
+296-
+297-        String image = spec.image();
+298-        if (!localImageCache.contains(image) && !isImageAvailableLocally(image)) {
+299:            pullImage(image);
+300-        } else {
+301-            localImageCache.add(image);
+302-        }
+303-
+304-        ContainerException lastFailure = null;

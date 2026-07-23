@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T05:45:40.661453959Z",
+  "turnSequence": 8,
+  "toolIndex": 0,
+  "callId": "call_00_Caq6L3RkAXJfjpVYcyvV2517",
+  "toolName": "grep",
+  "arguments": {
+    "-n": true,
+    "pattern": "timeoutDiagnostic",
+    "path": "/home/dhoard/Development/github/altcontainers/altcontainers/core/src/main/java/nonapi/org/altcontainers/api/ManagedWaitStrategy.java",
+    "output_mode": "content",
+    "-C": 5
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0008-tool-01-grep-call_00_Caq6L3RkAXJfjpVYcyvV2517.txt",
+  "sha256": "8213db163478ff08fb8202f70ef3178408a118b0b9fda147a668bd4a9f72faf1",
+  "bytes": 87
+}

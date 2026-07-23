@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T05:52:16.895054390Z",
+  "turnSequence": 9,
+  "toolIndex": 2,
+  "callId": "call_02_p2NfJW5wz4NimeiBhtms1492",
+  "toolName": "grep",
+  "arguments": {
+    "pattern": "private static String resolveRaw",
+    "path": "/home/dhoard/Development/github/altcontainers/altcontainers/core/src/main/java/nonapi/org/altcontainers/api/AltcontainersProperties.java"
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0009-tool-03-grep-call_02_p2NfJW5wz4NimeiBhtms1492.txt",
+  "sha256": "76d1175e88323a520d88e51ad9e04e5b143609f260e9eaf049f7f7344192e32a",
+  "bytes": 122
+}

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T05:45:35.432703261Z",
+  "turnSequence": 7,
+  "toolIndex": 0,
+  "callId": "call_00_RWZ2osf1kU8RpZKZckXB1651",
+  "toolName": "grep",
+  "arguments": {
+    "-n": true,
+    "pattern": "REAPER_STOP_TIMEOUT_MS",
+    "path": "/home/dhoard/Development/github/altcontainers/altcontainers/core/src/main/java/nonapi/org/altcontainers/api/AltcontainersProperties.java",
+    "output_mode": "content",
+    "-C": 1
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0007-tool-01-grep-call_00_RWZ2osf1kU8RpZKZckXB1651.txt",
+  "sha256": "a2cfb31730ac57c121be49a02e64667fc57eee767dcf495209c65eb765c4e97a",
+  "bytes": 238
+}

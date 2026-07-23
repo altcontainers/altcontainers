@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "outcome": "SUCCESS",
+  "summary": "Implemented configurable image pull timeout (altcontainers.image.pull.timeout.ms, default 300000ms). Modified 7 files: AltcontainersProperties (new key + accessor), altcontainers.properties (classpath default), ContainerManager (timed awaitCompletion + timed get), AltcontainersPropertiesTest (4 new tests), ContainerManagerPullTest (1 new test), and both configuration.md docs. All 28 properties tests pass. Full clean verify BUILD SUCCESS.",
+  "nextAction": null,
+  "artifacts": ["artifacts/implementation-report.md"]
+}

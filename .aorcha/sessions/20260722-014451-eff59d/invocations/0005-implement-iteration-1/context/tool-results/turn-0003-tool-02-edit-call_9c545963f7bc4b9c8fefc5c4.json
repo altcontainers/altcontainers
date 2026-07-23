@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T05:54:55.949651074Z",
+  "turnSequence": 3,
+  "toolIndex": 1,
+  "callId": "call_9c545963f7bc4b9c8fefc5c4",
+  "toolName": "edit",
+  "arguments": {
+    "path": "/home/dhoard/Development/github/altcontainers/altcontainers/core/src/main/resources/altcontainers.properties",
+    "edits": [
+      {
+        "oldText": "# --- Docker host ---",
+        "newText": "# --- Image pull ---\naltcontainers.image.pull.timeout.ms=300000\n\n# --- Docker host ---"
+      }
+    ]
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0003-tool-02-edit-call_9c545963f7bc4b9c8fefc5c4.txt",
+  "sha256": "e9216852845357832ac98538ecff50b48789f32515d462dc2ae7e512df8c87c0",
+  "bytes": 145
+}

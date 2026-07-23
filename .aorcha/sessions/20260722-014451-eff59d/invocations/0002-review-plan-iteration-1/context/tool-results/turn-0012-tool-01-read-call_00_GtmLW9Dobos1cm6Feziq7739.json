@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T05:50:12.052319726Z",
+  "turnSequence": 12,
+  "toolIndex": 0,
+  "callId": "call_00_GtmLW9Dobos1cm6Feziq7739",
+  "toolName": "read",
+  "arguments": {
+    "path": "/home/dhoard/Development/github/altcontainers/altcontainers/.aorcha/sessions/20260722-014451-eff59d/invocations/0002-review-plan-iteration-1/result.json"
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0012-tool-01-read-call_00_GtmLW9Dobos1cm6Feziq7739.txt",
+  "sha256": "ea4244e2e0e2a0a1d8d1b30989538b3a04580b5bd5ed8a42f0745e36e84957a5",
+  "bytes": 551
+}

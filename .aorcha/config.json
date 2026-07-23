@@ -1,0 +1,285 @@
+{
+  "schemaVersion": 1,
+  "providers": {
+    "deepseek": {
+      "baseUrl": "https://api.deepseek.com",
+      "secret": "DEEPSEEK_API_KEY",
+      "headers": {},
+      "capabilities": {
+        "tools": true,
+        "parallelTools": false,
+        "jsonMode": true,
+        "jsonSchema": false,
+        "streaming": true,
+        "reasoningContent": true
+      }
+    },
+    "xiaomi": {
+      "baseUrl": "https://api.xiaomimimo.com/v1",
+      "secret": "XIAOMI_API_KEY",
+      "headers": {},
+      "capabilities": {
+        "tools": true,
+        "parallelTools": false,
+        "jsonMode": true,
+        "jsonSchema": false,
+        "streaming": true,
+        "reasoningContent": true
+      }
+    },
+    "openrouter": {
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "secret": "OPENROUTER_API_KEY",
+      "headers": {},
+      "capabilities": {
+        "tools": true,
+        "parallelTools": true,
+        "jsonMode": true,
+        "jsonSchema": true,
+        "streaming": true,
+        "reasoningContent": false
+      }
+    }
+  },
+  "roles": {
+    "planner": {
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "tools": [
+        "read",
+        "grep",
+        "rg",
+        "find",
+        "ls",
+        "write"
+      ],
+      "prompt": "classpath:prompts/plan.md",
+      "agentTimeoutSeconds": 900,
+      "toolTimeoutSeconds": 300,
+      "maxIterations": 3,
+      "maxTurns": 100,
+      "maxTokens": null,
+      "temperature": null,
+      "providerOptions": {
+        "thinking": {
+          "type": "enabled"
+        },
+        "reasoning_effort": "high"
+      },
+      "contextManagement": {
+        "contextWindowTokens": 1000000,
+        "maxInputTokens": 800000,
+        "reservedCompletionTokens": 131072,
+        "compactionTriggerTokens": 720000,
+        "postCompactionTargetTokens": 600000,
+        "retainRecentTurns": 20,
+        "maxSummaryTokens": 6000,
+        "maxInlineToolResultBytes": 16384,
+        "maxSessionKnowledgeBytes": 65536,
+        "maxRepeatedEquivalentCalls": 4,
+        "maxNoProgressTurns": 12,
+        "enableConversationCompaction": true,
+        "enableToolResultCompaction": true,
+        "enableSessionKnowledge": true,
+        "enableInspectionCache": true,
+        "maxKnowledgeFiles": 256,
+        "maxKnowledgeValidations": 128,
+        "maxKnowledgeUnresolved": 64,
+        "maxKnowledgeCheckpoints": 64,
+        "tokenEstimator": "calibrated",
+        "maxScannedFiles": 50000
+      }
+    },
+    "planReviewer": {
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "tools": [
+        "read",
+        "bash",
+        "grep",
+        "rg",
+        "find",
+        "ls",
+        "write"
+      ],
+      "prompt": "classpath:prompts/review-plan.md",
+      "agentTimeoutSeconds": 900,
+      "toolTimeoutSeconds": 600,
+      "maxIterations": 3,
+      "maxTurns": 60,
+      "maxTokens": null,
+      "temperature": null,
+      "providerOptions": {
+        "thinking": {
+          "type": "enabled"
+        },
+        "reasoning_effort": "high"
+      },
+      "contextManagement": {
+        "contextWindowTokens": 1000000,
+        "maxInputTokens": 500000,
+        "reservedCompletionTokens": 131072,
+        "compactionTriggerTokens": 450000,
+        "postCompactionTargetTokens": 350000,
+        "retainRecentTurns": 20,
+        "maxSummaryTokens": 6000,
+        "maxInlineToolResultBytes": 16384,
+        "maxSessionKnowledgeBytes": 65536,
+        "maxRepeatedEquivalentCalls": 4,
+        "maxNoProgressTurns": 8,
+        "enableConversationCompaction": true,
+        "enableToolResultCompaction": true,
+        "enableSessionKnowledge": true,
+        "enableInspectionCache": true,
+        "maxKnowledgeFiles": 192,
+        "maxKnowledgeValidations": 96,
+        "maxKnowledgeUnresolved": 48,
+        "maxKnowledgeCheckpoints": 48,
+        "tokenEstimator": "calibrated",
+        "maxScannedFiles": 20000
+      }
+    },
+    "implementer": {
+      "provider": "xiaomi",
+      "model": "mimo-v2.5-pro",
+      "tools": [
+        "read",
+        "bash",
+        "edit",
+        "write",
+        "grep",
+        "rg",
+        "find",
+        "ls"
+      ],
+      "prompt": "classpath:prompts/implement.md",
+      "agentTimeoutSeconds": 1800,
+      "toolTimeoutSeconds": 900,
+      "maxIterations": 5,
+      "maxTurns": 400,
+      "maxTokens": null,
+      "temperature": null,
+      "contextManagement": {
+        "contextWindowTokens": 1000000,
+        "maxInputTokens": 800000,
+        "reservedCompletionTokens": 131072,
+        "compactionTriggerTokens": 720000,
+        "postCompactionTargetTokens": 600000,
+        "retainRecentTurns": 20,
+        "maxSummaryTokens": 6000,
+        "maxInlineToolResultBytes": 16384,
+        "maxSessionKnowledgeBytes": 65536,
+        "maxRepeatedEquivalentCalls": 6,
+        "maxNoProgressTurns": 16,
+        "enableConversationCompaction": true,
+        "enableToolResultCompaction": true,
+        "enableSessionKnowledge": true,
+        "enableInspectionCache": true,
+        "maxKnowledgeFiles": 256,
+        "maxKnowledgeValidations": 128,
+        "maxKnowledgeUnresolved": 64,
+        "maxKnowledgeCheckpoints": 64,
+        "tokenEstimator": "calibrated",
+        "maxScannedFiles": 50000
+      }
+    },
+    "implementationReviewer": {
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "tools": [
+        "read",
+        "bash",
+        "grep",
+        "rg",
+        "find",
+        "ls",
+        "write"
+      ],
+      "prompt": "classpath:prompts/review-implementation.md",
+      "agentTimeoutSeconds": 900,
+      "toolTimeoutSeconds": 600,
+      "maxIterations": 5,
+      "maxTurns": 80,
+      "maxTokens": null,
+      "temperature": null,
+      "providerOptions": {
+        "thinking": {
+          "type": "enabled"
+        },
+        "reasoning_effort": "high"
+      },
+      "contextManagement": {
+        "contextWindowTokens": 1000000,
+        "maxInputTokens": 600000,
+        "reservedCompletionTokens": 131072,
+        "compactionTriggerTokens": 540000,
+        "postCompactionTargetTokens": 450000,
+        "retainRecentTurns": 20,
+        "maxSummaryTokens": 6000,
+        "maxInlineToolResultBytes": 16384,
+        "maxSessionKnowledgeBytes": 65536,
+        "maxRepeatedEquivalentCalls": 4,
+        "maxNoProgressTurns": 10,
+        "enableConversationCompaction": true,
+        "enableToolResultCompaction": true,
+        "enableSessionKnowledge": true,
+        "enableInspectionCache": true,
+        "maxKnowledgeFiles": 224,
+        "maxKnowledgeValidations": 112,
+        "maxKnowledgeUnresolved": 56,
+        "maxKnowledgeCheckpoints": 56,
+        "tokenEstimator": "calibrated",
+        "maxScannedFiles": 25000
+      }
+    },
+    "validator": {
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "tools": [
+        "read",
+        "bash",
+        "grep",
+        "rg",
+        "find",
+        "ls",
+        "write"
+      ],
+      "prompt": "classpath:prompts/validate.md",
+      "agentTimeoutSeconds": 900,
+      "toolTimeoutSeconds": 900,
+      "maxIterations": 2,
+      "maxTurns": 50,
+      "maxTokens": null,
+      "temperature": null,
+      "providerOptions": {
+        "thinking": {
+          "type": "enabled"
+        },
+        "reasoning_effort": "high"
+      },
+      "contextManagement": {
+        "contextWindowTokens": 1000000,
+        "maxInputTokens": 400000,
+        "reservedCompletionTokens": 131072,
+        "compactionTriggerTokens": 360000,
+        "postCompactionTargetTokens": 280000,
+        "retainRecentTurns": 16,
+        "maxSummaryTokens": 4000,
+        "maxInlineToolResultBytes": 16384,
+        "maxSessionKnowledgeBytes": 49152,
+        "maxRepeatedEquivalentCalls": 3,
+        "maxNoProgressTurns": 6,
+        "enableConversationCompaction": true,
+        "enableToolResultCompaction": true,
+        "enableSessionKnowledge": true,
+        "enableInspectionCache": true,
+        "maxKnowledgeFiles": 160,
+        "maxKnowledgeValidations": 80,
+        "maxKnowledgeUnresolved": 40,
+        "maxKnowledgeCheckpoints": 40,
+        "tokenEstimator": "calibrated",
+        "maxScannedFiles": 10000
+      }
+    }
+  }
+}

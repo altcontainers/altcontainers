@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+resolve_script() {
+  local source="$1"
+  while [ -L "$source" ]; do
+    local dir
+    dir="$(cd -P "$(dirname "$source")" >/dev/null 2>&1 && pwd)"
+    source="$(readlink "$source")"
+    [[ "$source" != /* ]] && source="$dir/$source"
+  done
+  cd -P "$(dirname "$source")" >/dev/null 2>&1 && pwd
+}
+
+ROOT="$(resolve_script "${BASH_SOURCE[0]}")"
+
+# Java version check
+if ! command -v java >/dev/null 2>&1; then
+  echo "Error: Java 21 or newer is required, but java was not found on PATH." >&2
+  exit 2
+fi
+
+JAVA_VERSION="$(java -version 2>&1 | awk -F '"' '/version/ {print $2; exit}')"
+JAVA_MAJOR="${JAVA_VERSION%%.*}"
+if [[ "$JAVA_MAJOR" == "1" ]]; then
+  JAVA_MAJOR="$(echo "$JAVA_VERSION" | cut -d. -f2)"
+fi
+if ! [[ "$JAVA_MAJOR" =~ ^[0-9]+$ ]] || [ "$JAVA_MAJOR" -lt 21 ]; then
+  echo "Error: Java 21 or newer is required; found version $JAVA_VERSION." >&2
+  exit 2
+fi
+
+# JAR lookup: prefer the local development build, then the installed project copy.
+AORCHA_JAR=""
+if [ -f "$ROOT/target/aorcha.jar" ]; then
+  AORCHA_JAR="$ROOT/target/aorcha.jar"
+elif [ -f "$ROOT/.aorcha/aorcha.jar" ]; then
+  AORCHA_JAR="$ROOT/.aorcha/aorcha.jar"
+else
+  echo "Error: aorcha not installed" >&2
+  exit 2
+fi
+
+exec java --enable-native-access=ALL-UNNAMED -jar "$AORCHA_JAR" "$@"

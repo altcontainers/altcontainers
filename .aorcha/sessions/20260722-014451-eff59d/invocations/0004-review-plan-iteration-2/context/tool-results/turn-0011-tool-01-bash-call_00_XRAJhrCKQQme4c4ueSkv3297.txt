@@ -1,0 +1,4 @@
+  public RC_T awaitCompletion() throws java.lang.InterruptedException;
+  public boolean awaitCompletion(long, java.util.concurrent.TimeUnit) throws java.lang.InterruptedException;
+  public RC_T awaitStarted() throws java.lang.InterruptedException;
+  public boolean awaitStarted(long, java.util.concurrent.TimeUnit) throws java.lang.InterruptedException;

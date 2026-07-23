@@ -1,0 +1,7 @@
+140-     *
+141-     * @param image the image name
+142-     */
+143:    void triggerPullImage(String image) {
+144-        pullImage(image);
+145-    }
+146-

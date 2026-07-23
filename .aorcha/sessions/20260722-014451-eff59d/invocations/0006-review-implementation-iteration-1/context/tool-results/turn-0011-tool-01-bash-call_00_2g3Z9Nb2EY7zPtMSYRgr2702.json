@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T06:30:22.992555766Z",
+  "turnSequence": 11,
+  "toolIndex": 0,
+  "callId": "call_00_2g3Z9Nb2EY7zPtMSYRgr2702",
+  "toolName": "bash",
+  "arguments": {
+    "command": "ls -la /home/dhoard/Development/github/altcontainers/altcontainers/.aorcha/sessions/20260722-014451-eff59d/artifacts/review-implementation.md"
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0011-tool-01-bash-call_00_2g3Z9Nb2EY7zPtMSYRgr2702.txt",
+  "sha256": "4d684f02e019392858ac26e2ef60fcab636753e783576d332a16ed2eba14402c",
+  "bytes": 179
+}

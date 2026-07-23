@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T06:44:45.155815830Z",
+  "turnSequence": 5,
+  "toolIndex": 0,
+  "callId": "call_00_6nOw76KRN3dFMVjhyxIx2408",
+  "toolName": "write",
+  "arguments": {
+    "path": "/home/dhoard/Development/github/altcontainers/altcontainers/.aorcha/sessions/20260722-014451-eff59d/invocations/0007-validate-iteration-1/result.json",
+    "content": "{\n  \"schemaVersion\": 1,\n  \"outcome\": \"SUCCESS\",\n  \"summary\": \"Validation PASSED. Build: SUCCESS (all 4 modules). Tests: 254/254 passed, 0 failures, 0 errors, 0 skipped across Core (198), Reaper (32), and Examples (24). Spotless: clean. PMD: clean. All 5 session artifacts present.\",\n  \"nextAction\": null,\n  \"artifacts\": [\n    \"artifacts/plan.md\",\n    \"artifacts/review-plan.md\",\n    \"artifacts/implementation-report.md\",\n    \"artifacts/review-implementation.md\",\n    \"artifacts/validation-report.md\"\n  ]\n}\n"
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0005-tool-01-write-call_00_6nOw76KRN3dFMVjhyxIx2408.txt",
+  "sha256": "eac1e11c61dfebad65b4301d3aef0305a4ec9cce712d0318995686aa97e0f18f",
+  "bytes": 181
+}

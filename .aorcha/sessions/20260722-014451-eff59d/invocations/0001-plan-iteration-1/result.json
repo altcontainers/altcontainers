@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "outcome": "SUCCESS",
+  "summary": "Created implementation plan for adding a configurable image pull timeout (altcontainers.image.pull.timeout.ms, default 60000ms) to ContainerManager.pullImage(). Plan covers 7 files: AltcontainersProperties.java (new key + accessor), altcontainers.properties (classpath default), ContainerManager.java (timed awaitCompletion + timed get()), AltcontainersPropertiesTest.java (4 new tests), ContainerManagerPullTest.java (1 new test), and configuration.md docs (website + versioned).",
+  "nextAction": null,
+  "artifacts": ["artifacts/plan.md"]
+}

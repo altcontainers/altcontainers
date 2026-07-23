@@ -1,0 +1,32 @@
+        assertThat(p.containerStartupRetryBackoffMax()).isEqualTo(Duration.ofMillis(5000));
+        assertThat(p.portProbeTimeout()).isEqualTo(Duration.ofMillis(500));
+        assertThat(p.httpProbeTimeout()).isEqualTo(Duration.ofMillis(2000));
+        assertThat(p.containerPutArchivePipeBufferBytes()).isEqualTo(65536);
+    }
+
+    @Test
+    void shouldLetClasspathProvideValues() {
+        Properties classpath = props(
+                AltcontainersProperties.REAPER_CONNECTION_TIMEOUT_MS, "7000",
+                AltcontainersProperties.PORT_PROBE_TIMEOUT_MS, "333");
+        AltcontainersProperties p = AltcontainersProperties.forTesting(classpath, new Properties(), Map.of());
+        assertThat(p.reaperConnectionTimeout()).isEqualTo(Duration.ofMillis(7000));
+        assertThat(p.portProbeTimeout()).isEqualTo(Duration.ofMillis(333));
+    }
+
+    @Test
+    void shouldLetUserHomeOverrideClasspath() {
+        Properties classpath = props(AltcontainersProperties.REAPER_CONNECTION_TIMEOUT_MS, "10000");
+        Properties userHome = props(AltcontainersProperties.REAPER_CONNECTION_TIMEOUT_MS, "20000");
+        AltcontainersProperties p = AltcontainersProperties.forTesting(classpath, userHome, Map.of());
+        assertThat(p.reaperConnectionTimeout()).isEqualTo(Duration.ofMillis(20000));
+    }
+
+    @Test
+    void shouldLetEnvOverrideFiles() {
+        Properties classpath = props(AltcontainersProperties.REAPER_CONNECTION_TIMEOUT_MS, "10000");
+        Properties userHome = props(AltcontainersProperties.REAPER_CONNECTION_TIMEOUT_MS, "20000");
+        Map<String, String> env = Map.of("ALTCONTAINERS_REAPER_CONNECTION_TIMEOUT_MS", "30000");
+        AltcontainersProperties p = AltcontainersProperties.forTesting(classpath, userHome, env);
+
+[186 more lines in file. Use offset=90 to continue.]

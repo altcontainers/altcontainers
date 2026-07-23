@@ -1,0 +1,3 @@
+75:    static final String REAPER_STOP_TIMEOUT_MS = "altcontainers.reaper.stop.timeout.ms";
+117:            new KeyDef(REAPER_STOP_TIMEOUT_MS, "30000", Kind.DURATION_MS),
+210:        return (Duration) resolved.get(REAPER_STOP_TIMEOUT_MS);

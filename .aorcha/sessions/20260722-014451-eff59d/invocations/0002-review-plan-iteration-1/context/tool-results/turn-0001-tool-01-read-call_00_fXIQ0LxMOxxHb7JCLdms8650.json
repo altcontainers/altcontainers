@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T05:48:34.354542169Z",
+  "turnSequence": 1,
+  "toolIndex": 0,
+  "callId": "call_00_fXIQ0LxMOxxHb7JCLdms8650",
+  "toolName": "read",
+  "arguments": {
+    "path": "/home/dhoard/Development/github/altcontainers/altcontainers/.aorcha/sessions/20260722-014451-eff59d/artifacts/plan.md"
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0001-tool-01-read-call_00_fXIQ0LxMOxxHb7JCLdms8650.txt",
+  "sha256": "410b04ffc73a00910700f04444d2a448f33b2c2c6e1285e2b049452a2a4b007e",
+  "bytes": 15933
+}

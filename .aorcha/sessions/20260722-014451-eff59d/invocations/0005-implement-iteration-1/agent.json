@@ -1,0 +1,40 @@
+{
+  "provider": "xiaomi",
+  "model": "mimo-v2.5-pro",
+  "tools": [
+    "read",
+    "bash",
+    "edit",
+    "write",
+    "grep",
+    "rg",
+    "find",
+    "ls"
+  ],
+  "workingDirectory": "/home/dhoard/Development/github/altcontainers/altcontainers",
+  "contextManagement": {
+    "contextWindowTokens": 1000000,
+    "maxInputTokens": 800000,
+    "reservedCompletionTokens": 131072,
+    "compactionTriggerTokens": 720000,
+    "postCompactionTargetTokens": 600000,
+    "retainRecentTurns": 20,
+    "maxSummaryTokens": 6000,
+    "maxInlineToolResultBytes": 16384,
+    "maxSessionKnowledgeBytes": 65536,
+    "maxRepeatedEquivalentCalls": 6,
+    "maxNoProgressTurns": 16,
+    "enableConversationCompaction": true,
+    "enableToolResultCompaction": true,
+    "enableSessionKnowledge": true,
+    "enableInspectionCache": true,
+    "maxKnowledgeFiles": 256,
+    "maxKnowledgeValidations": 128,
+    "maxKnowledgeUnresolved": 64,
+    "maxKnowledgeCheckpoints": 64,
+    "tokenEstimator": "calibrated",
+    "maxScannedFiles": 50000
+  },
+  "agentTimeoutSeconds": 1800,
+  "toolTimeoutSeconds": 900
+}

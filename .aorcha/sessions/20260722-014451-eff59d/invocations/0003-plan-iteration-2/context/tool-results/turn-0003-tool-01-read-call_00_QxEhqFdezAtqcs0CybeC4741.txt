@@ -1,0 +1,59 @@
+            throw new ContainerException("Failed to load classpath resource " + name, e);
+        }
+        return props;
+    }
+
+    private static Properties loadUserHomeFile(String fileName) {
+        Properties props = new Properties();
+        File file = new File(System.getProperty("user.home"), fileName);
+        if (!file.isFile()) {
+            return props;
+        }
+        try (InputStream in = Files.newInputStream(file.toPath())) {
+            props.load(in);
+        } catch (IOException e) {
+            throw new ContainerException("Failed to load " + file, e);
+        }
+        return props;
+    }
+
+    private static AltcontainersProperties create() {
+        Properties classpath = loadClasspathResource(CLASSPATH_RESOURCE);
+        Properties userHome = loadUserHomeFile(USER_HOME_FILE_NAME);
+        return new AltcontainersProperties(classpath, userHome, System.getenv());
+    }
+
+    private static final class Holder {
+        static AltcontainersProperties INSTANCE = create();
+
+        private Holder() {
+            // Intentionally empty
+        }
+    }
+
+    private enum Kind {
+        DURATION_MS,
+        BOOLEAN,
+        BYTES,
+        NONNEG_INT,
+        STRING
+    }
+
+    private static final class KeyDef {
+        private final String key;
+        private final String defaultValue;
+        private final Kind kind;
+        private final String legacyKey;
+
+        KeyDef(String key, String defaultValue, Kind kind) {
+            this(key, defaultValue, kind, null);
+        }
+
+        KeyDef(String key, String defaultValue, Kind kind, String legacyKey) {
+            this.key = key;
+            this.defaultValue = defaultValue;
+            this.kind = kind;
+            this.legacyKey = legacyKey;
+        }
+    }
+}

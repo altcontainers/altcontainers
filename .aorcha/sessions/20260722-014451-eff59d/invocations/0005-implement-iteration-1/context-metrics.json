@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-07-22T05:54:25.082253805Z",
+  "updatedAt": "2026-07-22T06:08:47.926691470Z",
+  "primaryRequests": [
+    {
+      "serializedBytes": 101603,
+      "estimatedInputTokens": 38888,
+      "promptTokens": 24354,
+      "completionTokens": 326,
+      "totalTokens": 24680,
+      "providerUsagePresent": true
+    },
+    {
+      "serializedBytes": 176476,
+      "estimatedInputTokens": 67580,
+      "promptTokens": 39582,
+      "completionTokens": 123,
+      "totalTokens": 39705,
+      "providerUsagePresent": true
+    },
+    {
+      "serializedBytes": 207597,
+      "estimatedInputTokens": 79509,
+      "promptTokens": 46504,
+      "completionTokens": 1471,
+      "totalTokens": 47975,
+      "providerUsagePresent": true
+    },
+    {
+      "serializedBytes": 216710,
+      "estimatedInputTokens": 83003,
+      "promptTokens": 48402,
+      "completionTokens": 1299,
+      "totalTokens": 49701,
+      "providerUsagePresent": true
+    },
+    {
+      "serializedBytes": 223880,
+      "estimatedInputTokens": 85751,
+      "promptTokens": 50006,
+      "completionTokens": 948,
+      "totalTokens": 50954,
+      "providerUsagePresent": true
+    },
+    {
+      "serializedBytes": 228721,
+      "estimatedInputTokens": 87607,
+      "promptTokens": 51250,
+      "completionTokens": 100,
+      "totalTokens": 51350,
+      "providerUsagePresent": true
+    },
+    {
+      "serializedBytes": 230222,
+      "estimatedInputTokens": 88182,
+      "promptTokens": 51680,
+      "completionTokens": 95,
+      "totalTokens": 51775,
+      "providerUsagePresent": true
+    },
+    {
+      "serializedBytes": 231592,
+      "estimatedInputTokens": 88707,
+      "promptTokens": 52103,
+      "completionTokens": 139,
+      "totalTokens": 52242,
+      "providerUsagePresent": true
+    },
+    {
+      "serializedBytes": 233375,
+      "estimatedInputTokens": 89390,
+      "promptTokens": 52573,
+      "completionTokens": 119,
+      "totalTokens": 52692,
+      "providerUsagePresent": true
+    },
+    {
+      "serializedBytes": 235582,
+      "estimatedInputTokens": 90236,
+      "promptTokens": 53151,
+      "completionTokens": 142,
+      "totalTokens": 53293,
+      "providerUsagePresent": true
+    },
+    {
+      "serializedBytes": 240861,
+      "estimatedInputTokens": 92235,
+      "promptTokens": 54664,
+      "completionTokens": 72,
+      "totalTokens": 54736,
+      "providerUsagePresent": true
+    },
+    {
+      "serializedBytes": 242129,
+      "estimatedInputTokens": 92721,
+      "promptTokens": 54961,
+      "completionTokens": 759,
+      "totalTokens": 55720,
+      "providerUsagePresent": true
+    },
+    {
+      "serializedBytes": 246186,
+      "estimatedInputTokens": 94276,
+      "promptTokens": 55965,
+      "completionTokens": 226,
+      "totalTokens": 56191,
+      "providerUsagePresent": true
+    },
+    {
+      "serializedBytes": 247953,
+      "estimatedInputTokens": 94954,
+      "promptTokens": 56486,
+      "completionTokens": 175,
+      "totalTokens": 56661,
+      "providerUsagePresent": true
+    }
+  ],
+  "condenserRequests": [],
+  "compactions": [],
+  "archivedToolBytes": 148466,
+  "inlineToolBytes": 112689,
+  "omittedToolBytes": 41675,
+  "inspectionCacheHits": 0,
+  "inspectionCacheMisses": 23,
+  "repeatedEquivalentCalls": 0,
+  "noProgressCounter": 0,
+  "terminationReason": null,
+  "repoMapBytesRendered": 49117,
+  "sessionKnowledgeBytesRendered": 7767
+}

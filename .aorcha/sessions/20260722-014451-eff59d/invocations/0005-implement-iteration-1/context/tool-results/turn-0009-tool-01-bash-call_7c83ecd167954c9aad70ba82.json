@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "archivedAt": "2026-07-22T06:01:14.482160297Z",
+  "turnSequence": 9,
+  "toolIndex": 0,
+  "callId": "call_7c83ecd167954c9aad70ba82",
+  "toolName": "bash",
+  "arguments": {
+    "command": "cd /home/dhoard/Development/github/altcontainers/altcontainers && ./mvnw test -pl core -Dtest=\"AltcontainersPropertiesTest\" 2>&1 | tail -20",
+    "timeout": 120
+  },
+  "status": "SUCCESS",
+  "resultReference": "context/tool-results/turn-0009-tool-01-bash-call_7c83ecd167954c9aad70ba82.txt",
+  "sha256": "0bf8cdf164ecff566b91471ede597f95ffd77c8006cf89388b3b7d074ee76c19",
+  "bytes": 961
+}
