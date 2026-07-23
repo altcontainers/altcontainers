@@ -27,6 +27,7 @@
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
         </dependency>
+        <!-- slf4j-api is intentionally NOT shaded: applications provide their own SLF4J binding -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
@@ -52,6 +53,170 @@
             </resource>
         </resources>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.6.2</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals><goal>shade</goal></goals>
+                        <configuration>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <excludes>
+                                <exclude>org.slf4j:slf4j-api</exclude>
+                            </excludes>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                        <exclude>META-INF/MANIFEST.MF</exclude>
+                                        <exclude>module-info.class</exclude>
+                                        <exclude>META-INF/versions/*/module-info.class</exclude>
+                                        <exclude>META-INF/versions/*/OSGI-INF/MANIFEST.MF</exclude>
+                                    </excludes>
+                                </filter>
+                                <!-- Strip NOTICE files from dependencies to avoid overlap warnings -->
+                                <filter>
+                                    <artifact>com.github.docker-java:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/NOTICE</exclude>
+                                    </excludes>
+                                </filter>
+                                <filter>
+                                    <artifact>com.fasterxml.jackson.*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/NOTICE</exclude>
+                                    </excludes>
+                                </filter>
+                                <filter>
+                                    <artifact>org.apache.commons:commons-*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/NOTICE*</exclude>
+                                    </excludes>
+                                </filter>
+                                <filter>
+                                    <artifact>commons-io:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/NOTICE*</exclude>
+                                    </excludes>
+                                </filter>
+                                <filter>
+                                    <artifact>commons-codec:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/NOTICE*</exclude>
+                                    </excludes>
+                                </filter>
+                                <!-- Filter out multi-release entries for Java versions below our baseline (17) -->
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/versions/9/**</exclude>
+                                        <exclude>META-INF/versions/11/**</exclude>
+                                        <exclude>META-INF/versions/15/**</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                            <relocations>
+                                <!-- docker-java ecosystem -->
+                                <relocation>
+                                    <pattern>com.github.dockerjava</pattern>
+                                    <shadedPattern>nonapi.shaded.com.github.dockerjava</shadedPattern>
+                                </relocation>
+                                <!-- Jackson (used by docker-java-api for JSON serialization) -->
+                                <relocation>
+                                    <pattern>com.fasterxml.jackson</pattern>
+                                    <shadedPattern>nonapi.shaded.com.fasterxml.jackson</shadedPattern>
+                                </relocation>
+                                <!-- Apache Commons -->
+                                <relocation>
+                                    <pattern>org.apache.commons</pattern>
+                                    <shadedPattern>nonapi.shaded.org.apache.commons</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>commons.io</pattern>
+                                    <shadedPattern>nonapi.shaded.commons.io</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>org.apache.commons.io</pattern>
+                                    <shadedPattern>nonapi.shaded.org.apache.commons.io</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>org.apache.commons.codec</pattern>
+                                    <shadedPattern>nonapi.shaded.org.apache.commons.codec</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>org.apache.commons.compress</pattern>
+                                    <shadedPattern>nonapi.shaded.org.apache.commons.compress</shadedPattern>
+                                </relocation>
+                                <!-- Guava -->
+                                <relocation>
+                                    <pattern>com.google.common</pattern>
+                                    <shadedPattern>nonapi.shaded.com.google.common</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>com.google.guava</pattern>
+                                    <shadedPattern>nonapi.shaded.com.google.guava</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>com.google.errorprone</pattern>
+                                    <shadedPattern>nonapi.shaded.com.google.errorprone</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>com.google.j2objc</pattern>
+                                    <shadedPattern>nonapi.shaded.com.google.j2objc</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>com.google.thirdparty</pattern>
+                                    <shadedPattern>nonapi.shaded.com.google.thirdparty</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>org.jspecify</pattern>
+                                    <shadedPattern>nonapi.shaded.org.jspecify</shadedPattern>
+                                </relocation>
+                                <!-- Bouncy Castle -->
+                                <relocation>
+                                    <pattern>org.bouncycastle</pattern>
+                                    <shadedPattern>nonapi.shaded.org.bouncycastle</shadedPattern>
+                                </relocation>
+                                <!-- Bouncy Castle multi-release entries (17+ only; 9/11/15 filtered out) -->
+                                <relocation>
+                                    <pattern>META-INF/versions/17/org.bouncycastle</pattern>
+                                    <shadedPattern>META-INF/versions/17/nonapi.shaded.org.bouncycastle</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>META-INF/versions/21/org.bouncycastle</pattern>
+                                    <shadedPattern>META-INF/versions/21/nonapi.shaded.org.bouncycastle</shadedPattern>
+                                </relocation>
+                                <!-- Jackson multi-release entries (17+ only; 9/11/15 filtered out) -->
+                                <relocation>
+                                    <pattern>META-INF/versions/17/com.fasterxml.jackson</pattern>
+                                    <shadedPattern>META-INF/versions/17/nonapi.shaded.com.fasterxml.jackson</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>META-INF/versions/21/com.fasterxml.jackson</pattern>
+                                    <shadedPattern>META-INF/versions/21/nonapi.shaded.com.fasterxml.jackson</shadedPattern>
+                                </relocation>
+                                <!-- JNA (used by zerodep transport for UNIX sockets) -->
+                                <relocation>
+                                    <pattern>com.sun.jna</pattern>
+                                    <shadedPattern>nonapi.shaded.com.sun.jna</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>net.java.dev.jna</pattern>
+                                    <shadedPattern>nonapi.shaded.net.java.dev.jna</shadedPattern>
+                                </relocation>
+                            </relocations>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                            </transformers>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-dependency-plugin</artifactId>

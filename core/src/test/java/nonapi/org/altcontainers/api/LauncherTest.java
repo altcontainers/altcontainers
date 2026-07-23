@@ -36,6 +36,7 @@ import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.condition.EnabledIf;
 
 /**
@@ -85,6 +86,7 @@ class LauncherTest {
     }
 
     @Test
+    @Timeout(30)
     @EnabledIf("reaperJarAvailable")
     void launchShouldStartReaperProcessWithNoPreExistingJar() throws Exception {
         String sessionId = UUID.randomUUID().toString();
@@ -103,6 +105,7 @@ class LauncherTest {
     }
 
     @Test
+    @Timeout(30)
     @EnabledIf("reaperJarAvailable")
     void launchShouldStartReaperProcessWhenIdenticalJarAlreadyExists() throws Exception {
         String sessionId = UUID.randomUUID().toString();

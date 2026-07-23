@@ -1,4 +1,4 @@
-Altcontainers Core
+Altcontainers Reaper
 Copyright (c) 2026-present Douglas Hoard
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -10,9 +10,9 @@ nonapi.shaded.* as noted below.
 
 Third-Party Notices
 
-Embedded / Shaded Dependencies (in the core uber-JAR)
+Embedded / Shaded Dependencies (in the reaper uber-JAR)
 
-The core artifact is a shaded uber-JAR that embeds and relocates the following
+The reaper artifact is a shaded uber-JAR that embeds and relocates the following
 components. Their original packages are not present in the published artifact.
 
 - docker-java
@@ -75,12 +75,17 @@ components. Their original packages are not present in the published artifact.
   - License: Apache License 2.0 (dual-licensed under LGPL 2.1; the Apache
     2.0 license is used here)
 
-This JAR also embeds:
+- Logback
+  - Coordinates: ch.qos.logback:logback-classic,
+    ch.qos.logback:logback-core
+  - Website: https://logback.qos.ch/
+  - License: Eclipse Public License 1.0 (EPL-1.0) / GNU Lesser General
+    Public License 2.1 (LGPL-2.1)
 
-  reaper.jar — a shaded uber JAR produced by the Altcontainers Reaper
-  module. The reaper module bundles and relocates its own third-party
-  dependencies. See the reaper artifact's NOTICE for its third-party
-  attribution.
+- SLF4J
+  - Coordinates: org.slf4j:slf4j-api
+  - Website: https://www.slf4j.org/
+  - License: MIT
 
 Note: Transitive dependencies pulled in by the above components may carry
 additional license obligations. When redistributing binaries, you must ensure
