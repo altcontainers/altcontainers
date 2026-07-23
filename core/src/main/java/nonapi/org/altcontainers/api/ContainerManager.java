@@ -762,7 +762,7 @@ public final class ContainerManager {
      * <p>Frames are buffered and complete lines (terminated by {@code \n})
      * are dispatched to the downstream consumer. Partial lines are retained
      * across frames. Call {@link LineSplittingConsumer#flush()} on stream
-     * completion to emit any remaining partial line.
+     * completion or error to emit any remaining partial line.
      *
      * <p>Line splitting applies only to the raw log consumer path used by
      * {@link LogWaitStrategy}. {@link OutputFrame} consumers continue to
@@ -787,7 +787,8 @@ public final class ContainerManager {
      * newline.
      *
      * <p>Thread confinement: instances are only called from the single-threaded
-     * {@code onNext}/{@code onComplete} callbacks in a log-stream subscription.
+     * {@code onNext}/{@code onComplete}/{@code onError} callbacks in a log-stream
+     * subscription.
      */
     static final class LineSplittingConsumer implements Consumer<String> {
         private final Consumer<String> downstream;
@@ -805,18 +806,22 @@ public final class ContainerManager {
             int prevLength = buffer.length();
             buffer.append(text);
             int start = 0;
+            java.util.List<String> lines = new java.util.ArrayList<>();
             for (int i = prevLength; i < buffer.length(); i++) {
                 if (buffer.charAt(i) == '\n') {
-                    downstream.accept(buffer.substring(start, i + 1));
+                    lines.add(buffer.substring(start, i + 1));
                     start = i + 1;
                 }
             }
             buffer.delete(0, start);
+            for (String line : lines) {
+                downstream.accept(line);
+            }
         }
 
         /**
          * Flushes any remaining buffered text as a final line.
-         * Called when the log stream completes.
+         * Called when the log stream completes or errors.
          */
         void flush() {
             if (!buffer.isEmpty()) {
