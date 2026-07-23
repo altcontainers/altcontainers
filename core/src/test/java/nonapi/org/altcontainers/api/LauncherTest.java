@@ -44,6 +44,9 @@ import org.junit.jupiter.api.condition.EnabledIf;
  */
 class LauncherTest {
 
+    private static final int SOCKET_CONNECT_TIMEOUT_MS = 2_000;
+    private static final int SOCKET_READ_TIMEOUT_MS = 2_000;
+
     static boolean reaperJarAvailable() {
         return LauncherTest.class.getClassLoader().getResource("reaper.jar") != null;
     }
@@ -129,8 +132,8 @@ class LauncherTest {
 
     private static void completeHandshake(int port, String sessionId) throws IOException {
         try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress("localhost", port), 2_000);
-            socket.setSoTimeout(2_000);
+            socket.connect(new InetSocketAddress("localhost", port), SOCKET_CONNECT_TIMEOUT_MS);
+            socket.setSoTimeout(SOCKET_READ_TIMEOUT_MS);
             try (BufferedWriter writer = new BufferedWriter(
                             new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8));
                     BufferedReader reader = new BufferedReader(
@@ -161,7 +164,7 @@ class LauncherTest {
         try {
             ReaperDiscovery.readPort(sessionId).ifPresent(port -> {
                 try (Socket socket = new Socket()) {
-                    socket.connect(new InetSocketAddress("localhost", port), 1_000);
+                    socket.connect(new InetSocketAddress("localhost", port), SOCKET_CONNECT_TIMEOUT_MS);
                     try (BufferedWriter writer = new BufferedWriter(
                             new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8))) {
                         writer.write(sessionId + "\n");
