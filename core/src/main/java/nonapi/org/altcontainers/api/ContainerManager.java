@@ -368,7 +368,9 @@ public final class ContainerManager {
                 }
                 destroyAttempt(container, containerId);
             } catch (RuntimeException e) {
-                lastFailure = new ContainerException("Container startup failed: " + e.getMessage(), e);
+                String message =
+                        e.getMessage() != null ? e.getMessage() : e.getClass().getName();
+                lastFailure = new ContainerException("Container startup failed: " + message, e);
                 if (container != null) {
                     try {
                         fireOnStartFailure(
