@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -35,6 +36,7 @@ import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.condition.EnabledIf;
 
 /**
@@ -80,6 +82,7 @@ class LauncherTest {
     }
 
     @Test
+    @Timeout(30)
     @EnabledIf("reaperJarAvailable")
     void launchShouldStartReaperProcessWithNoPreExistingJar() throws Exception {
         String sessionId = UUID.randomUUID().toString();
@@ -98,6 +101,7 @@ class LauncherTest {
     }
 
     @Test
+    @Timeout(30)
     @EnabledIf("reaperJarAvailable")
     void launchShouldStartReaperProcessWhenIdenticalJarAlreadyExists() throws Exception {
         String sessionId = UUID.randomUUID().toString();
@@ -124,16 +128,19 @@ class LauncherTest {
     }
 
     private static void completeHandshake(int port, String sessionId) throws IOException {
-        try (Socket socket = new Socket("localhost", port);
-                BufferedWriter writer =
-                        new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8));
-                BufferedReader reader =
-                        new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8))) {
-            writer.write(sessionId + "\n");
-            writer.flush();
-            assertThat(reader.readLine()).isEqualTo("OK");
-            writer.write("TERMINATE\n");
-            writer.flush();
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress("localhost", port), 2_000);
+            socket.setSoTimeout(2_000);
+            try (BufferedWriter writer = new BufferedWriter(
+                            new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8));
+                    BufferedReader reader = new BufferedReader(
+                            new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8))) {
+                writer.write(sessionId + "\n");
+                writer.flush();
+                assertThat(reader.readLine()).isEqualTo("OK");
+                writer.write("TERMINATE\n");
+                writer.flush();
+            }
         }
     }
 
@@ -153,13 +160,15 @@ class LauncherTest {
         // Kill any lingering reaper processes for this session
         try {
             ReaperDiscovery.readPort(sessionId).ifPresent(port -> {
-                try (Socket socket = new Socket("localhost", port);
-                        BufferedWriter writer = new BufferedWriter(
-                                new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8))) {
-                    writer.write(sessionId + "\n");
-                    writer.flush();
-                    writer.write("TERMINATE\n");
-                    writer.flush();
+                try (Socket socket = new Socket()) {
+                    socket.connect(new InetSocketAddress("localhost", port), 1_000);
+                    try (BufferedWriter writer = new BufferedWriter(
+                            new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8))) {
+                        writer.write(sessionId + "\n");
+                        writer.flush();
+                        writer.write("TERMINATE\n");
+                        writer.flush();
+                    }
                 } catch (IOException ignored) {
                     // Best-effort cleanup
                 }
