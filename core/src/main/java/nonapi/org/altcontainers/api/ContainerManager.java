@@ -873,7 +873,7 @@ public final class ContainerManager {
                         try {
                             lineSplitter.accept(text);
                         } catch (RuntimeException e) {
-                            logger.warn("Log raw consumer failed: {}", e.getMessage());
+                            logger.warn("Log raw consumer failed", e);
                         }
                     }
                     if (!outputConsumers.isEmpty() && !handle.isClosed()) {
@@ -881,7 +881,7 @@ public final class ContainerManager {
                             try {
                                 consumer.accept(outputFrame);
                             } catch (RuntimeException e) {
-                                logger.error("Container output callback failed: {}", e.getMessage());
+                                logger.error("Container output callback failed", e);
                                 handle.setCallbackFailure(e);
                                 closeQuietly(this);
                                 complete.set(true);
@@ -901,7 +901,7 @@ public final class ContainerManager {
                     try {
                         lineSplitter.flush();
                     } catch (RuntimeException e) {
-                        logger.warn("Log raw consumer failed during error flush: {}", e.getMessage());
+                        logger.warn("Log raw consumer failed during error flush", e);
                     }
                 }
                 if (shouldSuppressLogError(handle, throwable)) {
@@ -927,7 +927,7 @@ public final class ContainerManager {
                     try {
                         lineSplitter.flush();
                     } catch (RuntimeException e) {
-                        logger.warn("Log raw consumer failed during flush: {}", e.getMessage());
+                        logger.warn("Log raw consumer failed during flush", e);
                     }
                 }
                 complete.set(true);
