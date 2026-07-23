@@ -74,7 +74,8 @@ public final class Launcher {
                     boolean unchanged = Files.exists(jarPath) && Files.mismatch(jarPath, tmp) == -1L;
                     if (!unchanged) {
                         try {
-                            Files.move(tmp, jarPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                            Files.move(
+                                    tmp, jarPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
                         } catch (AtomicMoveNotSupportedException e) {
                             logger.debug("Atomic move not supported, falling back to non-atomic move");
                             Files.move(tmp, jarPath, StandardCopyOption.REPLACE_EXISTING);
