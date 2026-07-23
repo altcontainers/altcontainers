@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -35,12 +36,18 @@ import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.condition.EnabledIf;
 
 /**
  * Tests for {@link Launcher} command construction and property forwarding.
  */
 class LauncherTest {
+
+    private static final int SOCKET_CONNECT_TIMEOUT_MS = 2_000;
+    private static final int SOCKET_READ_TIMEOUT_MS = 2_000;
+    private static final long CLEANUP_PORT_WAIT_MS = 30_000;
+
 
     static boolean reaperJarAvailable() {
         return LauncherTest.class.getClassLoader().getResource("reaper.jar") != null;
@@ -80,6 +87,7 @@ class LauncherTest {
     }
 
     @Test
+    @Timeout(30)
     @EnabledIf("reaperJarAvailable")
     void launchShouldStartReaperProcessWithNoPreExistingJar() throws Exception {
         String sessionId = UUID.randomUUID().toString();
@@ -98,6 +106,7 @@ class LauncherTest {
     }
 
     @Test
+    @Timeout(30)
     @EnabledIf("reaperJarAvailable")
     void launchShouldStartReaperProcessWhenIdenticalJarAlreadyExists() throws Exception {
         String sessionId = UUID.randomUUID().toString();
@@ -124,7 +133,7 @@ class LauncherTest {
     }
 
     private static void completeHandshake(int port, String sessionId) throws IOException {
-        try (Socket socket = new Socket("localhost", port);
+        try (Socket socket = connectToReaper(port);
                 BufferedWriter writer =
                         new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8));
                 BufferedReader reader =
@@ -152,8 +161,9 @@ class LauncherTest {
     private static void cleanupSession(String sessionId, Path jarPath) {
         // Kill any lingering reaper processes for this session
         try {
-            ReaperDiscovery.readPort(sessionId).ifPresent(port -> {
-                try (Socket socket = new Socket("localhost", port);
+            Integer port = waitForPort(sessionId, CLEANUP_PORT_WAIT_MS);
+            if (port != null) {
+                try (Socket socket = connectToReaper(port);
                         BufferedWriter writer = new BufferedWriter(
                                 new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8))) {
                     writer.write(sessionId + "\n");
@@ -163,7 +173,9 @@ class LauncherTest {
                 } catch (IOException ignored) {
                     // Best-effort cleanup
                 }
-            });
+            }
+        } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
         } catch (Exception ignored) {
             // Best-effort cleanup
         }
@@ -175,5 +187,12 @@ class LauncherTest {
             Files.deleteIfExists(ReaperDiscovery.portFilePath(sessionId));
         } catch (IOException ignored) {
         }
+    }
+
+    private static Socket connectToReaper(int port) throws IOException {
+        Socket socket = new Socket();
+        socket.connect(new InetSocketAddress("localhost", port), SOCKET_CONNECT_TIMEOUT_MS);
+        socket.setSoTimeout(SOCKET_READ_TIMEOUT_MS);
+        return socket;
     }
 }

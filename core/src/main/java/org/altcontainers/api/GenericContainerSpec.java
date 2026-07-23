@@ -53,8 +53,11 @@ public class GenericContainerSpec implements ContainerSpec {
     private final String networkMode;
     private final List<String> networkAliases;
     private final String workingDirectory;
-    private final Consumer<OutputFrame> outputListener;
-    private final Consumer<Container> prepare;
+    private final List<Consumer<OutputFrame>> onOutputConsumers;
+    private final List<Consumer<StartupContext>> onStartConsumers;
+    private final List<Consumer<StartupFailure>> onStartFailureConsumers;
+    private final List<Consumer<StartupContext>> onReadyConsumers;
+    private final List<Consumer<Container>> onCloseConsumers;
     private final StartupCheckStrategy startupCheckStrategy;
     private final Duration startupTimeout;
     private final int startupAttempts;
@@ -84,8 +87,11 @@ public class GenericContainerSpec implements ContainerSpec {
         this.networkMode = spec.networkMode;
         this.networkAliases = spec.networkAliases;
         this.workingDirectory = spec.workingDirectory;
-        this.outputListener = spec.outputListener;
-        this.prepare = spec.prepare;
+        this.onOutputConsumers = List.copyOf(spec.onOutputConsumers);
+        this.onStartConsumers = List.copyOf(spec.onStartConsumers);
+        this.onStartFailureConsumers = List.copyOf(spec.onStartFailureConsumers);
+        this.onReadyConsumers = List.copyOf(spec.onReadyConsumers);
+        this.onCloseConsumers = List.copyOf(spec.onCloseConsumers);
         this.startupCheckStrategy = spec.startupCheckStrategy;
         this.startupTimeout = spec.startupTimeout;
         this.startupAttempts = spec.startupAttempts;
@@ -114,8 +120,11 @@ public class GenericContainerSpec implements ContainerSpec {
         this.networkMode = builder.networkMode;
         this.networkAliases = List.copyOf(builder.networkAliases);
         this.workingDirectory = builder.workingDirectory;
-        this.outputListener = builder.outputListener;
-        this.prepare = builder.prepare;
+        this.onOutputConsumers = List.copyOf(builder.onOutputConsumers);
+        this.onStartConsumers = List.copyOf(builder.onStartConsumers);
+        this.onStartFailureConsumers = List.copyOf(builder.onStartFailureConsumers);
+        this.onReadyConsumers = List.copyOf(builder.onReadyConsumers);
+        this.onCloseConsumers = List.copyOf(builder.onCloseConsumers);
         this.startupCheckStrategy = builder.startupCheckStrategy;
         this.startupTimeout = builder.startupTimeout;
         this.startupAttempts = builder.startupAttempts;
@@ -202,23 +211,53 @@ public class GenericContainerSpec implements ContainerSpec {
     }
 
     /**
-     * Returns the output frame listener.
+     * Returns the output frame consumers.
      *
-     * @return the output listener, or {@code null}
+     * @return the output frame consumers (unmodifiable)
      */
     @Override
-    public Consumer<OutputFrame> outputListener() {
-        return outputListener;
+    public List<Consumer<OutputFrame>> onOutputConsumers() {
+        return onOutputConsumers;
     }
 
     /**
-     * Returns the pre-readiness prepare hook.
+     * Returns the on-start consumers.
      *
-     * @return the prepare hook, or {@code null}
+     * @return the on-start consumers (unmodifiable)
      */
     @Override
-    public Consumer<Container> prepare() {
-        return prepare;
+    public List<Consumer<StartupContext>> onStartConsumers() {
+        return onStartConsumers;
+    }
+
+    /**
+     * Returns the on-start-failure consumers.
+     *
+     * @return the on-start-failure consumers (unmodifiable)
+     */
+    @Override
+    public List<Consumer<StartupFailure>> onStartFailureConsumers() {
+        return onStartFailureConsumers;
+    }
+
+    /**
+     * Returns the on-ready consumers.
+     *
+     * @return the on-ready consumers (unmodifiable)
+     */
+    @Override
+    public List<Consumer<StartupContext>> onReadyConsumers() {
+        return onReadyConsumers;
+    }
+
+    /**
+     * Returns the on-close consumers.
+     *
+     * @return the on-close consumers (unmodifiable)
+     */
+    @Override
+    public List<Consumer<Container>> onCloseConsumers() {
+        return onCloseConsumers;
     }
 
     /**
@@ -392,8 +431,11 @@ public class GenericContainerSpec implements ContainerSpec {
 
         String networkMode;
         String workingDirectory;
-        Consumer<OutputFrame> outputListener;
-        Consumer<Container> prepare;
+        final List<Consumer<OutputFrame>> onOutputConsumers = new ArrayList<>();
+        final List<Consumer<StartupContext>> onStartConsumers = new ArrayList<>();
+        final List<Consumer<StartupFailure>> onStartFailureConsumers = new ArrayList<>();
+        final List<Consumer<StartupContext>> onReadyConsumers = new ArrayList<>();
+        final List<Consumer<Container>> onCloseConsumers = new ArrayList<>();
         StartupCheckStrategy startupCheckStrategy = StartupCheckStrategy.isRunning();
         Duration startupTimeout = AltcontainersProperties.instance().containerStartupTimeout();
         int startupAttempts = 1;
@@ -429,8 +471,11 @@ public class GenericContainerSpec implements ContainerSpec {
             this.networkMode = spec.networkMode;
             this.networkAliases.addAll(spec.networkAliases);
             this.workingDirectory = spec.workingDirectory;
-            this.outputListener = spec.outputListener();
-            this.prepare = spec.prepare();
+            this.onOutputConsumers.addAll(spec.onOutputConsumers());
+            this.onStartConsumers.addAll(spec.onStartConsumers());
+            this.onStartFailureConsumers.addAll(spec.onStartFailureConsumers());
+            this.onReadyConsumers.addAll(spec.onReadyConsumers());
+            this.onCloseConsumers.addAll(spec.onCloseConsumers());
             this.startupCheckStrategy = spec.startupCheckStrategy;
             this.startupTimeout = spec.startupTimeout;
             this.startupAttempts = spec.startupAttempts;
@@ -535,37 +580,75 @@ public class GenericContainerSpec implements ContainerSpec {
         }
 
         /**
-         * Sets the output frame listener that receives raw log output
-         * throughout the container's lifetime. Calling this method more
-         * than once replaces the previously set listener. Altcontainers
-         * does not strip, filter, decode, or line-buffer frames before
-         * invoking the listener.
+         * Appends a consumer that receives raw output frames. May be called multiple times; consumers fire
+         * in registration order. Altcontainers does not strip, filter, decode, or line-buffer frames before
+         * invoking output consumers.
          *
-         * @param listener the output listener; must not be {@code null}
+         * @param consumer the output consumer; must not be {@code null}
          * @return this builder
-         * @throws NullPointerException if {@code listener} is {@code null}
+         * @throws NullPointerException if {@code consumer} is {@code null}
          */
-        public Builder outputListener(Consumer<OutputFrame> listener) {
-            this.outputListener = Objects.requireNonNull(listener, "listener must not be null");
+        public Builder onOutput(Consumer<OutputFrame> consumer) {
+            this.onOutputConsumers.add(Objects.requireNonNull(consumer, "consumer must not be null"));
             return this;
         }
 
         /**
-         * Sets a pre-readiness hook invoked after the container starts
-         * and port mappings are available but before readiness checks
-         * begin. Calling this method more than once replaces the
-         * previously set hook.
+         * Appends a lifecycle consumer invoked after the container starts but
+         * before readiness checks begin. The {@link StartupContext#container()}
+         * handle has a valid {@code hostPort} at this point. May be called
+         * multiple times; consumers fire in registration order.
          *
-         * <p>Throwing from the hook cancels startup for the current
-         * attempt; the exception is wrapped in {@link ContainerException}
-         * and follows the usual retry/destroy-on-failure behavior.
-         *
-         * @param prepare the prepare hook; must not be {@code null}
+         * @param consumer the on-start consumer; must not be {@code null}
          * @return this builder
-         * @throws NullPointerException if {@code prepare} is {@code null}
+         * @throws NullPointerException if {@code consumer} is {@code null}
          */
-        public Builder prepare(Consumer<Container> prepare) {
-            this.prepare = Objects.requireNonNull(prepare, "prepare must not be null");
+        public Builder onStart(Consumer<StartupContext> consumer) {
+            this.onStartConsumers.add(Objects.requireNonNull(consumer, "consumer must not be null"));
+            return this;
+        }
+
+        /**
+         * Appends a lifecycle consumer invoked when a startup attempt fails after
+         * a container has been created (including start failures), before the
+         * doomed container is destroyed. Consumers are not invoked when container
+         * creation itself fails (no container exists to destroy). May be called
+         * multiple times; consumers fire in registration order.
+         *
+         * @param consumer the on-start-failure consumer; must not be {@code null}
+         * @return this builder
+         * @throws NullPointerException if {@code consumer} is {@code null}
+         */
+        public Builder onStartFailure(Consumer<StartupFailure> consumer) {
+            this.onStartFailureConsumers.add(Objects.requireNonNull(consumer, "consumer must not be null"));
+            return this;
+        }
+
+        /**
+         * Appends a lifecycle consumer invoked after readiness is confirmed,
+         * immediately before the container handle is returned. May be called
+         * multiple times; consumers fire in registration order.
+         *
+         * @param consumer the on-ready consumer; must not be {@code null}
+         * @return this builder
+         * @throws NullPointerException if {@code consumer} is {@code null}
+         */
+        public Builder onReady(Consumer<StartupContext> consumer) {
+            this.onReadyConsumers.add(Objects.requireNonNull(consumer, "consumer must not be null"));
+            return this;
+        }
+
+        /**
+         * Appends a lifecycle consumer invoked when a successfully created
+         * container is closed, before stop/remove. May be called multiple
+         * times; consumers fire in registration order.
+         *
+         * @param consumer the on-close consumer; must not be {@code null}
+         * @return this builder
+         * @throws NullPointerException if {@code consumer} is {@code null}
+         */
+        public Builder onClose(Consumer<Container> consumer) {
+            this.onCloseConsumers.add(Objects.requireNonNull(consumer, "consumer must not be null"));
             return this;
         }
 

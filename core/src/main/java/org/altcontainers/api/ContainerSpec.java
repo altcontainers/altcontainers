@@ -100,33 +100,76 @@ public interface ContainerSpec {
     String workingDirectory();
 
     /**
-     * Returns the output frame listener, or {@code null} if none is
-     * configured.
+     * Returns the ordered list of output frame consumers.
      *
-     * <p>Frames are raw, unfiltered, undecoded output chunks with
-     * stream type metadata. The framework does not strip, filter,
-     * decode, or line-buffer frames before invoking the listener.
+     * <p>Frames are raw, unfiltered, undecoded output chunks with stream type metadata. The framework
+     * does not strip, filter, decode, or line-buffer frames before invoking output consumers.
      *
-     * @return the output listener, or {@code null}
+     * @return the output frame consumers (unmodifiable, empty by default)
      */
-    default Consumer<OutputFrame> outputListener() {
-        return null;
-    }
+    List<Consumer<OutputFrame>> onOutputConsumers();
 
     /**
-     * Returns a pre-readiness hook invoked after the container starts
-     * and port mappings are available but before readiness checks
-     * begin. The container is running and {@link Container#hostPort(int)}
-     * is valid at this point.
+     * Returns the ordered list of lifecycle consumers invoked after the
+     * container starts but before readiness checks begin. The
+     * {@link StartupContext#container()} handle has a valid
+     * {@code hostPort} at this point.
      *
-     * <p>Throwing from the hook cancels startup for the current
+     * <p>Throwing from any consumer cancels startup for the current
      * attempt; the exception is wrapped in {@link ContainerException}
      * and follows the usual retry/destroy-on-failure behavior.
      *
-     * @return the prepare hook, or {@code null} if none is configured
+     * @return the on-start consumers (unmodifiable, empty by default)
      */
-    default Consumer<Container> prepare() {
-        return null;
+    default List<Consumer<StartupContext>> onStartConsumers() {
+        return List.of();
+    }
+
+    /**
+     * Returns the ordered list of lifecycle consumers invoked when a startup
+     * attempt fails after a container has been created (including start
+     * failures), before the doomed container is destroyed. Consumers are not
+     * invoked when container creation itself fails (no container exists to
+     * destroy).
+     *
+     * <p>Throwing from any consumer aborts startup; the exception is wrapped
+     * in {@link ContainerException} with the original startup failure
+     * attached as a suppressed exception.
+     *
+     * @return the on-start-failure consumers (unmodifiable, empty by default)
+     */
+    default List<Consumer<StartupFailure>> onStartFailureConsumers() {
+        return List.of();
+    }
+
+    /**
+     * Returns the ordered list of lifecycle consumers invoked after
+     * readiness is confirmed, immediately before the container handle is
+     * returned to the caller.
+     *
+     * <p>Throwing from any consumer cancels startup for the current
+     * attempt; the exception is wrapped in {@link ContainerException}
+     * and follows the usual retry/destroy-on-failure behavior.
+     *
+     * @return the on-ready consumers (unmodifiable, empty by default)
+     */
+    default List<Consumer<StartupContext>> onReadyConsumers() {
+        return List.of();
+    }
+
+    /**
+     * Returns the ordered list of lifecycle consumers invoked when a
+     * successfully created container is closed, before the container
+     * is stopped and removed.
+     *
+     * <p>Callback failures are logged and collected; Docker cleanup
+     * runs regardless. If any callback fails, {@code close()} throws
+     * after cleanup.
+     *
+     * @return the on-close consumers (unmodifiable, empty by default)
+     */
+    default List<Consumer<Container>> onCloseConsumers() {
+        return List.of();
     }
 
     /**

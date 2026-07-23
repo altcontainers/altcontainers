@@ -48,6 +48,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -60,6 +61,8 @@ import org.altcontainers.api.Container;
 import org.altcontainers.api.ContainerException;
 import org.altcontainers.api.ContainerSpec;
 import org.altcontainers.api.OutputFrame;
+import org.altcontainers.api.StartupContext;
+import org.altcontainers.api.StartupFailure;
 import org.altcontainers.api.WaitStrategy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -330,21 +333,53 @@ public final class ContainerManager {
                 LogHandle logHandle = attachLogs(containerId, spec, waitConditions);
 
                 spec.startupCheckStrategy().waitUntilStartupSuccessful(container, spec.startupTimeout());
-                Consumer<Container> prepare = spec.prepare();
-                if (prepare != null) {
-                    prepare.accept(container);
-                }
+                StartupContext ctx = new StartupContext(container, attempt, spec.startupAttempts());
+                fireOnStart(spec, ctx);
                 waitUntilReady(container, waitConditions, spec.startupTimeout());
-                if (spec.outputListener() == null) {
+                fireOnReady(spec, ctx);
+                if (logHandle != null && logHandle.hasCallbackFailure()) {
+                    RuntimeException callbackFailure = logHandle.callbackFailure();
+                    closeLogHandle(containerId);
+                    StartupFailure sf = new StartupFailure(container, attempt, spec.startupAttempts(), callbackFailure);
+                    try {
+                        fireOnStartFailure(spec, sf, null);
+                    } catch (ContainerException callbackEx) {
+                        destroyAttempt(container);
+                        throw callbackEx;
+                    }
+                    destroyAttempt(container);
+                    throw new ContainerException("Container log callback failed", callbackFailure);
+                }
+                if (spec.onOutputConsumers().isEmpty()) {
                     closeLogHandle(containerId);
                 }
 
                 return container;
             } catch (ContainerException e) {
                 lastFailure = e;
+                if (container != null) {
+                    try {
+                        fireOnStartFailure(spec, new StartupFailure(container, attempt, spec.startupAttempts(), e), e);
+                    } catch (ContainerException callbackEx) {
+                        // onStartFailure callback threw — destroy and abort immediately
+                        destroyAttempt(container);
+                        throw callbackEx;
+                    }
+                }
                 destroyAttempt(container, containerId);
             } catch (RuntimeException e) {
                 lastFailure = new ContainerException("Container startup failed: " + e.getMessage(), e);
+                if (container != null) {
+                    try {
+                        fireOnStartFailure(
+                                spec,
+                                new StartupFailure(container, attempt, spec.startupAttempts(), lastFailure),
+                                lastFailure);
+                    } catch (ContainerException callbackEx) {
+                        destroyAttempt(container);
+                        throw callbackEx;
+                    }
+                }
                 destroyAttempt(container, containerId);
             }
             if (attempt < spec.startupAttempts()) {
@@ -498,7 +533,8 @@ public final class ContainerManager {
     }
 
     /**
-     * Destroys a container. Null-safe.
+     * Destroys a container. Null-safe. Fires {@code onClose} lifecycle
+     * callbacks before stopping and removing the container.
      *
      * @param container the container to close; may be {@code null}
      */
@@ -506,8 +542,16 @@ public final class ContainerManager {
         if (container == null) {
             return;
         }
+        List<RuntimeException> closeFailures = fireOnClose(container.spec(), container);
         closeLogHandle(container.id());
         stopAndRemoveContainer(container.id());
+        if (!closeFailures.isEmpty()) {
+            ContainerException ex = new ContainerException("Container onClose callback failed", closeFailures.get(0));
+            for (int i = 1; i < closeFailures.size(); i++) {
+                ex.addSuppressed(closeFailures.get(i));
+            }
+            throw ex;
+        }
     }
 
     /**
@@ -690,20 +734,21 @@ public final class ContainerManager {
     }
 
     /**
-     * Attaches log streaming for the container.
+     * Attaches log streaming for the container, fanning out to the spec's output
+     * frame consumers and any log-observing managed wait strategies.
      *
      * @param containerId the Docker container id
      * @param spec the container spec
      * @param waitConditions the wait strategies
-     * @return the log handle, or {@code null} if no listener or wait log consumer
+     * @return the log handle, or {@code null} if no output consumers are registered
      */
     private LogHandle attachLogs(String containerId, ContainerSpec spec, List<WaitStrategy> waitConditions) {
-        Consumer<OutputFrame> listener = spec.outputListener();
+        List<Consumer<OutputFrame>> outputConsumers = spec.onOutputConsumers();
         Consumer<String> waitLogConsumer = waitLogConsumer(waitConditions);
-        if (listener == null && waitLogConsumer == null) {
+        if (outputConsumers.isEmpty() && waitLogConsumer == null) {
             return null;
         }
-        LogHandle handle = startLogStream(containerId, listener, waitLogConsumer);
+        LogHandle handle = startLogStream(containerId, outputConsumers, waitLogConsumer);
         logHandles.put(containerId, handle);
         return handle;
     }
@@ -714,7 +759,7 @@ public final class ContainerManager {
      * <p>Frames are buffered and complete lines (terminated by {@code \n})
      * are dispatched to the downstream consumer. Partial lines are retained
      * across frames. Call {@link LineSplittingConsumer#flush()} on stream
-     * completion to emit any remaining partial line.
+     * completion or error to emit any remaining partial line.
      *
      * <p>Line splitting applies only to the raw log consumer path used by
      * {@link LogWaitStrategy}. {@link OutputFrame} consumers continue to
@@ -739,7 +784,8 @@ public final class ContainerManager {
      * newline.
      *
      * <p>Thread confinement: instances are only called from the single-threaded
-     * {@code onNext}/{@code onComplete} callbacks in a log-stream subscription.
+     * {@code onNext}/{@code onComplete}/{@code onError} callbacks in a log-stream
+     * subscription.
      */
     static final class LineSplittingConsumer implements Consumer<String> {
         private final Consumer<String> downstream;
@@ -754,21 +800,25 @@ public final class ContainerManager {
             if (text == null || text.isEmpty()) {
                 return;
             }
+            int prevLength = buffer.length();
             buffer.append(text);
             int start = 0;
-            for (int i = 0; i < buffer.length(); i++) {
+            java.util.List<String> lines = new java.util.ArrayList<>();
+            for (int i = prevLength; i < buffer.length(); i++) {
                 if (buffer.charAt(i) == '\n') {
-                    String line = buffer.substring(start, i + 1);
-                    downstream.accept(line);
+                    lines.add(buffer.substring(start, i + 1));
                     start = i + 1;
                 }
             }
             buffer.delete(0, start);
+            for (String line : lines) {
+                downstream.accept(line);
+            }
         }
 
         /**
          * Flushes any remaining buffered text as a final line.
-         * Called when the log stream completes.
+         * Called when the log stream completes or errors.
          */
         void flush() {
             if (!buffer.isEmpty()) {
@@ -779,55 +829,81 @@ public final class ContainerManager {
     }
 
     /**
-     * Starts a log stream for the container.
+     * Starts a log stream for the container, dispatching to output frame
+     * consumers and raw log consumers.
+     *
+     * <p>Output frame consumers receive raw Docker frames matching
+     * testcontainers-java {@code OutputFrame} semantics — the framework
+     * does not strip, filter, decode, or line-buffer frames before
+     * invoking output consumers.
+     *
+     * <p>The raw log consumer path (used by {@link LogWaitStrategy})
+     * is wrapped with line-splitting to deliver complete lines.
      *
      * @param containerId the Docker container id
-     * @param listener the output frame listener, or {@code null}
+     * @param outputConsumers the output frame consumers (non-null, may be empty)
      * @param rawConsumer the raw log consumer, or {@code null}
      * @return a handle for the attached log stream
      */
-    private LogHandle startLogStream(String containerId, Consumer<OutputFrame> listener, Consumer<String> rawConsumer) {
+    private LogHandle startLogStream(
+            String containerId, List<Consumer<OutputFrame>> outputConsumers, Consumer<String> rawConsumer) {
         LogHandle handle = new LogHandle();
+        AtomicBoolean complete = new AtomicBoolean(false);
         LineSplittingConsumer lineSplitter = rawConsumer != null ? lineSplitting(rawConsumer) : null;
         ResultCallback.Adapter<Frame> callback = new ResultCallback.Adapter<>() {
             @Override
             public void onNext(Frame frame) {
-                byte[] payload = frame.getPayload();
-                if (payload == null) {
-                    return;
-                }
-                OutputFrame.Type outputType;
-                StreamType streamType = frame.getStreamType();
-                if (streamType == StreamType.STDOUT) {
-                    outputType = OutputFrame.Type.STDOUT;
-                } else if (streamType == StreamType.STDERR) {
-                    outputType = OutputFrame.Type.STDERR;
-                } else if (streamType == StreamType.RAW) {
-                    outputType = OutputFrame.Type.RAW;
-                } else {
-                    outputType = OutputFrame.Type.UNKNOWN;
-                }
-                OutputFrame outputFrame = new OutputFrame(outputType, payload);
+                try {
+                    byte[] payload = frame.getPayload();
+                    OutputFrame.Type outputType;
+                    StreamType streamType = frame.getStreamType();
+                    if (streamType == StreamType.STDOUT) {
+                        outputType = OutputFrame.Type.STDOUT;
+                    } else if (streamType == StreamType.STDERR) {
+                        outputType = OutputFrame.Type.STDERR;
+                    } else if (streamType == StreamType.RAW) {
+                        outputType = OutputFrame.Type.RAW;
+                    } else {
+                        outputType = OutputFrame.Type.UNKNOWN;
+                    }
+                    OutputFrame outputFrame = new OutputFrame(outputType, payload != null ? payload : new byte[0]);
 
-                String text = new String(payload, StandardCharsets.UTF_8);
-                if (lineSplitter != null) {
-                    try {
-                        lineSplitter.accept(text);
-                    } catch (RuntimeException e) {
-                        logger.warn("Log raw consumer failed: {}", e.getMessage());
+                    String text = new String(payload != null ? payload : new byte[0], StandardCharsets.UTF_8);
+                    if (lineSplitter != null) {
+                        try {
+                            lineSplitter.accept(text);
+                        } catch (RuntimeException e) {
+                            logger.warn("Log raw consumer failed: {}", e.getMessage());
+                        }
                     }
-                }
-                if (listener != null && !handle.isClosed()) {
-                    try {
-                        listener.accept(outputFrame);
-                    } catch (RuntimeException e) {
-                        logger.warn("Container output listener failed: {}", e.getMessage());
+                    if (!outputConsumers.isEmpty() && !handle.isClosed()) {
+                        for (Consumer<OutputFrame> consumer : outputConsumers) {
+                            try {
+                                consumer.accept(outputFrame);
+                            } catch (RuntimeException e) {
+                                logger.error("Container output callback failed: {}", e.getMessage());
+                                handle.setCallbackFailure(e);
+                                closeQuietly(this);
+                                complete.set(true);
+                                return;
+                            }
+                        }
                     }
+                } catch (RuntimeException e) {
+                    closeQuietly(this);
+                    complete.set(true);
                 }
             }
 
             @Override
             public void onError(Throwable throwable) {
+                if (lineSplitter != null) {
+                    try {
+                        lineSplitter.flush();
+                    } catch (RuntimeException e) {
+                        logger.warn("Log raw consumer failed during error flush: {}", e.getMessage());
+                    }
+                }
                 if (shouldSuppressLogError(handle, throwable)) {
                     logger.debug(
                             "Log stream closed during shutdown for container {}: {}",
@@ -848,8 +924,13 @@ public final class ContainerManager {
             @Override
             public void onComplete() {
                 if (lineSplitter != null) {
-                    lineSplitter.flush();
+                    try {
+                        lineSplitter.flush();
+                    } catch (RuntimeException e) {
+                        logger.warn("Log raw consumer failed during flush: {}", e.getMessage());
+                    }
                 }
+                complete.set(true);
             }
         };
         try {
@@ -1193,6 +1274,7 @@ public final class ContainerManager {
     static final class LogHandle {
         private volatile ResultCallback<Frame> callback;
         private volatile boolean closed;
+        private volatile RuntimeException callbackFailure;
 
         /**
          * Returns whether this handle has been closed.
@@ -1212,5 +1294,128 @@ public final class ContainerManager {
                 closeQuietly(callback);
             }
         }
+
+        /**
+         * Records a callback failure.
+         *
+         * @param failure the callback failure
+         */
+        void setCallbackFailure(RuntimeException failure) {
+            this.callbackFailure = failure;
+        }
+
+        /**
+         * Returns the recorded callback failure.
+         *
+         * @return the callback failure, or {@code null}
+         */
+        RuntimeException callbackFailure() {
+            return callbackFailure;
+        }
+
+        /**
+         * Returns whether a callback failure has been recorded.
+         *
+         * @return {@code true} if a callback failure has been recorded
+         */
+        boolean hasCallbackFailure() {
+            return callbackFailure != null;
+        }
+    }
+
+    /**
+     * Fires all {@code onStart} callbacks in registration order.
+     * First callback failure is fatal.
+     *
+     * @param spec the container spec
+     * @param ctx the startup context
+     * @throws ContainerException if any callback fails
+     */
+    private static void fireOnStart(ContainerSpec spec, StartupContext ctx) {
+        for (Consumer<StartupContext> consumer : spec.onStartConsumers()) {
+            try {
+                consumer.accept(ctx);
+            } catch (RuntimeException e) {
+                logger.error("Container onStart callback failed: {}", e.getMessage());
+                throw toContainerException("Container onStart callback failed", e);
+            }
+        }
+    }
+
+    /**
+     * Fires all {@code onStartFailure} callbacks in registration order.
+     * First callback failure is fatal; the original failure is attached
+     * as a suppressed exception.
+     *
+     * @param spec the container spec
+     * @param ctx the startup failure context
+     * @param originalFailure the original startup failure, or {@code null}
+     * @throws ContainerException if any callback fails
+     */
+    private static void fireOnStartFailure(ContainerSpec spec, StartupFailure ctx, Throwable originalFailure) {
+        for (Consumer<StartupFailure> consumer : spec.onStartFailureConsumers()) {
+            try {
+                consumer.accept(ctx);
+            } catch (RuntimeException e) {
+                logger.error("Container onStartFailure callback failed: {}", e.getMessage());
+                ContainerException ex = toContainerException("Container onStartFailure callback failed", e);
+                if (originalFailure != null) {
+                    ex.addSuppressed(originalFailure);
+                }
+                throw ex;
+            }
+        }
+    }
+
+    /**
+     * Fires all {@code onReady} callbacks in registration order.
+     * First callback failure is fatal.
+     *
+     * @param spec the container spec
+     * @param ctx the startup context
+     * @throws ContainerException if any callback fails
+     */
+    private static void fireOnReady(ContainerSpec spec, StartupContext ctx) {
+        for (Consumer<StartupContext> consumer : spec.onReadyConsumers()) {
+            try {
+                consumer.accept(ctx);
+            } catch (RuntimeException e) {
+                logger.error("Container onReady callback failed: {}", e.getMessage());
+                throw toContainerException("Container onReady callback failed", e);
+            }
+        }
+    }
+
+    /**
+     * Fires all {@code onClose} callbacks in registration order. Each callback
+     * gets a chance to run; failures are collected and returned.
+     *
+     * @param spec the container spec
+     * @param container the container being closed
+     * @return the collected callback failures, or an empty list
+     */
+    private static List<RuntimeException> fireOnClose(ContainerSpec spec, Container container) {
+        List<RuntimeException> failures = new ArrayList<>();
+        for (Consumer<Container> consumer : spec.onCloseConsumers()) {
+            try {
+                consumer.accept(container);
+            } catch (RuntimeException e) {
+                logger.error("Container onClose callback failed: {}", e.getMessage());
+                failures.add(e);
+            }
+        }
+        return failures;
+    }
+
+    /**
+     * Wraps a {@link RuntimeException} in a {@link ContainerException} if it is
+     * not already one.
+     *
+     * @param message the exception message
+     * @param cause the cause
+     * @return a {@link ContainerException}
+     */
+    private static ContainerException toContainerException(String message, RuntimeException cause) {
+        return cause instanceof ContainerException ce ? ce : new ContainerException(message, cause);
     }
 }

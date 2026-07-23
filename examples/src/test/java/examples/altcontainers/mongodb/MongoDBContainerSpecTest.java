@@ -79,7 +79,7 @@ class MongoDBContainerSpecTest {
                 .network(NETWORK, "mongodb")
                 .outputConsumer(consumer)
                 .build();
-        assertThat(spec.outputListener()).isSameAs(consumer);
+        assertThat(spec.onOutputConsumers()).containsExactly(consumer);
     }
 
     @Test

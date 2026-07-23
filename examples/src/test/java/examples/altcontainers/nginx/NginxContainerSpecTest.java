@@ -78,7 +78,7 @@ class NginxContainerSpecTest {
                 .network(NETWORK, "nginx2")
                 .outputConsumer(consumer)
                 .build();
-        assertThat(spec.outputListener()).isSameAs(consumer);
+        assertThat(spec.onOutputConsumers()).containsExactly(consumer);
     }
 
     @Test

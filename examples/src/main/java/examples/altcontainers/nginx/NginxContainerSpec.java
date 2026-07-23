@@ -105,7 +105,7 @@ public final class NginxContainerSpec extends GenericContainerSpec {
          * @return this builder
          */
         public Builder outputConsumer(Consumer<OutputFrame> consumer) {
-            delegate.outputListener(consumer);
+            delegate.onOutput(consumer);
             return this;
         }
 
