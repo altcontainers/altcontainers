@@ -17,10 +17,11 @@ The following rules are specific to the Altcontainers repository and its build s
 
 ## Critical Rules
 
-- Before any Maven validation/build command (`test`, `check`, `package`, `install`, `verify`, `javadoc`, etc.), run `./mvnw spotless:apply`. The only exception is an explicitly requested read-only formatting check with `./mvnw spotless:check`.
+- **Always run `./mvnw spotless:apply` before any `./mvnw` build command** (`test`, `check`, `package`, `install`, `verify`, `javadoc`, `compile`, etc.). The only exception is an explicitly requested read-only formatting check with `./mvnw spotless:check`.
 - Preserve Java 17 compatibility and existing public API/exception semantics unless the user explicitly asks for a breaking change.
 - Do not weaken Spotless, strict Javadoc, PMD, test, or build configuration to make validation pass.
 - Prefer the smallest safe change and report the commands run with pass/fail results.
+- **Docker is required.** The project tests interact with a real Docker daemon. Assume Docker is installed and running on the host.
 
 ## Standard Agent Workflow
 
@@ -37,14 +38,14 @@ design interview → design plan → implementation spec → implement → verif
 
 ## Validation Commands
 
-Run `./mvnw spotless:apply` first for validation/build commands unless the task is a read-only formatting check.
+**Prerequisite:** Always run `./mvnw spotless:apply` before any `./mvnw` build command below, unless the task is a read-only formatting check (`./mvnw spotless:check`).
 
 | Task | Command |
 | --- | --- |
 | Format code | `./mvnw spotless:apply` |
 | Full Maven validation with static analysis | `./mvnw clean install` |
 | Core module JUnit tests only | `./mvnw test -pl core` |
-| Examples tests (requires Docker) | `./mvnw test -pl examples` |
+| Examples tests | `./mvnw test -pl examples` |
 | Build without running any tests | `./mvnw clean install -DskipTests` |
 | Check formatting only | `./mvnw spotless:check` |
 | Check Javadoc only (Maven) | `./mvnw javadoc:javadoc` |

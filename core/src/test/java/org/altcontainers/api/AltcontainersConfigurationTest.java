@@ -42,6 +42,8 @@ class AltcontainersConfigurationTest {
         assertThat(config.portProbeTimeout()).isEqualTo(Duration.ofMillis(500));
         assertThat(config.httpProbeTimeout()).isEqualTo(Duration.ofMillis(2000));
         assertThat(config.containerPutArchivePipeBufferBytes()).isEqualTo(65536);
+        assertThat(config.networksParallelism()).isZero();
+        assertThat(config.dockerHost()).isEmpty();
     }
 
     @Test
@@ -59,6 +61,8 @@ class AltcontainersConfigurationTest {
                 .portProbeTimeout(Duration.ofMillis(750))
                 .httpProbeTimeout(Duration.ofSeconds(3))
                 .containerPutArchivePipeBufferBytes(131072)
+                .networksParallelism(5)
+                .dockerHost("tcp://foo:2375")
                 .build();
         assertThat(config.reaperDisabled()).isTrue();
         assertThat(config.reaperConnectionTimeout()).isEqualTo(Duration.ofSeconds(30));
@@ -72,6 +76,8 @@ class AltcontainersConfigurationTest {
         assertThat(config.portProbeTimeout()).isEqualTo(Duration.ofMillis(750));
         assertThat(config.httpProbeTimeout()).isEqualTo(Duration.ofSeconds(3));
         assertThat(config.containerPutArchivePipeBufferBytes()).isEqualTo(131072);
+        assertThat(config.networksParallelism()).isEqualTo(5);
+        assertThat(config.dockerHost()).isEqualTo("tcp://foo:2375");
     }
 
     @Test
@@ -88,7 +94,9 @@ class AltcontainersConfigurationTest {
                         Duration.ofMillis(5000),
                         Duration.ofMillis(500),
                         Duration.ofMillis(2000),
-                        65536))
+                        65536,
+                        0,
+                        ""))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("reaperConnectionTimeout");
     }
@@ -120,5 +128,49 @@ class AltcontainersConfigurationTest {
                         .build())
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("containerPutArchivePipeBufferBytes");
+    }
+
+    @Test
+    void shouldRejectNegativeNetworksParallelism() {
+        assertThatThrownBy(() -> AltcontainersConfiguration.builder()
+                        .networksParallelism(-1)
+                        .build())
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("networksParallelism");
+    }
+
+    @Test
+    void shouldAcceptZeroNetworksParallelism() {
+        AltcontainersConfiguration config =
+                AltcontainersConfiguration.builder().networksParallelism(0).build();
+        assertThat(config.networksParallelism()).isZero();
+    }
+
+    @Test
+    void shouldRejectNullDockerHost() {
+        assertThatThrownBy(() -> AltcontainersConfiguration.builder().dockerHost(null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessageContaining("dockerHost");
+    }
+
+    @Test
+    void shouldAcceptEmptyDockerHost() {
+        AltcontainersConfiguration config =
+                AltcontainersConfiguration.builder().dockerHost("").build();
+        assertThat(config.dockerHost()).isEmpty();
+    }
+
+    @Test
+    void shouldTrackExplicitlySet() {
+        AltcontainersConfiguration.Builder builder = AltcontainersConfiguration.builder();
+        builder.reaperDisabled(true);
+        assertThat(builder.explicitlySet()).containsExactly("altcontainers.reaper.disabled");
+    }
+
+    @Test
+    void shouldNotTrackUnsetKeys() {
+        AltcontainersConfiguration.Builder builder = AltcontainersConfiguration.builder();
+        builder.reaperDisabled(true);
+        assertThat(builder.explicitlySet()).doesNotContain("altcontainers.reaper.connection.timeout.ms");
     }
 }

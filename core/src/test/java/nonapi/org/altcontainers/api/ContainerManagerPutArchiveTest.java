@@ -45,9 +45,22 @@ class ContainerManagerPutArchiveTest {
             ProcessBuilder pb = new ProcessBuilder("docker", "info");
             pb.redirectErrorStream(true);
             Process p = pb.start();
-            p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+            boolean finished = p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+            if (!finished) {
+                p.destroy();
+                if (!p.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)) {
+                    p.destroyForcibly();
+                    if (!p.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)) {
+                        return false;
+                    }
+                }
+                return false;
+            }
             return p.exitValue() == 0;
         } catch (Exception e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
             return false;
         }
     }

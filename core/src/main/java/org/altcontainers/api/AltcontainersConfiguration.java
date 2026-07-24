@@ -17,7 +17,10 @@
 package org.altcontainers.api;
 
 import java.time.Duration;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Programmatic Altcontainers runtime configuration.
@@ -40,6 +43,8 @@ import java.util.Objects;
  * @param portProbeTimeout the port probe timeout
  * @param httpProbeTimeout the HTTP probe timeout
  * @param containerPutArchivePipeBufferBytes the put-archive pipe buffer size in bytes
+ * @param networksParallelism the maximum number of concurrent network creations; 0 means no limit
+ * @param dockerHost the Docker host URI, or empty string if not configured
  */
 public record AltcontainersConfiguration(
         boolean reaperDisabled,
@@ -53,7 +58,9 @@ public record AltcontainersConfiguration(
         Duration containerStartupRetryBackoffMax,
         Duration portProbeTimeout,
         Duration httpProbeTimeout,
-        int containerPutArchivePipeBufferBytes) {
+        int containerPutArchivePipeBufferBytes,
+        int networksParallelism,
+        String dockerHost) {
 
     /**
      * Compact canonical constructor that validates fields.
@@ -70,6 +77,8 @@ public record AltcontainersConfiguration(
      * @param portProbeTimeout the port probe timeout
      * @param httpProbeTimeout the HTTP probe timeout
      * @param containerPutArchivePipeBufferBytes the put-archive pipe buffer size in bytes
+     * @param networksParallelism the maximum number of concurrent network creations
+     * @param dockerHost the Docker host URI
      */
     public AltcontainersConfiguration {
         requirePositive(reaperConnectionTimeout, "reaperConnectionTimeout");
@@ -83,6 +92,10 @@ public record AltcontainersConfiguration(
         requirePositive(portProbeTimeout, "portProbeTimeout");
         requirePositive(httpProbeTimeout, "httpProbeTimeout");
         requirePositive(containerPutArchivePipeBufferBytes, "containerPutArchivePipeBufferBytes");
+        if (networksParallelism < 0) {
+            throw new IllegalArgumentException("networksParallelism must be non-negative");
+        }
+        Objects.requireNonNull(dockerHost, "dockerHost must not be null");
     }
 
     private static Duration requirePositive(Duration duration, String name) {
@@ -117,6 +130,8 @@ public record AltcontainersConfiguration(
      */
     public static final class Builder {
 
+        private final Set<String> explicitlySet = new HashSet<>();
+
         private boolean reaperDisabled;
         private Duration reaperConnectionTimeout = Duration.ofSeconds(10);
         private Duration reaperStartupTimeout = Duration.ofSeconds(10);
@@ -129,6 +144,8 @@ public record AltcontainersConfiguration(
         private Duration portProbeTimeout = Duration.ofMillis(500);
         private Duration httpProbeTimeout = Duration.ofMillis(2000);
         private int containerPutArchivePipeBufferBytes = 65536;
+        private int networksParallelism = 0;
+        private String dockerHost = "";
 
         /**
          * Creates a new builder. Use {@link AltcontainersConfiguration#builder()}
@@ -146,6 +163,7 @@ public record AltcontainersConfiguration(
          */
         public Builder reaperDisabled(boolean reaperDisabled) {
             this.reaperDisabled = reaperDisabled;
+            this.explicitlySet.add("altcontainers.reaper.disabled");
             return this;
         }
 
@@ -157,6 +175,7 @@ public record AltcontainersConfiguration(
          */
         public Builder reaperConnectionTimeout(Duration timeout) {
             this.reaperConnectionTimeout = Objects.requireNonNull(timeout, "timeout must not be null");
+            this.explicitlySet.add("altcontainers.reaper.connection.timeout.ms");
             return this;
         }
 
@@ -168,6 +187,7 @@ public record AltcontainersConfiguration(
          */
         public Builder reaperStartupTimeout(Duration timeout) {
             this.reaperStartupTimeout = Objects.requireNonNull(timeout, "timeout must not be null");
+            this.explicitlySet.add("altcontainers.reaper.startup.timeout.ms");
             return this;
         }
 
@@ -179,6 +199,7 @@ public record AltcontainersConfiguration(
          */
         public Builder reaperStopTimeout(Duration timeout) {
             this.reaperStopTimeout = Objects.requireNonNull(timeout, "timeout must not be null");
+            this.explicitlySet.add("altcontainers.reaper.stop.timeout.ms");
             return this;
         }
 
@@ -190,6 +211,7 @@ public record AltcontainersConfiguration(
          */
         public Builder containerStartupTimeout(Duration timeout) {
             this.containerStartupTimeout = Objects.requireNonNull(timeout, "timeout must not be null");
+            this.explicitlySet.add("altcontainers.container.startup.timeout.ms");
             return this;
         }
 
@@ -201,6 +223,7 @@ public record AltcontainersConfiguration(
          */
         public Builder containerReadinessPollInitial(Duration interval) {
             this.containerReadinessPollInitial = Objects.requireNonNull(interval, "interval must not be null");
+            this.explicitlySet.add("altcontainers.container.startup.readiness.poll.initial.ms");
             return this;
         }
 
@@ -212,6 +235,7 @@ public record AltcontainersConfiguration(
          */
         public Builder containerReadinessPollMax(Duration interval) {
             this.containerReadinessPollMax = Objects.requireNonNull(interval, "interval must not be null");
+            this.explicitlySet.add("altcontainers.container.startup.readiness.poll.max.ms");
             return this;
         }
 
@@ -224,6 +248,7 @@ public record AltcontainersConfiguration(
         public Builder containerStartupRetryBackoffMultiplier(Duration multiplier) {
             this.containerStartupRetryBackoffMultiplier =
                     Objects.requireNonNull(multiplier, "multiplier must not be null");
+            this.explicitlySet.add("altcontainers.container.startup.retry.backoff.multiplier.ms");
             return this;
         }
 
@@ -235,6 +260,7 @@ public record AltcontainersConfiguration(
          */
         public Builder containerStartupRetryBackoffMax(Duration max) {
             this.containerStartupRetryBackoffMax = Objects.requireNonNull(max, "max must not be null");
+            this.explicitlySet.add("altcontainers.container.startup.retry.backoff.max.ms");
             return this;
         }
 
@@ -246,6 +272,7 @@ public record AltcontainersConfiguration(
          */
         public Builder portProbeTimeout(Duration timeout) {
             this.portProbeTimeout = Objects.requireNonNull(timeout, "timeout must not be null");
+            this.explicitlySet.add("altcontainers.wait.port.probe.timeout.ms");
             return this;
         }
 
@@ -257,6 +284,7 @@ public record AltcontainersConfiguration(
          */
         public Builder httpProbeTimeout(Duration timeout) {
             this.httpProbeTimeout = Objects.requireNonNull(timeout, "timeout must not be null");
+            this.explicitlySet.add("altcontainers.wait.http.probe.timeout.ms");
             return this;
         }
 
@@ -268,7 +296,43 @@ public record AltcontainersConfiguration(
          */
         public Builder containerPutArchivePipeBufferBytes(int bytes) {
             this.containerPutArchivePipeBufferBytes = bytes;
+            this.explicitlySet.add("altcontainers.container.put.archive.pipe.buffer.bytes");
             return this;
+        }
+
+        /**
+         * Sets the maximum number of concurrent network creations.
+         * A value of 0 means no limit.
+         *
+         * @param parallelism the network parallelism; must be non-negative
+         * @return this builder
+         */
+        public Builder networksParallelism(int parallelism) {
+            this.networksParallelism = parallelism;
+            this.explicitlySet.add("altcontainers.networks.parallelism");
+            return this;
+        }
+
+        /**
+         * Sets the Docker host URI.
+         *
+         * @param dockerHost the Docker host URI; must not be null
+         * @return this builder
+         */
+        public Builder dockerHost(String dockerHost) {
+            this.dockerHost = Objects.requireNonNull(dockerHost, "dockerHost must not be null");
+            this.explicitlySet.add("altcontainers.docker.host");
+            return this;
+        }
+
+        /**
+         * Returns an unmodifiable view of the keys that were explicitly set
+         * via builder setter methods.
+         *
+         * @return the explicitly-set keys
+         */
+        Set<String> explicitlySet() {
+            return Collections.unmodifiableSet(explicitlySet);
         }
 
         /**
@@ -289,7 +353,9 @@ public record AltcontainersConfiguration(
                     containerStartupRetryBackoffMax,
                     portProbeTimeout,
                     httpProbeTimeout,
-                    containerPutArchivePipeBufferBytes);
+                    containerPutArchivePipeBufferBytes,
+                    networksParallelism,
+                    dockerHost);
         }
     }
 }
