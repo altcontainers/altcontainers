@@ -35,13 +35,16 @@ import org.altcontainers.api.ContainerSpec;
 
 /**
  * Resolves Altcontainers configuration from properties files, environment
- * variables, programmatic configuration, and hardcoded defaults.
+ * variables, system properties, programmatic configuration, and hardcoded
+ * defaults.
  *
  * <p>Resolution precedence for each value (first wins):
  *
  * <ol>
  *   <li>Programmatic configuration set via
- *       {@link Altcontainers#configure(java.util.function.Consumer)}.</li>
+ *       {@link Altcontainers#configure(java.util.function.Consumer)}, but only
+ *       for properties that were <em>explicitly set</em> in the builder.</li>
+ *   <li>System property ({@code -D} flag).</li>
  *   <li>Environment variable, derived from the property key by uppercasing and
  *       replacing {@code .} with {@code _}, prefixed with {@code ALTCONTAINERS_}
  *       when it does not already start with it.</li>
@@ -50,7 +53,10 @@ import org.altcontainers.api.ContainerSpec;
  *   <li>The hardcoded default for the key.</li>
  * </ol>
  *
- * <p>The two properties files are loaded and every known-key value is validated
+ * <p>For keys with a legacy alias, the legacy key is checked at every layer
+ * after the primary key has been exhausted at all layers.
+ *
+ * <p>The properties files are loaded and every known-key value is validated
  * <em>eagerly</em> the first time {@link #instance()} is referenced, so
  * malformed files or invalid values fail fast with a {@link ContainerException}
  * rather than surfacing mid-operation. Per-key selection remains lazy: each
@@ -103,6 +109,15 @@ public final class AltcontainersProperties {
     static final String CONTAINER_PUT_ARCHIVE_PIPE_BUFFER_BYTES =
             "altcontainers.container.put.archive.pipe.buffer.bytes";
 
+    /** Property key for {@link #networksParallelism()}. */
+    static final String NETWORKS_PARALLELISM = "altcontainers.networks.parallelism";
+
+    /** Legacy key for {@link #networksParallelism()}. */
+    static final String LEGACY_NETWORKS_PARALLELISM = "altcontainers.reaper.networks.parallelism";
+
+    /** Property key for {@link #dockerHost()}. */
+    static final String DOCKER_HOST = "altcontainers.docker.host";
+
     private static final List<KeyDef> KNOWN_KEYS = List.of(
             new KeyDef(REAPER_DISABLED, "false", Kind.BOOLEAN),
             new KeyDef(REAPER_CONNECTION_TIMEOUT_MS, "10000", Kind.DURATION_MS),
@@ -118,7 +133,9 @@ public final class AltcontainersProperties {
             new KeyDef(CONTAINER_STARTUP_RETRY_BACKOFF_MAX_MS, "5000", Kind.DURATION_MS),
             new KeyDef(PORT_PROBE_TIMEOUT_MS, "500", Kind.DURATION_MS),
             new KeyDef(HTTP_PROBE_TIMEOUT_MS, "2000", Kind.DURATION_MS),
-            new KeyDef(CONTAINER_PUT_ARCHIVE_PIPE_BUFFER_BYTES, "65536", Kind.BYTES));
+            new KeyDef(CONTAINER_PUT_ARCHIVE_PIPE_BUFFER_BYTES, "65536", Kind.BYTES),
+            new KeyDef(NETWORKS_PARALLELISM, "0", Kind.NONNEG_INT, LEGACY_NETWORKS_PARALLELISM),
+            new KeyDef(DOCKER_HOST, "", Kind.STRING));
 
     private final Map<String, Object> resolved;
 
@@ -159,11 +176,7 @@ public final class AltcontainersProperties {
      * @return {@code true} if the reaper is disabled
      */
     public boolean reaperDisabled() {
-        AltcontainersConfiguration config = Altcontainers.configuration();
-        if (config != null) {
-            return config.reaperDisabled();
-        }
-        return (Boolean) resolved.get(REAPER_DISABLED);
+        return resolvedBoolean(REAPER_DISABLED, AltcontainersConfiguration::reaperDisabled);
     }
 
     /**
@@ -272,9 +285,28 @@ public final class AltcontainersProperties {
                 AltcontainersConfiguration::containerPutArchivePipeBufferBytes);
     }
 
+    /**
+     * Returns the maximum number of concurrent network creations.
+     * A value of 0 means no limit.
+     *
+     * @return the network parallelism
+     */
+    public int networksParallelism() {
+        return resolvedInt(NETWORKS_PARALLELISM, AltcontainersConfiguration::networksParallelism);
+    }
+
+    /**
+     * Returns the Docker host URI, or an empty string if not configured.
+     *
+     * @return the Docker host URI, or empty string
+     */
+    public String dockerHost() {
+        return resolvedString(DOCKER_HOST, AltcontainersConfiguration::dockerHost);
+    }
+
     private Duration resolvedDuration(String key, Function<AltcontainersConfiguration, Duration> programmatic) {
         AltcontainersConfiguration config = Altcontainers.configuration();
-        if (config != null) {
+        if (config != null && Altcontainers.isExplicitlySet(key)) {
             return programmatic.apply(config);
         }
         return (Duration) resolved.get(key);
@@ -282,25 +314,69 @@ public final class AltcontainersProperties {
 
     private int resolvedInt(String key, Function<AltcontainersConfiguration, Integer> programmatic) {
         AltcontainersConfiguration config = Altcontainers.configuration();
-        if (config != null) {
+        if (config != null && Altcontainers.isExplicitlySet(key)) {
             return programmatic.apply(config);
         }
         return (Integer) resolved.get(key);
     }
 
+    private boolean resolvedBoolean(String key, Function<AltcontainersConfiguration, Boolean> programmatic) {
+        AltcontainersConfiguration config = Altcontainers.configuration();
+        if (config != null && Altcontainers.isExplicitlySet(key)) {
+            return programmatic.apply(config);
+        }
+        return (Boolean) resolved.get(key);
+    }
+
+    private String resolvedString(String key, Function<AltcontainersConfiguration, String> programmatic) {
+        AltcontainersConfiguration config = Altcontainers.configuration();
+        if (config != null && Altcontainers.isExplicitlySet(key)) {
+            return programmatic.apply(config);
+        }
+        return (String) resolved.get(key);
+    }
+
     private static String resolveRaw(KeyDef def, Properties classpath, Properties userHome, Map<String, String> env) {
+        // 1. System property (primary key)
+        String sysPropValue = System.getProperty(def.key);
+        if (sysPropValue != null && !sysPropValue.isEmpty()) {
+            return sysPropValue;
+        }
+        // 2. Environment variable (primary key)
         String envValue = env.get(envVarName(def.key));
         if (envValue != null && !envValue.isEmpty()) {
             return envValue;
         }
+        // 3. User-home file (primary key)
         String userHomeValue = userHome.getProperty(def.key);
         if (userHomeValue != null) {
             return userHomeValue;
         }
+        // 4. Classpath resource (primary key)
         String classpathValue = classpath.getProperty(def.key);
         if (classpathValue != null) {
             return classpathValue;
         }
+        // 5-8. Legacy key fallback (same order)
+        if (def.legacyKey != null) {
+            String legacySysProp = System.getProperty(def.legacyKey);
+            if (legacySysProp != null && !legacySysProp.isEmpty()) {
+                return legacySysProp;
+            }
+            String legacyEnvValue = env.get(envVarName(def.legacyKey));
+            if (legacyEnvValue != null && !legacyEnvValue.isEmpty()) {
+                return legacyEnvValue;
+            }
+            String legacyUserHome = userHome.getProperty(def.legacyKey);
+            if (legacyUserHome != null) {
+                return legacyUserHome;
+            }
+            String legacyClasspath = classpath.getProperty(def.legacyKey);
+            if (legacyClasspath != null) {
+                return legacyClasspath;
+            }
+        }
+        // 9. Hardcoded default
         return def.defaultValue;
     }
 
@@ -338,6 +414,19 @@ public final class AltcontainersProperties {
                 }
                 yield value;
             }
+            case NONNEG_INT -> {
+                int value;
+                try {
+                    value = Integer.parseInt(raw.trim());
+                } catch (NumberFormatException e) {
+                    throw new ContainerException(def.key + " must be a valid integer, got '" + raw + "'", e);
+                }
+                if (value < 0) {
+                    throw new ContainerException(def.key + " must be non-negative, got " + value);
+                }
+                yield value;
+            }
+            case STRING -> raw;
         };
     }
 
@@ -392,18 +481,26 @@ public final class AltcontainersProperties {
     private enum Kind {
         DURATION_MS,
         BOOLEAN,
-        BYTES
+        BYTES,
+        NONNEG_INT,
+        STRING
     }
 
     private static final class KeyDef {
         private final String key;
         private final String defaultValue;
         private final Kind kind;
+        private final String legacyKey;
 
         KeyDef(String key, String defaultValue, Kind kind) {
+            this(key, defaultValue, kind, null);
+        }
+
+        KeyDef(String key, String defaultValue, Kind kind, String legacyKey) {
             this.key = key;
             this.defaultValue = defaultValue;
             this.kind = kind;
+            this.legacyKey = legacyKey;
         }
     }
 }

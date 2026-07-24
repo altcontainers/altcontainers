@@ -40,11 +40,13 @@ class AltcontainersPropertiesTest {
     @BeforeEach
     void setUp() {
         clearProgrammatic();
+        clearSystemPropertyKeys();
     }
 
     @AfterEach
     void tearDown() {
         clearProgrammatic();
+        clearSystemPropertyKeys();
     }
 
     @Test
@@ -110,6 +112,15 @@ class AltcontainersPropertiesTest {
         configure(c -> c.reaperConnectionTimeout(Duration.ofSeconds(99)));
         AltcontainersProperties p = AltcontainersProperties.forTesting(new Properties(), userHome, env);
         assertThat(p.reaperConnectionTimeout()).isEqualTo(Duration.ofSeconds(99));
+    }
+
+    @Test
+    void shouldOnlyOverrideExplicitlySetProperties() {
+        Map<String, String> env = Map.of("ALTCONTAINERS_REAPER_CONNECTION_TIMEOUT_MS", "60000");
+        configure(c -> c.reaperDisabled(true));
+        AltcontainersProperties p = AltcontainersProperties.forTesting(new Properties(), new Properties(), env);
+        assertThat(p.reaperDisabled()).isTrue();
+        assertThat(p.reaperConnectionTimeout()).isEqualTo(Duration.ofMillis(60000));
     }
 
     @Test
@@ -192,6 +203,104 @@ class AltcontainersPropertiesTest {
         assertThat(p.reaperConnectionTimeout()).isEqualTo(Duration.ofSeconds(10));
     }
 
+    // --- System property resolution tests ---
+
+    @Test
+    void shouldResolveSystemPropertyOverClasspathAndEnv() {
+        System.setProperty("altcontainers.reaper.connection.timeout.ms", "7777");
+        Properties classpath = props(AltcontainersProperties.REAPER_CONNECTION_TIMEOUT_MS, "10000");
+        Map<String, String> env = Map.of("ALTCONTAINERS_REAPER_CONNECTION_TIMEOUT_MS", "30000");
+        AltcontainersProperties p = AltcontainersProperties.forTesting(classpath, new Properties(), env);
+        assertThat(p.reaperConnectionTimeout()).isEqualTo(Duration.ofMillis(7777));
+    }
+
+    @Test
+    void shouldResolveNetworksParallelismDefault() {
+        AltcontainersProperties p = AltcontainersProperties.forTesting(new Properties(), new Properties(), Map.of());
+        assertThat(p.networksParallelism()).isZero();
+    }
+
+    @Test
+    void shouldResolveNetworksParallelismFromClasspath() {
+        Properties classpath = props(AltcontainersProperties.NETWORKS_PARALLELISM, "4");
+        AltcontainersProperties p = AltcontainersProperties.forTesting(classpath, new Properties(), Map.of());
+        assertThat(p.networksParallelism()).isEqualTo(4);
+    }
+
+    @Test
+    void shouldResolveNetworksParallelismFromEnv() {
+        Map<String, String> env = Map.of("ALTCONTAINERS_NETWORKS_PARALLELISM", "8");
+        AltcontainersProperties p = AltcontainersProperties.forTesting(new Properties(), new Properties(), env);
+        assertThat(p.networksParallelism()).isEqualTo(8);
+    }
+
+    @Test
+    void shouldResolveNetworksParallelismFromLegacySystemProperty() {
+        System.setProperty(AltcontainersProperties.LEGACY_NETWORKS_PARALLELISM, "12");
+        AltcontainersProperties p = AltcontainersProperties.forTesting(new Properties(), new Properties(), Map.of());
+        assertThat(p.networksParallelism()).isEqualTo(12);
+    }
+
+    @Test
+    void shouldPreferNewKeyOverLegacy() {
+        Properties classpath = props(AltcontainersProperties.NETWORKS_PARALLELISM, "3");
+        System.setProperty(AltcontainersProperties.LEGACY_NETWORKS_PARALLELISM, "5");
+        AltcontainersProperties p = AltcontainersProperties.forTesting(classpath, new Properties(), Map.of());
+        assertThat(p.networksParallelism()).isEqualTo(3);
+    }
+
+    @Test
+    void shouldRejectNegativeNetworksParallelism() {
+        Properties classpath = props(AltcontainersProperties.NETWORKS_PARALLELISM, "-1");
+        assertThatThrownBy(() -> AltcontainersProperties.forTesting(classpath, new Properties(), Map.of()))
+                .isInstanceOf(ContainerException.class)
+                .hasMessageContaining(AltcontainersProperties.NETWORKS_PARALLELISM);
+    }
+
+    @Test
+    void shouldRejectNonNumericNetworksParallelism() {
+        Properties classpath = props(AltcontainersProperties.NETWORKS_PARALLELISM, "abc");
+        assertThatThrownBy(() -> AltcontainersProperties.forTesting(classpath, new Properties(), Map.of()))
+                .isInstanceOf(ContainerException.class)
+                .hasMessageContaining(AltcontainersProperties.NETWORKS_PARALLELISM);
+    }
+
+    @Test
+    void shouldResolveDockerHostDefault() {
+        AltcontainersProperties p = AltcontainersProperties.forTesting(new Properties(), new Properties(), Map.of());
+        assertThat(p.dockerHost()).isEmpty();
+    }
+
+    @Test
+    void shouldResolveDockerHostFromEnv() {
+        Map<String, String> env = Map.of("ALTCONTAINERS_DOCKER_HOST", "tcp://example.com:2375");
+        AltcontainersProperties p = AltcontainersProperties.forTesting(new Properties(), new Properties(), env);
+        assertThat(p.dockerHost()).isEqualTo("tcp://example.com:2375");
+    }
+
+    @Test
+    void shouldResolveDockerHostFromSystemProperty() {
+        System.setProperty("altcontainers.docker.host", "tcp://10.0.0.1:2375");
+        AltcontainersProperties p = AltcontainersProperties.forTesting(new Properties(), new Properties(), Map.of());
+        assertThat(p.dockerHost()).isEqualTo("tcp://10.0.0.1:2375");
+    }
+
+    @Test
+    void shouldExplicitProgrammaticWinOverEnv() {
+        Map<String, String> env = Map.of("ALTCONTAINERS_REAPER_CONNECTION_TIMEOUT_MS", "60000");
+        configure(c -> c.reaperConnectionTimeout(Duration.ofSeconds(99)));
+        AltcontainersProperties p = AltcontainersProperties.forTesting(new Properties(), new Properties(), env);
+        assertThat(p.reaperConnectionTimeout()).isEqualTo(Duration.ofSeconds(99));
+    }
+
+    @Test
+    void shouldExplicitProgrammaticWinOverSystemProperty() {
+        System.setProperty("altcontainers.reaper.connection.timeout.ms", "7777");
+        configure(c -> c.reaperConnectionTimeout(Duration.ofSeconds(42)));
+        AltcontainersProperties p = AltcontainersProperties.forTesting(new Properties(), new Properties(), Map.of());
+        assertThat(p.reaperConnectionTimeout()).isEqualTo(Duration.ofSeconds(42));
+    }
+
     private static Properties props(String... keyValuePairs) {
         Properties properties = new Properties();
         for (int i = 0; i + 1 < keyValuePairs.length; i += 2) {
@@ -206,5 +315,14 @@ class AltcontainersPropertiesTest {
 
     private static void clearProgrammatic() {
         Altcontainers.configure(null);
+    }
+
+    private static void clearSystemPropertyKeys() {
+        System.clearProperty("altcontainers.reaper.connection.timeout.ms");
+        System.clearProperty("altcontainers.reaper.stop.timeout.ms");
+        System.clearProperty("altcontainers.reaper.disabled");
+        System.clearProperty(AltcontainersProperties.NETWORKS_PARALLELISM);
+        System.clearProperty(AltcontainersProperties.LEGACY_NETWORKS_PARALLELISM);
+        System.clearProperty(AltcontainersProperties.DOCKER_HOST);
     }
 }

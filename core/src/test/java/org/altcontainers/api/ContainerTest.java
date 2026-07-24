@@ -29,8 +29,8 @@ import org.junit.jupiter.api.condition.EnabledIf;
 
 /**
  * Verifies Container behavior: {@code isRunning()} performs a live daemon
- * query on every call; {@code host()} uses cached metadata with daemon
- * fallback; {@code hostPort()} uses cached metadata only.
+ * query on every call; {@code host()} and {@code hostPort()} use cached
+ * metadata with daemon fallback.
  */
 class ContainerTest {
 
@@ -53,10 +53,11 @@ class ContainerTest {
     }
 
     @Test
-    void shouldQueryDaemonEvenWhenMetadataSaysRunning() {
-        // isRunning() always performs a live daemon query — cached
-        // metadata.running=true is no longer trusted. With no daemon
-        // available, ContainerManager.isContainerRunning() returns false.
+    void shouldQueryDaemonWhenMetadataSaysRunning() {
+        // metadata.running=true is no longer trusted — isRunning()
+        // always performs a live daemon query. With no daemon available,
+        // ContainerManager.isContainerRunning() returns false (catches
+        // RuntimeException from the failed inspect call).
         Container container = new ConcreteContainer(
                 "test-id",
                 "test-image",
@@ -184,9 +185,22 @@ class ContainerTest {
             ProcessBuilder pb = new ProcessBuilder("docker", "info");
             pb.redirectErrorStream(true);
             Process p = pb.start();
-            p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+            boolean finished = p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+            if (!finished) {
+                p.destroy();
+                if (!p.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)) {
+                    p.destroyForcibly();
+                    if (!p.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)) {
+                        return false;
+                    }
+                }
+                return false;
+            }
             return p.exitValue() == 0;
         } catch (Exception e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
             return false;
         }
     }

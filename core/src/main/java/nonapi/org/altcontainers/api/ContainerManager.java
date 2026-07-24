@@ -570,6 +570,9 @@ public final class ContainerManager {
             InputStream content,
             long contentLength,
             int mode) {
+        if (fileName.getBytes(StandardCharsets.UTF_8).length > 100) {
+            throw new ContainerException("Tar entry name is too long: " + fileName);
+        }
         try {
             AtomicReference<IOException> writerFailure = new AtomicReference<>();
             PipedInputStream pipedIn = new PipedInputStream(PUT_ARCHIVE_PIPE_BUFFER_BYTES);

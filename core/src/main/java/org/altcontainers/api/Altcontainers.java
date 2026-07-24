@@ -16,19 +16,33 @@
 
 package org.altcontainers.api;
 
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
  * Entry point for programmatic Altcontainers configuration.
  *
  * <p>Call {@link #configure(Consumer)} once before any container or network
- * is created. Programmatic configuration takes precedence over environment
- * variables and properties files. Pass {@code null} to clear the configuration
- * and fall back to environment variables and properties files.
+ * is created. Programmatic configuration overrides only the properties that
+ * are <em>explicitly set</em> via the builder; all other properties fall
+ * through to system properties, environment variables, properties files,
+ * and defaults. Pass {@code null} to clear the configuration and fall back
+ * to system properties, environment variables, and properties files.
+ *
+ * <p>Resolution precedence (per property, first wins):
+ * <ol>
+ *   <li>Programmatic — only if explicitly set via builder setter.</li>
+ *   <li>System property ({@code -D} flag).</li>
+ *   <li>Environment variable ({@code ALTCONTAINERS_*}).</li>
+ *   <li>User-home file ({@code ~/.altcontainers.properties}).</li>
+ *   <li>Classpath resource ({@code altcontainers.properties}).</li>
+ *   <li>Hardcoded default.</li>
+ * </ol>
  */
 public final class Altcontainers {
 
     private static volatile AltcontainersConfiguration configuration;
+    private static volatile Set<String> explicitlySet = Set.of();
 
     private Altcontainers() {
         // Intentionally empty
@@ -37,8 +51,12 @@ public final class Altcontainers {
     /**
      * Configures the Altcontainers runtime.
      *
+     * <p>Only properties whose builder setters are called take programmatic
+     * precedence. Properties not set in the builder fall through to system
+     * properties, environment variables, properties files, and defaults.
+     *
      * <p>Pass {@code null} to clear the configuration and fall back to
-     * environment variables and properties files.
+     * system properties, environment variables, and properties files.
      *
      * @param configurer a consumer that configures a new
      *     {@link AltcontainersConfiguration.Builder}, or {@code null} to clear
@@ -46,11 +64,24 @@ public final class Altcontainers {
     public static void configure(Consumer<AltcontainersConfiguration.Builder> configurer) {
         if (configurer == null) {
             configuration = null;
+            explicitlySet = Set.of();
             return;
         }
         AltcontainersConfiguration.Builder builder = AltcontainersConfiguration.builder();
         configurer.accept(builder);
         configuration = builder.build();
+        explicitlySet = builder.explicitlySet();
+    }
+
+    /**
+     * Returns whether the given property key was explicitly set via
+     * {@link #configure(Consumer)}.
+     *
+     * @param key the property key (e.g. "altcontainers.reaper.disabled")
+     * @return {@code true} if the property was explicitly configured
+     */
+    public static boolean isExplicitlySet(String key) {
+        return explicitlySet.contains(key);
     }
 
     /**

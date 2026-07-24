@@ -50,12 +50,9 @@ final class DockerHostConfig {
      * @return the builder with the Altcontainers host applied
      */
     static DefaultDockerClientConfig.Builder applyAltcontainersDockerHost(DefaultDockerClientConfig.Builder builder) {
-        String dockerHost = System.getProperty(ALTCONTAINERS_DOCKER_HOST_PROPERTY);
-        if (dockerHost == null) {
+        String dockerHost = AltcontainersProperties.instance().dockerHost();
+        if (dockerHost == null || dockerHost.isBlank()) {
             return builder;
-        }
-        if (dockerHost.isBlank()) {
-            throw new ContainerException(ALTCONTAINERS_DOCKER_HOST_PROPERTY + " must not be blank");
         }
         try {
             return builder.withDockerHost(dockerHost);

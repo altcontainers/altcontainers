@@ -34,6 +34,14 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Network lifecycle facade — uses docker-java directly.
+ *
+ * <p>A semaphore permit is acquired in {@link #createNetwork()} and released
+ * in {@link #closeNetwork(Network)}'s {@code finally} block. Each live network
+ * created through this manager holds one permit. Networks that are never
+ * closed (relying on the reaper for Docker-side cleanup) leak their permit
+ * in-JVM, eventually causing {@code createNetwork()} to block forever when
+ * a parallelism limit is configured. Use try-with-resources on
+ * {@link Network} to ensure permits are released.
  */
 public final class NetworkManager {
 
@@ -52,8 +60,7 @@ public final class NetworkManager {
     private final ConcurrentHashMap<String, Boolean> releasedIds = new ConcurrentHashMap<>();
 
     private NetworkManager() {
-        int p = readNetworkParallelism(System.getProperty(
-                "altcontainers.reaper.networks.parallelism", System.getProperty("altcontainers.networks.parallelism")));
+        int p = AltcontainersProperties.instance().networksParallelism();
         this.networkSemaphore = p > 0 ? new Semaphore(p) : null;
         registerShutdownHook();
     }
@@ -202,33 +209,5 @@ public final class NetworkManager {
                 LOGGER.warn("Failed to send TERMINATE_NETWORK to reaper for network {}: {}", networkId, e.getMessage());
             }
         }
-    }
-
-    /**
-     * Reads the network parallelism value from a system property.
-     * A value of 0 means no limit.
-     *
-     * @param raw the raw system property value, or {@code null}
-     * @return the parallelism value, or 0 if unset
-     * @throws ContainerException if the value is negative or not a valid integer
-     */
-    static int readNetworkParallelism(String raw) {
-        if (raw == null) {
-            return 0;
-        }
-        String t = raw.trim();
-        if (t.isEmpty()) {
-            return 0;
-        }
-        int v;
-        try {
-            v = Integer.parseInt(t);
-        } catch (NumberFormatException e) {
-            throw new ContainerException("parallelism must be a non-negative integer", e);
-        }
-        if (v < 0) {
-            throw new ContainerException("parallelism must be non-negative");
-        }
-        return v;
     }
 }

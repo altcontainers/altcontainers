@@ -18,35 +18,36 @@ package nonapi.org.altcontainers.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.function.Consumer;
+import org.altcontainers.api.Altcontainers;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-/** Tests for Docker host resolution exposed through the container manager. */
+/**
+ * Tests for Docker host resolution exposed through the container manager.
+ *
+ * <p>Uses programmatic {@link Altcontainers#configure(Consumer)} because
+ * {@code AltcontainersProperties} is an eagerly-initialized singleton. System
+ * properties set after first access have no effect. System property resolution
+ * is tested separately in {@code AltcontainersPropertiesTest}.
+ */
 class ContainerManagerHostTest {
-
-    private static final String DOCKER_HOST_PROPERTY = "altcontainers.docker.host";
-
-    @BeforeEach
-    void setUp() {
-        System.clearProperty(DOCKER_HOST_PROPERTY);
-    }
 
     @AfterEach
     void tearDown() {
-        System.clearProperty(DOCKER_HOST_PROPERTY);
+        Altcontainers.configure(null);
     }
 
     @Test
     void shouldReturnDockerHostFromTcpConfiguration() {
-        System.setProperty(DOCKER_HOST_PROPERTY, "tcp://192.0.2.10:2375");
+        Altcontainers.configure(c -> c.dockerHost("tcp://192.0.2.10:2375"));
 
         assertThat(ContainerManager.getInstance().host()).isEqualTo("192.0.2.10");
     }
 
     @Test
     void shouldReturnLocalhostForUnixDockerHost() {
-        System.setProperty(DOCKER_HOST_PROPERTY, "unix:///var/run/docker.sock");
+        Altcontainers.configure(c -> c.dockerHost("unix:///var/run/docker.sock"));
 
         assertThat(ContainerManager.getInstance().host()).isEqualTo("localhost");
     }
