@@ -19,10 +19,13 @@ package org.altcontainers.api;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.github.dockerjava.api.exception.NotFoundException;
 import java.util.Map;
 import nonapi.org.altcontainers.api.ConcreteContainer;
 import nonapi.org.altcontainers.api.ContainerMetadata;
+import nonapi.org.altcontainers.api.DockerClientFactory;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIf;
 
 /**
  * Verifies Container behavior: {@code isRunning()} performs a live daemon
@@ -120,5 +123,79 @@ class ContainerTest {
         Container container = new ConcreteContainer(
                 "test-id", "alpine:latest", spec, new ContainerMetadata("localhost", true, Map.of()));
         assertThat(container.spec()).isSameAs(spec);
+    }
+
+    @Test
+    @EnabledIf("dockerAndReaperAvailable")
+    void isRunningShouldTrackContainerDeath() {
+        ContainerSpec spec = ContainerSpec.builder("alpine:latest")
+                .command("sleep", "60")
+                .startupAttempts(1)
+                .build();
+
+        Container container = Container.create(spec);
+        try {
+            // Container is running after startup
+            assertThat(container.isRunning()).isTrue();
+
+            // Kill the container via the Docker daemon
+            DockerClientFactory.client().killContainerCmd(container.id()).exec();
+
+            // Give the daemon a moment to update state
+            long deadline = System.currentTimeMillis() + 10_000;
+            boolean becameDead = false;
+            while (System.currentTimeMillis() < deadline) {
+                if (!container.isRunning()) {
+                    becameDead = true;
+                    break;
+                }
+                try {
+                    Thread.sleep(200);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+            assertThat(becameDead)
+                    .as("isRunning() should transition to false after docker kill")
+                    .isTrue();
+        } finally {
+            // Force-remove even though the container is already killed.
+            // Using direct removal (not container.close()) because the
+            // container has been killed and the reaper may already have
+            // cleaned it up.
+            try {
+                DockerClientFactory.client()
+                        .removeContainerCmd(container.id())
+                        .withForce(true)
+                        .exec();
+            } catch (NotFoundException ignored) {
+                // Container may already be removed by reaper; that's fine.
+            } catch (RuntimeException ignored) {
+                // Best-effort cleanup.
+            }
+        }
+    }
+
+    // --- Docker-gating helpers (consistent with ContainerManagerPullTest) ---
+
+    static boolean dockerAvailable() {
+        try {
+            ProcessBuilder pb = new ProcessBuilder("docker", "info");
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+            return p.exitValue() == 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    static boolean reaperJarAvailable() {
+        return ContainerTest.class.getClassLoader().getResource("reaper.jar") != null;
+    }
+
+    static boolean dockerAndReaperAvailable() {
+        return dockerAvailable() && reaperJarAvailable();
     }
 }
