@@ -255,6 +255,40 @@ class AltcontainersPropertiesTest {
         assertThat(p.dockerHost()).isEqualTo("tcp://10.0.0.1:2375");
     }
 
+    @Test
+    void shouldDefaultImagePullTimeout() {
+        AltcontainersProperties p = AltcontainersProperties.forTesting(new Properties(), new Properties(), Map.of());
+        assertThat(p.imagePullTimeout()).isEqualTo(Duration.ofMinutes(5));
+    }
+
+    @Test
+    void shouldResolveImagePullTimeoutFromEnv() {
+        Map<String, String> env = Map.of("ALTCONTAINERS_IMAGE_PULL_TIMEOUT_MS", "120000");
+        AltcontainersProperties p = AltcontainersProperties.forTesting(new Properties(), new Properties(), env);
+        assertThat(p.imagePullTimeout()).isEqualTo(Duration.ofMinutes(2));
+    }
+
+    @Test
+    void shouldFailFastOnInvalidImagePullTimeout() {
+        Properties userHome = props(AltcontainersProperties.IMAGE_PULL_TIMEOUT_MS, "abc");
+        assertThatThrownBy(() -> AltcontainersProperties.forTesting(new Properties(), userHome, Map.of()))
+                .isInstanceOf(ContainerException.class)
+                .hasMessageContaining(AltcontainersProperties.IMAGE_PULL_TIMEOUT_MS);
+    }
+
+    @Test
+    void shouldFailFastOnNonPositiveImagePullTimeout() {
+        Properties userHomeZero = props(AltcontainersProperties.IMAGE_PULL_TIMEOUT_MS, "0");
+        assertThatThrownBy(() -> AltcontainersProperties.forTesting(new Properties(), userHomeZero, Map.of()))
+                .isInstanceOf(ContainerException.class)
+                .hasMessageContaining(AltcontainersProperties.IMAGE_PULL_TIMEOUT_MS);
+
+        Properties userHomeNeg = props(AltcontainersProperties.IMAGE_PULL_TIMEOUT_MS, "-1");
+        assertThatThrownBy(() -> AltcontainersProperties.forTesting(new Properties(), userHomeNeg, Map.of()))
+                .isInstanceOf(ContainerException.class)
+                .hasMessageContaining(AltcontainersProperties.IMAGE_PULL_TIMEOUT_MS);
+    }
+
     private static Properties props(String... keyValuePairs) {
         Properties properties = new Properties();
         for (int i = 0; i + 1 < keyValuePairs.length; i += 2) {
@@ -270,5 +304,6 @@ class AltcontainersPropertiesTest {
         System.clearProperty(AltcontainersProperties.NETWORKS_PARALLELISM);
         System.clearProperty(AltcontainersProperties.LEGACY_NETWORKS_PARALLELISM);
         System.clearProperty(AltcontainersProperties.DOCKER_HOST);
+        System.clearProperty(AltcontainersProperties.IMAGE_PULL_TIMEOUT_MS);
     }
 }

@@ -110,6 +110,9 @@ public final class AltcontainersProperties {
     /** Property key for {@link #dockerHost()}. */
     static final String DOCKER_HOST = "altcontainers.docker.host";
 
+    /** Property key for {@link #imagePullTimeout()}. */
+    static final String IMAGE_PULL_TIMEOUT_MS = "altcontainers.image.pull.timeout.ms";
+
     private static final List<KeyDef> KNOWN_KEYS = List.of(
             new KeyDef(REAPER_DISABLED, "false", Kind.BOOLEAN),
             new KeyDef(REAPER_CONNECTION_TIMEOUT_MS, "10000", Kind.DURATION_MS),
@@ -127,7 +130,8 @@ public final class AltcontainersProperties {
             new KeyDef(HTTP_PROBE_TIMEOUT_MS, "2000", Kind.DURATION_MS),
             new KeyDef(CONTAINER_PUT_ARCHIVE_PIPE_BUFFER_BYTES, "65536", Kind.BYTES),
             new KeyDef(NETWORKS_PARALLELISM, "0", Kind.NONNEG_INT, LEGACY_NETWORKS_PARALLELISM),
-            new KeyDef(DOCKER_HOST, "", Kind.STRING));
+            new KeyDef(DOCKER_HOST, "", Kind.STRING),
+            new KeyDef(IMAGE_PULL_TIMEOUT_MS, "300000", Kind.DURATION_MS));
 
     private final Map<String, Object> resolved;
 
@@ -299,6 +303,15 @@ public final class AltcontainersProperties {
      */
     public String dockerHost() {
         return (String) resolved.get(DOCKER_HOST);
+    }
+
+    /**
+     * Returns the image pull timeout.
+     *
+     * @return the image pull timeout
+     */
+    public Duration imagePullTimeout() {
+        return (Duration) resolved.get(IMAGE_PULL_TIMEOUT_MS);
     }
 
     private static String resolveRaw(KeyDef def, Properties classpath, Properties userHome, Map<String, String> env) {
