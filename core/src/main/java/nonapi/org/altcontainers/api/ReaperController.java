@@ -40,6 +40,7 @@ public final class ReaperController {
     private final Configuration configuration;
     private ResourceSession session;
     private volatile boolean connected;
+    private volatile boolean disabledLogged;
     private volatile ReaperConnection reaperConnection;
     private Thread shutdownHook;
 
@@ -88,6 +89,15 @@ public final class ReaperController {
     }
 
     /**
+     * Returns whether the disabled message has been logged (for testing).
+     *
+     * @return {@code true} if the disabled log message was emitted at least once
+     */
+    boolean disabledLoggedForTesting() {
+        return disabledLogged;
+    }
+
+    /**
      * Returns the reaper connection for shutdown hook use.
      *
      * @return the reaper connection, or {@code null}
@@ -111,7 +121,10 @@ public final class ReaperController {
                 session = new ResourceSession();
             }
             if (configuration.disabled()) {
-                logger.info("Reaper disabled." + FALLBACK_SUFFIX);
+                if (!disabledLogged) {
+                    logger.info("Reaper disabled." + FALLBACK_SUFFIX);
+                    disabledLogged = true;
+                }
                 return session;
             }
             if (!connected) {

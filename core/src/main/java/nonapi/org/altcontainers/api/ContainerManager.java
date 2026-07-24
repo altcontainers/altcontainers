@@ -292,7 +292,7 @@ public final class ContainerManager {
     public Container createContainer(ContainerSpec spec) {
         Objects.requireNonNull(spec, "spec must not be null");
         ReaperController ctrl = ReaperController.instance();
-        ctrl.ensureReady();
+        ResourceSession session = ctrl.ensureReady();
 
         String image = spec.image();
         if (!localImageCache.contains(image) && !isImageAvailableLocally(image)) {
@@ -306,8 +306,7 @@ public final class ContainerManager {
             Container container = null;
             String containerId = null;
             try {
-                Map<String, String> labels =
-                        ReaperController.instance().ensureReady().labelsForNewResource();
+                Map<String, String> labels = session.labelsForNewResource();
                 containerId = createContainerWithImageRecovery(spec, labels);
 
                 try {

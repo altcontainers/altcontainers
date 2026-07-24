@@ -80,6 +80,29 @@ class ReaperControllerTest {
         }
     }
 
+    @Test
+    void ensureReadyShouldLogDisabledMessageOnce() throws Exception {
+        Altcontainers.configure(c -> c.reaperDisabled(true));
+
+        ReaperController ctrl = ReaperController.instance();
+
+        // First call should log the message.
+        ResourceSession first = ctrl.ensureReady();
+        assertThat(first).isNotNull();
+        assertThat(first.sessionId()).isNotNull();
+        assertThat(ctrl.disabledLoggedForTesting()).isTrue();
+
+        // Second call should return the same session and NOT re-log.
+        ResourceSession second = ctrl.ensureReady();
+        assertThat(second).isSameAs(first);
+        assertThat(ctrl.disabledLoggedForTesting()).isTrue();
+
+        // Third call — same.
+        ResourceSession third = ctrl.ensureReady();
+        assertThat(third).isSameAs(first);
+        assertThat(ctrl.disabledLoggedForTesting()).isTrue();
+    }
+
     private static void resetSingleton() throws Exception {
         Field field = ReaperController.class.getDeclaredField("instance");
         field.setAccessible(true);

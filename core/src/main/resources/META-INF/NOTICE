@@ -68,7 +68,6 @@ components. Their original packages are not present in the published artifact.
   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
   SOFTWARE.
-
 - JNA (Java Native Access)
   - Coordinates: net.java.dev.jna:jna
   - Website: https://github.com/java-native-access/jna
