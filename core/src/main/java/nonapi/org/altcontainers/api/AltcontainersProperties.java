@@ -27,23 +27,16 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
-import java.util.function.Function;
-import org.altcontainers.api.Altcontainers;
-import org.altcontainers.api.AltcontainersConfiguration;
 import org.altcontainers.api.ContainerException;
 import org.altcontainers.api.ContainerSpec;
 
 /**
  * Resolves Altcontainers configuration from properties files, environment
- * variables, system properties, programmatic configuration, and hardcoded
- * defaults.
+ * variables, system properties, and hardcoded defaults.
  *
  * <p>Resolution precedence for each value (first wins):
  *
  * <ol>
- *   <li>Programmatic configuration set via
- *       {@link Altcontainers#configure(java.util.function.Consumer)}, but only
- *       for properties that were <em>explicitly set</em> in the builder.</li>
  *   <li>System property ({@code -D} flag).</li>
  *   <li>Environment variable, derived from the property key by uppercasing and
  *       replacing {@code .} with {@code _}, prefixed with {@code ALTCONTAINERS_}
@@ -59,8 +52,7 @@ import org.altcontainers.api.ContainerSpec;
  * <p>The properties files are loaded and every known-key value is validated
  * <em>eagerly</em> the first time {@link #instance()} is referenced, so
  * malformed files or invalid values fail fast with a {@link ContainerException}
- * rather than surfacing mid-operation. Per-key selection remains lazy: each
- * accessor rechecks the programmatic configuration at call time.
+ * rather than surfacing mid-operation.
  *
  * <p>Instances are immutable and thread-safe after construction.
  */
@@ -159,6 +151,17 @@ public final class AltcontainersProperties {
     }
 
     /**
+     * Resets the singleton instance. Intended for testing only.
+     *
+     * <p>After calling this method, the next call to {@link #instance()}
+     * will re-read classpath resources, user-home files, environment
+     * variables, and system properties.
+     */
+    public static void reset() {
+        Holder.INSTANCE = create();
+    }
+
+    /**
      * Constructs an instance from explicit sources for testing.
      *
      * @param classpath the classpath properties (may be empty)
@@ -176,7 +179,7 @@ public final class AltcontainersProperties {
      * @return {@code true} if the reaper is disabled
      */
     public boolean reaperDisabled() {
-        return resolvedBoolean(REAPER_DISABLED, AltcontainersConfiguration::reaperDisabled);
+        return (Boolean) resolved.get(REAPER_DISABLED);
     }
 
     /**
@@ -185,7 +188,7 @@ public final class AltcontainersProperties {
      * @return the connection timeout
      */
     public Duration reaperConnectionTimeout() {
-        return resolvedDuration(REAPER_CONNECTION_TIMEOUT_MS, AltcontainersConfiguration::reaperConnectionTimeout);
+        return (Duration) resolved.get(REAPER_CONNECTION_TIMEOUT_MS);
     }
 
     /**
@@ -195,7 +198,7 @@ public final class AltcontainersProperties {
      * @return the reaper startup timeout
      */
     public Duration reaperStartupTimeout() {
-        return resolvedDuration(REAPER_STARTUP_TIMEOUT_MS, AltcontainersConfiguration::reaperStartupTimeout);
+        return (Duration) resolved.get(REAPER_STARTUP_TIMEOUT_MS);
     }
 
     /**
@@ -204,7 +207,7 @@ public final class AltcontainersProperties {
      * @return the reaper stop timeout
      */
     public Duration reaperStopTimeout() {
-        return resolvedDuration(REAPER_STOP_TIMEOUT_MS, AltcontainersConfiguration::reaperStopTimeout);
+        return (Duration) resolved.get(REAPER_STOP_TIMEOUT_MS);
     }
 
     /**
@@ -213,7 +216,7 @@ public final class AltcontainersProperties {
      * @return the default container startup timeout
      */
     public Duration containerStartupTimeout() {
-        return resolvedDuration(CONTAINER_STARTUP_TIMEOUT_MS, AltcontainersConfiguration::containerStartupTimeout);
+        return (Duration) resolved.get(CONTAINER_STARTUP_TIMEOUT_MS);
     }
 
     /**
@@ -222,8 +225,7 @@ public final class AltcontainersProperties {
      * @return the initial readiness poll interval
      */
     public Duration containerReadinessPollInitial() {
-        return resolvedDuration(
-                CONTAINER_READINESS_POLL_INITIAL_MS, AltcontainersConfiguration::containerReadinessPollInitial);
+        return (Duration) resolved.get(CONTAINER_READINESS_POLL_INITIAL_MS);
     }
 
     /**
@@ -232,7 +234,7 @@ public final class AltcontainersProperties {
      * @return the maximum readiness poll interval
      */
     public Duration containerReadinessPollMax() {
-        return resolvedDuration(CONTAINER_READINESS_POLL_MAX_MS, AltcontainersConfiguration::containerReadinessPollMax);
+        return (Duration) resolved.get(CONTAINER_READINESS_POLL_MAX_MS);
     }
 
     /**
@@ -241,9 +243,7 @@ public final class AltcontainersProperties {
      * @return the startup retry backoff multiplier
      */
     public Duration containerStartupRetryBackoffMultiplier() {
-        return resolvedDuration(
-                CONTAINER_STARTUP_RETRY_BACKOFF_MULTIPLIER_MS,
-                AltcontainersConfiguration::containerStartupRetryBackoffMultiplier);
+        return (Duration) resolved.get(CONTAINER_STARTUP_RETRY_BACKOFF_MULTIPLIER_MS);
     }
 
     /**
@@ -252,8 +252,7 @@ public final class AltcontainersProperties {
      * @return the startup retry backoff maximum
      */
     public Duration containerStartupRetryBackoffMax() {
-        return resolvedDuration(
-                CONTAINER_STARTUP_RETRY_BACKOFF_MAX_MS, AltcontainersConfiguration::containerStartupRetryBackoffMax);
+        return (Duration) resolved.get(CONTAINER_STARTUP_RETRY_BACKOFF_MAX_MS);
     }
 
     /**
@@ -262,7 +261,7 @@ public final class AltcontainersProperties {
      * @return the port probe timeout
      */
     public Duration portProbeTimeout() {
-        return resolvedDuration(PORT_PROBE_TIMEOUT_MS, AltcontainersConfiguration::portProbeTimeout);
+        return (Duration) resolved.get(PORT_PROBE_TIMEOUT_MS);
     }
 
     /**
@@ -271,7 +270,7 @@ public final class AltcontainersProperties {
      * @return the HTTP probe timeout
      */
     public Duration httpProbeTimeout() {
-        return resolvedDuration(HTTP_PROBE_TIMEOUT_MS, AltcontainersConfiguration::httpProbeTimeout);
+        return (Duration) resolved.get(HTTP_PROBE_TIMEOUT_MS);
     }
 
     /**
@@ -280,9 +279,7 @@ public final class AltcontainersProperties {
      * @return the put-archive pipe buffer size in bytes
      */
     public int containerPutArchivePipeBufferBytes() {
-        return resolvedInt(
-                CONTAINER_PUT_ARCHIVE_PIPE_BUFFER_BYTES,
-                AltcontainersConfiguration::containerPutArchivePipeBufferBytes);
+        return (Integer) resolved.get(CONTAINER_PUT_ARCHIVE_PIPE_BUFFER_BYTES);
     }
 
     /**
@@ -292,7 +289,7 @@ public final class AltcontainersProperties {
      * @return the network parallelism
      */
     public int networksParallelism() {
-        return resolvedInt(NETWORKS_PARALLELISM, AltcontainersConfiguration::networksParallelism);
+        return (Integer) resolved.get(NETWORKS_PARALLELISM);
     }
 
     /**
@@ -301,39 +298,7 @@ public final class AltcontainersProperties {
      * @return the Docker host URI, or empty string
      */
     public String dockerHost() {
-        return resolvedString(DOCKER_HOST, AltcontainersConfiguration::dockerHost);
-    }
-
-    private Duration resolvedDuration(String key, Function<AltcontainersConfiguration, Duration> programmatic) {
-        AltcontainersConfiguration config = Altcontainers.configuration();
-        if (config != null && Altcontainers.isExplicitlySet(key)) {
-            return programmatic.apply(config);
-        }
-        return (Duration) resolved.get(key);
-    }
-
-    private int resolvedInt(String key, Function<AltcontainersConfiguration, Integer> programmatic) {
-        AltcontainersConfiguration config = Altcontainers.configuration();
-        if (config != null && Altcontainers.isExplicitlySet(key)) {
-            return programmatic.apply(config);
-        }
-        return (Integer) resolved.get(key);
-    }
-
-    private boolean resolvedBoolean(String key, Function<AltcontainersConfiguration, Boolean> programmatic) {
-        AltcontainersConfiguration config = Altcontainers.configuration();
-        if (config != null && Altcontainers.isExplicitlySet(key)) {
-            return programmatic.apply(config);
-        }
-        return (Boolean) resolved.get(key);
-    }
-
-    private String resolvedString(String key, Function<AltcontainersConfiguration, String> programmatic) {
-        AltcontainersConfiguration config = Altcontainers.configuration();
-        if (config != null && Altcontainers.isExplicitlySet(key)) {
-            return programmatic.apply(config);
-        }
-        return (String) resolved.get(key);
+        return (String) resolved.get(DOCKER_HOST);
     }
 
     private static String resolveRaw(KeyDef def, Properties classpath, Properties userHome, Map<String, String> env) {
@@ -471,7 +436,7 @@ public final class AltcontainersProperties {
     }
 
     private static final class Holder {
-        static final AltcontainersProperties INSTANCE = create();
+        static volatile AltcontainersProperties INSTANCE = create();
 
         private Holder() {
             // Intentionally empty

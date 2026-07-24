@@ -13,7 +13,7 @@ Configuration values are resolved from multiple sources. For each value, the fir
 
 | Priority | Source | Description |
 |---|---|---|
-| 1 (highest) | Programmatic | `Altcontainers.configure(builder -> { ... })` |
+| 1 (highest) | System property | `-D` JVM flags |
 | 2 | Environment variable | `ALTCONTAINERS_*` prefixed, derived from property key |
 | 3 | User properties file | `~/.altcontainers.properties` |
 | 4 | Classpath properties | Bundled `altcontainers.properties` in the JAR |
@@ -47,27 +47,6 @@ altcontainers.container.startup.timeout.ms=120000
 altcontainers.wait.http.probe.timeout.ms=5000
 ```
 
-### Programmatic configuration
-
-Set configuration before creating any containers or networks:
-
-```java
-import org.altcontainers.api.Altcontainers;
-import java.time.Duration;
-
-Altcontainers.configure(builder -> builder
-    .reaperDisabled(false)
-    .containerStartupTimeout(Duration.ofSeconds(120))
-    .httpProbeTimeout(Duration.ofSeconds(5))
-);
-```
-
-Pass `null` to clear programmatic configuration and fall back to environment variables and properties files:
-
-```java
-Altcontainers.configure(null);
-```
-
 ---
 
 ## All configuration keys
@@ -94,21 +73,16 @@ The reaper is a separate per-session process that cleans up Docker resources whe
 
 | Property Key | Type | Default | Configuration Methods | Purpose |
 |---|---|---|---|---|
-| `altcontainers.reaper.disabled` | boolean | `false` | Programmatic, Environment, Properties file | Disable the reaper process entirely |
-| `altcontainers.reaper.connection.timeout.ms` | Duration (ms) | `10000` | Programmatic, Environment, Properties file | TCP connection/handshake timeout between core and reaper |
-| `altcontainers.reaper.startup.timeout.ms` | Duration (ms) | `10000` | Programmatic, Environment, Properties file | How long the core module waits for the reaper process to bind its port |
-| `altcontainers.reaper.stop.timeout.ms` | Duration (ms) | `5000` | Programmatic, Environment, Properties file | Timeout when stopping containers during cleanup |
+| `altcontainers.reaper.disabled` | boolean | `false` | System property, Environment, Properties file | Disable the reaper process entirely |
+| `altcontainers.reaper.connection.timeout.ms` | Duration (ms) | `10000` | System property, Environment, Properties file | TCP connection/handshake timeout between core and reaper |
+| `altcontainers.reaper.startup.timeout.ms` | Duration (ms) | `10000` | System property, Environment, Properties file | How long the core module waits for the reaper process to bind its port |
+| `altcontainers.reaper.stop.timeout.ms` | Duration (ms) | `5000` | System property, Environment, Properties file | Timeout when stopping containers during cleanup |
 
 #### `altcontainers.reaper.disabled`
 
 Disables the reaper process. When `true`, no reaper is launched and cleanup depends entirely on explicit `close()` calls or the JVM shutdown hook.
 
 **Values:** `true`, `false`
-
-**Programmatic:**
-```java
-Altcontainers.configure(builder -> builder.reaperDisabled(true));
-```
 
 **Properties file:**
 ```properties
@@ -126,13 +100,6 @@ Timeout for the TCP connection and session ID handshake between the core module 
 
 **Values:** Positive integer (milliseconds)
 
-**Programmatic:**
-```java
-Altcontainers.configure(builder -> builder
-    .reaperConnectionTimeout(Duration.ofSeconds(15))
-);
-```
-
 **Properties file:**
 ```properties
 altcontainers.reaper.connection.timeout.ms=15000
@@ -143,13 +110,6 @@ altcontainers.reaper.connection.timeout.ms=15000
 How long the core module waits for the reaper process to bind its server socket and write the port discovery file.
 
 **Values:** Positive integer (milliseconds)
-
-**Programmatic:**
-```java
-Altcontainers.configure(builder -> builder
-    .reaperStartupTimeout(Duration.ofSeconds(15))
-);
-```
 
 **Properties file:**
 ```properties
@@ -162,13 +122,6 @@ Timeout passed to Docker when stopping containers during cleanup. Controls how l
 
 **Values:** Positive integer (milliseconds)
 
-**Programmatic:**
-```java
-Altcontainers.configure(builder -> builder
-    .reaperStopTimeout(Duration.ofSeconds(10))
-);
-```
-
 **Properties file:**
 ```properties
 altcontainers.reaper.stop.timeout.ms=10000
@@ -180,25 +133,18 @@ altcontainers.reaper.stop.timeout.ms=10000
 
 | Property Key | Type | Default | Configuration Methods | Purpose |
 |---|---|---|---|---|
-| `altcontainers.container.startup.timeout.ms` | Duration (ms) | `60000` | Programmatic, Environment, Properties file | Default per-attempt readiness timeout |
-| `altcontainers.container.startup.readiness.poll.initial.ms` | Duration (ms) | `10` | Programmatic, Environment, Properties file | Initial readiness poll interval |
-| `altcontainers.container.startup.readiness.poll.max.ms` | Duration (ms) | `500` | Programmatic, Environment, Properties file | Maximum readiness poll interval |
-| `altcontainers.container.startup.retry.backoff.multiplier.ms` | Duration (ms) | `1000` | Programmatic, Environment, Properties file | Startup retry backoff multiplier |
-| `altcontainers.container.startup.retry.backoff.max.ms` | Duration (ms) | `5000` | Programmatic, Environment, Properties file | Startup retry backoff maximum |
-| `altcontainers.container.put.archive.pipe.buffer.bytes` | int (bytes) | `65536` | Programmatic, Environment, Properties file | Put-archive pipe buffer size for file copies |
+| `altcontainers.container.startup.timeout.ms` | Duration (ms) | `60000` | System property, Environment, Properties file | Default per-attempt readiness timeout |
+| `altcontainers.container.startup.readiness.poll.initial.ms` | Duration (ms) | `10` | System property, Environment, Properties file | Initial readiness poll interval |
+| `altcontainers.container.startup.readiness.poll.max.ms` | Duration (ms) | `500` | System property, Environment, Properties file | Maximum readiness poll interval |
+| `altcontainers.container.startup.retry.backoff.multiplier.ms` | Duration (ms) | `1000` | System property, Environment, Properties file | Startup retry backoff multiplier |
+| `altcontainers.container.startup.retry.backoff.max.ms` | Duration (ms) | `5000` | System property, Environment, Properties file | Startup retry backoff maximum |
+| `altcontainers.container.put.archive.pipe.buffer.bytes` | int (bytes) | `65536` | System property, Environment, Properties file | Put-archive pipe buffer size for file copies |
 
 #### `altcontainers.container.startup.timeout.ms`
 
 Default per-attempt readiness timeout. Can be overridden per-container via `ContainerSpec.Builder.startupTimeout()`.
 
 **Values:** Positive integer (milliseconds)
-
-**Programmatic:**
-```java
-Altcontainers.configure(builder -> builder
-    .containerStartupTimeout(Duration.ofSeconds(120))
-);
-```
 
 **Per-container override:**
 ```java
@@ -218,13 +164,6 @@ Initial interval between readiness strategy polls. The poll interval starts at t
 
 **Values:** Positive integer (milliseconds)
 
-**Programmatic:**
-```java
-Altcontainers.configure(builder -> builder
-    .containerReadinessPollInitial(Duration.ofMillis(25))
-);
-```
-
 **Properties file:**
 ```properties
 altcontainers.container.startup.readiness.poll.initial.ms=25
@@ -235,13 +174,6 @@ altcontainers.container.startup.readiness.poll.initial.ms=25
 Maximum interval between readiness strategy polls. The poll interval increases from the initial value to this maximum.
 
 **Values:** Positive integer (milliseconds)
-
-**Programmatic:**
-```java
-Altcontainers.configure(builder -> builder
-    .containerReadinessPollMax(Duration.ofMillis(1000))
-);
-```
 
 **Properties file:**
 ```properties
@@ -254,13 +186,6 @@ Multiplier for linear backoff between startup attempts. The sleep duration befor
 
 **Values:** Positive integer (milliseconds)
 
-**Programmatic:**
-```java
-Altcontainers.configure(builder -> builder
-    .containerStartupRetryBackoffMultiplier(Duration.ofMillis(2000))
-);
-```
-
 **Properties file:**
 ```properties
 altcontainers.container.startup.retry.backoff.multiplier.ms=2000
@@ -271,13 +196,6 @@ altcontainers.container.startup.retry.backoff.multiplier.ms=2000
 Maximum backoff sleep duration between startup attempts. The backoff is capped at this value regardless of the attempt number.
 
 **Values:** Positive integer (milliseconds)
-
-**Programmatic:**
-```java
-Altcontainers.configure(builder -> builder
-    .containerStartupRetryBackoffMax(Duration.ofSeconds(10))
-);
-```
 
 **Properties file:**
 ```properties
@@ -290,13 +208,6 @@ Buffer size in bytes for the pipe used when copying files into containers via `C
 
 **Values:** Positive integer (bytes)
 
-**Programmatic:**
-```java
-Altcontainers.configure(builder -> builder
-    .containerPutArchivePipeBufferBytes(131072)
-);
-```
-
 **Properties file:**
 ```properties
 altcontainers.container.put.archive.pipe.buffer.bytes=131072
@@ -308,21 +219,14 @@ altcontainers.container.put.archive.pipe.buffer.bytes=131072
 
 | Property Key | Type | Default | Configuration Methods | Purpose |
 |---|---|---|---|---|
-| `altcontainers.wait.port.probe.timeout.ms` | Duration (ms) | `500` | Programmatic, Environment, Properties file | TCP port probe socket connect timeout |
-| `altcontainers.wait.http.probe.timeout.ms` | Duration (ms) | `2000` | Programmatic, Environment, Properties file | HTTP probe request timeout |
+| `altcontainers.wait.port.probe.timeout.ms` | Duration (ms) | `500` | System property, Environment, Properties file | TCP port probe socket connect timeout |
+| `altcontainers.wait.http.probe.timeout.ms` | Duration (ms) | `2000` | System property, Environment, Properties file | HTTP probe request timeout |
 
 #### `altcontainers.wait.port.probe.timeout.ms`
 
 Socket connect timeout for `PortWaitStrategy` TCP probes. Controls how long each probe waits for the port to accept a connection.
 
 **Values:** Positive integer (milliseconds)
-
-**Programmatic:**
-```java
-Altcontainers.configure(builder -> builder
-    .portProbeTimeout(Duration.ofSeconds(1))
-);
-```
 
 **Properties file:**
 ```properties
@@ -334,13 +238,6 @@ altcontainers.wait.port.probe.timeout.ms=1000
 Request timeout for `HttpWaitStrategy` HTTP/HTTPS probes. Controls how long each probe waits for an HTTP response.
 
 **Values:** Positive integer (milliseconds)
-
-**Programmatic:**
-```java
-Altcontainers.configure(builder -> builder
-    .httpProbeTimeout(Duration.ofSeconds(5))
-);
-```
 
 **Properties file:**
 ```properties
@@ -414,7 +311,6 @@ The bundled `altcontainers.properties` file contains all defaults:
 ```properties
 # Altcontainers default configuration (classpath). Lowest precedence.
 # Override per-user in ~/.altcontainers.properties or via ALTCONTAINERS_* env vars.
-# Programmatic Altcontainers.configure() takes highest precedence.
 # All time-oriented values are in milliseconds.
 
 # --- Reaper (resource-cleanup watchdog) ---
@@ -442,11 +338,10 @@ altcontainers.wait.http.probe.timeout.ms=2000
 
 | Method | Scope | When to use |
 |---|---|---|
-| **Programmatic** | Application-wide | Set once at application startup; highest precedence |
+| **System property** | Per-JVM | `-D` flags; Docker host, network parallelism |
 | **Environment variable** | Process-wide | CI/CD pipelines, Docker environments, shell scripts |
 | **User properties file** | Per-user | Developer workstation defaults (`~/.altcontainers.properties`) |
 | **Classpath properties** | Per-project | Project-specific defaults bundled in the JAR |
-| **System property** | Per-JVM | Docker host, network parallelism, reaper-internal settings |
 
 ---
 
@@ -467,4 +362,4 @@ Malformed properties files or invalid values throw `ContainerException` immediat
 
 - [Retry and Backoff](retry-and-backoff)
 - [Troubleshooting](troubleshooting)
-- [API: AltcontainersConfiguration](../api/intro)
+- [API Overview](../api/intro)

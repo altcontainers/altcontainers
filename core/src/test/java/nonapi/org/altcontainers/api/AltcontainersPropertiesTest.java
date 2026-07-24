@@ -22,9 +22,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Properties;
-import java.util.function.Consumer;
-import org.altcontainers.api.Altcontainers;
-import org.altcontainers.api.AltcontainersConfiguration;
 import org.altcontainers.api.ContainerException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,14 +36,14 @@ class AltcontainersPropertiesTest {
 
     @BeforeEach
     void setUp() {
-        clearProgrammatic();
         clearSystemPropertyKeys();
+        AltcontainersProperties.reset();
     }
 
     @AfterEach
     void tearDown() {
-        clearProgrammatic();
         clearSystemPropertyKeys();
+        AltcontainersProperties.reset();
     }
 
     @Test
@@ -106,24 +103,6 @@ class AltcontainersPropertiesTest {
     }
 
     @Test
-    void shouldLetProgrammaticOverrideEverything() {
-        Properties userHome = props(AltcontainersProperties.REAPER_CONNECTION_TIMEOUT_MS, "20000");
-        Map<String, String> env = Map.of("ALTCONTAINERS_REAPER_CONNECTION_TIMEOUT_MS", "30000");
-        configure(c -> c.reaperConnectionTimeout(Duration.ofSeconds(99)));
-        AltcontainersProperties p = AltcontainersProperties.forTesting(new Properties(), userHome, env);
-        assertThat(p.reaperConnectionTimeout()).isEqualTo(Duration.ofSeconds(99));
-    }
-
-    @Test
-    void shouldOnlyOverrideExplicitlySetProperties() {
-        Map<String, String> env = Map.of("ALTCONTAINERS_REAPER_CONNECTION_TIMEOUT_MS", "60000");
-        configure(c -> c.reaperDisabled(true));
-        AltcontainersProperties p = AltcontainersProperties.forTesting(new Properties(), new Properties(), env);
-        assertThat(p.reaperDisabled()).isTrue();
-        assertThat(p.reaperConnectionTimeout()).isEqualTo(Duration.ofMillis(60000));
-    }
-
-    @Test
     void shouldLetUserHomeOverrideBytesDefault() {
         Properties userHome = props(AltcontainersProperties.CONTAINER_PUT_ARCHIVE_PIPE_BUFFER_BYTES, "131072");
         AltcontainersProperties p = AltcontainersProperties.forTesting(new Properties(), userHome, Map.of());
@@ -135,15 +114,6 @@ class AltcontainersPropertiesTest {
         Map<String, String> env = Map.of("ALTCONTAINERS_CONTAINER_PUT_ARCHIVE_PIPE_BUFFER_BYTES", "262144");
         AltcontainersProperties p = AltcontainersProperties.forTesting(new Properties(), new Properties(), env);
         assertThat(p.containerPutArchivePipeBufferBytes()).isEqualTo(262144);
-    }
-
-    @Test
-    void shouldLetProgrammaticOverrideBytes() {
-        Properties userHome = props(AltcontainersProperties.CONTAINER_PUT_ARCHIVE_PIPE_BUFFER_BYTES, "131072");
-        Map<String, String> env = Map.of("ALTCONTAINERS_CONTAINER_PUT_ARCHIVE_PIPE_BUFFER_BYTES", "262144");
-        configure(c -> c.containerPutArchivePipeBufferBytes(9999));
-        AltcontainersProperties p = AltcontainersProperties.forTesting(new Properties(), userHome, env);
-        assertThat(p.containerPutArchivePipeBufferBytes()).isEqualTo(9999);
     }
 
     @Test
@@ -285,36 +255,12 @@ class AltcontainersPropertiesTest {
         assertThat(p.dockerHost()).isEqualTo("tcp://10.0.0.1:2375");
     }
 
-    @Test
-    void shouldExplicitProgrammaticWinOverEnv() {
-        Map<String, String> env = Map.of("ALTCONTAINERS_REAPER_CONNECTION_TIMEOUT_MS", "60000");
-        configure(c -> c.reaperConnectionTimeout(Duration.ofSeconds(99)));
-        AltcontainersProperties p = AltcontainersProperties.forTesting(new Properties(), new Properties(), env);
-        assertThat(p.reaperConnectionTimeout()).isEqualTo(Duration.ofSeconds(99));
-    }
-
-    @Test
-    void shouldExplicitProgrammaticWinOverSystemProperty() {
-        System.setProperty("altcontainers.reaper.connection.timeout.ms", "7777");
-        configure(c -> c.reaperConnectionTimeout(Duration.ofSeconds(42)));
-        AltcontainersProperties p = AltcontainersProperties.forTesting(new Properties(), new Properties(), Map.of());
-        assertThat(p.reaperConnectionTimeout()).isEqualTo(Duration.ofSeconds(42));
-    }
-
     private static Properties props(String... keyValuePairs) {
         Properties properties = new Properties();
         for (int i = 0; i + 1 < keyValuePairs.length; i += 2) {
             properties.setProperty(keyValuePairs[i], keyValuePairs[i + 1]);
         }
         return properties;
-    }
-
-    private static void configure(Consumer<AltcontainersConfiguration.Builder> configurer) {
-        Altcontainers.configure(configurer);
-    }
-
-    private static void clearProgrammatic() {
-        Altcontainers.configure(null);
     }
 
     private static void clearSystemPropertyKeys() {

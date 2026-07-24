@@ -26,9 +26,9 @@ import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyStore;
-import java.time.Duration;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
+import nonapi.org.altcontainers.api.AltcontainersProperties;
 import nonapi.org.altcontainers.api.ConcreteContainer;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -88,12 +88,14 @@ class HttpWaitStrategyTest {
 
     @BeforeEach
     void setUp() {
-        Altcontainers.configure(null);
+        System.clearProperty("altcontainers.wait.http.probe.timeout.ms");
+        AltcontainersProperties.reset();
     }
 
     @AfterEach
     void tearDown() {
-        Altcontainers.configure(null);
+        System.clearProperty("altcontainers.wait.http.probe.timeout.ms");
+        AltcontainersProperties.reset();
     }
 
     @Test
@@ -143,8 +145,9 @@ class HttpWaitStrategyTest {
     }
 
     @Test
-    void shouldHonorProgrammaticHttpProbeTimeout() throws Exception {
-        Altcontainers.configure(c -> c.httpProbeTimeout(Duration.ofMillis(500)));
+    void shouldHonorSystemPropertyHttpProbeTimeout() throws Exception {
+        System.setProperty("altcontainers.wait.http.probe.timeout.ms", "500");
+        AltcontainersProperties.reset();
 
         HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
         server.createContext("/health", exchange -> {

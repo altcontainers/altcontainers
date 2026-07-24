@@ -28,8 +28,6 @@ The Altcontainers public API lives in the `org.altcontainers.api` package.
 | `StartupContext` | Immutable context passed to startup-phase lifecycle callbacks |
 | `StartupFailure` | Immutable context passed to failed-startup-attempt lifecycle callbacks |
 | `StartupCheckStrategy` | Functional interface for startup-check strategies |
-| `Altcontainers` | Entry point for programmatic configuration |
-| `AltcontainersConfiguration` | Programmatic runtime configuration record |
 
 ## Design patterns
 

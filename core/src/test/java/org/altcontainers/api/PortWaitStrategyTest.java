@@ -19,7 +19,7 @@ package org.altcontainers.api;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.net.ServerSocket;
-import java.time.Duration;
+import nonapi.org.altcontainers.api.AltcontainersProperties;
 import nonapi.org.altcontainers.api.ConcreteContainer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,12 +32,14 @@ class PortWaitStrategyTest {
 
     @BeforeEach
     void setUp() {
-        Altcontainers.configure(null);
+        System.clearProperty("altcontainers.wait.port.probe.timeout.ms");
+        AltcontainersProperties.reset();
     }
 
     @AfterEach
     void tearDown() {
-        Altcontainers.configure(null);
+        System.clearProperty("altcontainers.wait.port.probe.timeout.ms");
+        AltcontainersProperties.reset();
     }
 
     @Test
@@ -58,8 +60,9 @@ class PortWaitStrategyTest {
     }
 
     @Test
-    void shouldHonorProgrammaticPortProbeTimeout() {
-        Altcontainers.configure(c -> c.portProbeTimeout(Duration.ofMillis(100)));
+    void shouldHonorSystemPropertyPortProbeTimeout() {
+        System.setProperty("altcontainers.wait.port.probe.timeout.ms", "100");
+        AltcontainersProperties.reset();
 
         PortWaitStrategy strategy = PortWaitStrategy.builder().port(8080).build();
         Container container = new ConcreteContainer(

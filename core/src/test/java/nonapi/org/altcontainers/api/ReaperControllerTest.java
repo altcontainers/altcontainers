@@ -26,7 +26,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import org.altcontainers.api.Altcontainers;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,19 +37,22 @@ class ReaperControllerTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        Altcontainers.configure(null);
+        System.clearProperty("altcontainers.reaper.disabled");
+        AltcontainersProperties.reset();
         resetSingleton();
     }
 
     @AfterEach
     void tearDown() throws Exception {
-        Altcontainers.configure(null);
+        System.clearProperty("altcontainers.reaper.disabled");
+        AltcontainersProperties.reset();
         resetSingleton();
     }
 
     @Test
     void ensureReadyShouldNotDeadlockUnderConcurrentAccess() throws Exception {
-        Altcontainers.configure(c -> c.reaperDisabled(true));
+        System.setProperty("altcontainers.reaper.disabled", "true");
+        AltcontainersProperties.reset();
 
         int threadCount = 8;
         ExecutorService executor = Executors.newFixedThreadPool(threadCount);
@@ -82,7 +84,8 @@ class ReaperControllerTest {
 
     @Test
     void ensureReadyShouldLogDisabledMessageOnce() throws Exception {
-        Altcontainers.configure(c -> c.reaperDisabled(true));
+        System.setProperty("altcontainers.reaper.disabled", "true");
+        AltcontainersProperties.reset();
 
         ReaperController ctrl = ReaperController.instance();
 
