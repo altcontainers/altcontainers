@@ -194,12 +194,23 @@ public final class ContainerManager {
      * @param image the image name
      */
     private void pullImage(String image) {
+        long pullTimeoutMs =
+                AltcontainersProperties.instance().imagePullTimeout().toMillis();
         while (true) {
             CompletableFuture<Void> newFuture = new CompletableFuture<>();
             CompletableFuture<Void> existing = inflightPulls.putIfAbsent(image, newFuture);
             if (existing == null) {
                 try {
-                    dockerClient().pullImageCmd(image).start().awaitCompletion();
+                    boolean completed = dockerClient()
+                            .pullImageCmd(image)
+                            .start()
+                            .awaitCompletion(pullTimeoutMs, TimeUnit.MILLISECONDS);
+                    if (!completed) {
+                        String message = "Image pull timed out after " + pullTimeoutMs + " ms: " + image;
+                        newFuture.completeExceptionally(new ContainerException(message));
+                        inflightPulls.remove(image);
+                        throw new ContainerException(message);
+                    }
                     newFuture.complete(null);
                     localImageCache.add(image);
                     inflightPulls.remove(image, newFuture);
@@ -218,8 +229,10 @@ public final class ContainerManager {
                 }
             }
             try {
-                existing.get();
+                existing.get(pullTimeoutMs + 10_000, TimeUnit.MILLISECONDS);
                 return;
+            } catch (TimeoutException e) {
+                throw new ContainerException("Timed out waiting for in-flight image pull: " + image, e);
             } catch (ExecutionException e) {
                 Throwable cause = e.getCause();
                 if (cause instanceof ContainerException ce) {

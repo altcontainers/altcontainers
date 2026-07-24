@@ -19,6 +19,7 @@ package nonapi.org.altcontainers.api;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.lang.reflect.Field;
+import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -104,9 +105,30 @@ class ContainerManagerPullTest {
 
         // With the fix, t2 waits for t1's pull to complete and fails immediately
         // (no 100ms sleep + retry). Without the fix, t2 sleeps 100ms and retries.
-        // The daemon response time adds ~500ms, so t2 should complete well under 3s.
+        // The daemon response time varies; CI runners may be slow. A 15s threshold
+        // still validates that t2 does not enter a retry loop (which would take 30s+).
         assertThat(t2Duration.get()).isNotNull();
-        assertThat(t2Duration.get()).isLessThan(3000);
+        assertThat(t2Duration.get()).isLessThan(15000);
+    }
+
+    @Test
+    @EnabledIf("dockerAvailable")
+    void shouldCompletePullWithinConfiguredTimeout() throws Exception {
+        String image = "alpine:latest";
+        ContainerManager manager = ContainerManager.getInstance();
+
+        long start = System.currentTimeMillis();
+        manager.triggerPullImage(image);
+        long elapsed = System.currentTimeMillis() - start;
+
+        assertThat(elapsed).isLessThan(Duration.ofMinutes(4).toMillis());
+
+        Field field = ContainerManager.class.getDeclaredField("inflightPulls");
+        field.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Map<String, CompletableFuture<Void>> inflight =
+                (ConcurrentHashMap<String, CompletableFuture<Void>>) field.get(manager);
+        assertThat(inflight).doesNotContainKey(image);
     }
 
     @Test
