@@ -66,11 +66,13 @@ public interface Container extends AutoCloseable {
     String image();
 
     /**
-     * Returns whether the container is running.
-     * Uses cached metadata when available, falling back to a
-     * live daemon query when the cache is absent or negative.
+     * Returns whether the container exists and is in the running state.
+     * Performs a live Docker daemon query on every call.
      *
-     * @return true if running
+     * <p>Daemon communication errors (including the container no longer
+     * existing) are reported as {@code false}.
+     *
+     * @return {@code true} if the container is currently running
      */
     boolean isRunning();
 

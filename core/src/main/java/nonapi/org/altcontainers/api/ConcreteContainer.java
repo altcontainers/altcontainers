@@ -63,9 +63,6 @@ public class ConcreteContainer implements Container {
 
     @Override
     public boolean isRunning() {
-        if (metadata != null && metadata.running()) {
-            return true;
-        }
         return ContainerManager.getInstance().isContainerRunning(id);
     }
 

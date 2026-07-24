@@ -25,8 +25,9 @@ import nonapi.org.altcontainers.api.ContainerMetadata;
 import org.junit.jupiter.api.Test;
 
 /**
- * Verifies Container metadata fallback behavior: positive cached values are
- * trusted; negative/null values fall through to live daemon queries.
+ * Verifies Container behavior: {@code isRunning()} performs a live daemon
+ * query on every call; {@code host()} uses cached metadata with daemon
+ * fallback; {@code hostPort()} uses cached metadata only.
  */
 class ContainerTest {
 
@@ -49,15 +50,18 @@ class ContainerTest {
     }
 
     @Test
-    void shouldUseCachedMetadataWhenRunning() {
-        // Positive cached value: metadata.running=true is trusted.
+    void shouldQueryDaemonEvenWhenMetadataSaysRunning() {
+        // isRunning() always performs a live daemon query — cached
+        // metadata.running=true is no longer trusted. With no daemon
+        // available, ContainerManager.isContainerRunning() returns false.
         Container container = new ConcreteContainer(
                 "test-id",
                 "test-image",
                 ContainerSpec.builder("test-image").build(),
                 new ContainerMetadata("myhost", true, Map.of()));
 
-        assertThat(container.isRunning()).isTrue();
+        assertThat(container.isRunning()).isFalse();
+        // host() caching is unchanged — still returns cached value.
         assertThat(container.host()).isEqualTo("myhost");
     }
 
