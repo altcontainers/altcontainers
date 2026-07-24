@@ -17,9 +17,14 @@
 package nonapi.org.altcontainers.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.github.dockerjava.api.model.ExposedPort;
+import com.github.dockerjava.api.model.Ports;
 import java.io.IOException;
 import java.nio.channels.ClosedByInterruptException;
+import java.util.Map;
+import org.altcontainers.api.ContainerException;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -77,5 +82,38 @@ class ContainerManagerTest {
         ContainerManager.LogHandle handle = new ContainerManager.LogHandle();
         assertThat(ContainerManager.shouldSuppressLogError(handle, new IOException("genuine stream error")))
                 .isFalse();
+    }
+
+    @Test
+    void parsePortBindingsShouldReturnEmptyMapWhenPortsIsNull() {
+        assertThat(ContainerManager.parsePortBindings(null)).isEmpty();
+    }
+
+    @Test
+    void parsePortBindingsShouldReturnEmptyMapWhenPortsHasNoBindings() {
+        Ports ports = new Ports();
+        assertThat(ContainerManager.parsePortBindings(ports)).isEmpty();
+    }
+
+    @Test
+    void parsePortBindingsShouldReturnExpectedBindings() {
+        Ports ports = new Ports();
+        ports.bind(ExposedPort.tcp(80), Ports.Binding.bindPort(8080));
+        ports.bind(ExposedPort.tcp(443), Ports.Binding.bindPort(8443));
+
+        Map<Integer, Integer> result = ContainerManager.parsePortBindings(ports);
+        assertThat(result).containsEntry(80, 8080).containsEntry(443, 8443).hasSize(2);
+    }
+
+    @Test
+    void parsePortBindingsShouldThrowForNonNumericHostPortSpec() {
+        Ports ports = new Ports();
+        Ports.Binding badBinding = new Ports.Binding("0.0.0.0", "not-a-number");
+        ports.bind(ExposedPort.tcp(80), badBinding);
+
+        assertThatThrownBy(() -> ContainerManager.parsePortBindings(ports))
+                .isInstanceOf(ContainerException.class)
+                .hasMessageContaining("not-a-number")
+                .hasMessageContaining("80");
     }
 }
