@@ -23,6 +23,7 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Consumer;
+import nonapi.org.altcontainers.api.AltcontainersProperties;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,12 +35,14 @@ class GenericContainerSpecTest {
 
     @BeforeEach
     void setUp() {
-        Altcontainers.configure(null);
+        System.clearProperty("altcontainers.container.startup.timeout.ms");
+        AltcontainersProperties.reset();
     }
 
     @AfterEach
     void tearDown() {
-        Altcontainers.configure(null);
+        System.clearProperty("altcontainers.container.startup.timeout.ms");
+        AltcontainersProperties.reset();
     }
 
     @Test
@@ -93,14 +96,16 @@ class GenericContainerSpecTest {
 
     @Test
     void shouldUseConfiguredDefaultStartupTimeout() {
-        Altcontainers.configure(c -> c.containerStartupTimeout(Duration.ofSeconds(120)));
+        System.setProperty("altcontainers.container.startup.timeout.ms", "120000");
+        AltcontainersProperties.reset();
         ContainerSpec spec = ContainerSpec.builder("alpine:latest").build();
         assertThat(spec.startupTimeout()).isEqualTo(Duration.ofSeconds(120));
     }
 
     @Test
     void shouldLetExplicitStartupTimeoutOverrideConfigDefault() {
-        Altcontainers.configure(c -> c.containerStartupTimeout(Duration.ofSeconds(120)));
+        System.setProperty("altcontainers.container.startup.timeout.ms", "120000");
+        AltcontainersProperties.reset();
         ContainerSpec spec = ContainerSpec.builder("alpine:latest")
                 .startupTimeout(Duration.ofMinutes(2))
                 .build();

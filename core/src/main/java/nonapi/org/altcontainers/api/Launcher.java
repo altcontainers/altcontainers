@@ -38,7 +38,7 @@ import org.slf4j.LoggerFactory;
 public final class Launcher {
 
     private static final Logger logger = LoggerFactory.getLogger(Launcher.class);
-    private static final String ALTCONTAINERS_DOCKER_HOST_PROPERTY = "altcontainers.docker.host";
+    private static final String ALTCONTAINERS_DOCKER_HOST_PROPERTY = AltcontainersProperties.DOCKER_HOST;
 
     private Launcher() {
         // Intentionally empty
