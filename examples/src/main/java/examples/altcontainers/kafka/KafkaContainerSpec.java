@@ -21,7 +21,6 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Consumer;
-import org.altcontainers.api.Container;
 import org.altcontainers.api.ContainerSpec;
 import org.altcontainers.api.GenericContainerSpec;
 import org.altcontainers.api.Network;
@@ -127,8 +126,7 @@ public final class KafkaContainerSpec extends GenericContainerSpec {
                     .startupTimeout(STARTUP_TIMEOUT)
                     .startupAttempts(STARTUP_ATTEMPTS)
                     .waitForLogMessage(".*Transition(?:ing)? from RECOVERY to RUNNING.*")
-                    .onStart(startupContext -> {
-                        Container container = startupContext.container();
+                    .prepare(container -> {
                         String host = container.host();
                         int hostPort = container.hostPort(KAFKA_PORT);
                         String script = "#!/bin/bash\n"
@@ -162,7 +160,7 @@ public final class KafkaContainerSpec extends GenericContainerSpec {
          * @return this builder
          */
         public Builder outputConsumer(Consumer<OutputFrame> consumer) {
-            delegate.onOutput(consumer);
+            delegate.outputListener(consumer);
             return this;
         }
 

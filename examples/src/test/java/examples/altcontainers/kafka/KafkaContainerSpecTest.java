@@ -29,7 +29,6 @@ import org.altcontainers.api.ContainerSpec;
 import org.altcontainers.api.LogWaitStrategy;
 import org.altcontainers.api.Network;
 import org.altcontainers.api.OutputFrame;
-import org.altcontainers.api.StartupContext;
 import org.junit.jupiter.api.Test;
 
 class KafkaContainerSpecTest {
@@ -112,7 +111,7 @@ class KafkaContainerSpecTest {
                 .network(NETWORK, "kafka")
                 .outputConsumer(consumer)
                 .build();
-        assertThat(spec.onOutputConsumers()).containsExactly(consumer);
+        assertThat(spec.outputListener()).isSameAs(consumer);
     }
 
     @Test
@@ -187,9 +186,9 @@ class KafkaContainerSpecTest {
                     }
                 };
 
-        StartupContext startupContext = new StartupContext(mockContainer, 1, spec.startupAttempts());
-        for (var consumer : spec.onStartConsumers()) {
-            consumer.accept(startupContext);
+        Consumer<Container> prepare = spec.prepare();
+        if (prepare != null) {
+            prepare.accept(mockContainer);
         }
 
         assertThat(script.get())

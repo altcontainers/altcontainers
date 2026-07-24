@@ -105,7 +105,7 @@ public final class MongoDBContainerSpec extends GenericContainerSpec {
          * @return this builder
          */
         public Builder outputConsumer(Consumer<OutputFrame> consumer) {
-            delegate.onOutput(consumer);
+            delegate.outputListener(consumer);
             return this;
         }
 

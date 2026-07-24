@@ -53,7 +53,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import org.altcontainers.api.BindMount;
@@ -61,8 +61,6 @@ import org.altcontainers.api.Container;
 import org.altcontainers.api.ContainerException;
 import org.altcontainers.api.ContainerSpec;
 import org.altcontainers.api.OutputFrame;
-import org.altcontainers.api.StartupContext;
-import org.altcontainers.api.StartupFailure;
 import org.altcontainers.api.WaitStrategy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -333,55 +331,23 @@ public final class ContainerManager {
                 LogHandle logHandle = attachLogs(containerId, spec, waitConditions);
 
                 spec.startupCheckStrategy().waitUntilStartupSuccessful(container, spec.startupTimeout());
-                StartupContext ctx = new StartupContext(container, attempt, spec.startupAttempts());
-                fireOnStart(spec, ctx);
-                waitUntilReady(container, waitConditions, spec.startupTimeout());
-                fireOnReady(spec, ctx);
-                if (logHandle != null && logHandle.hasCallbackFailure()) {
-                    RuntimeException callbackFailure = logHandle.callbackFailure();
-                    closeLogHandle(containerId);
-                    StartupFailure sf = new StartupFailure(container, attempt, spec.startupAttempts(), callbackFailure);
-                    try {
-                        fireOnStartFailure(spec, sf, null);
-                    } catch (ContainerException callbackEx) {
-                        destroyAttempt(container);
-                        throw callbackEx;
-                    }
-                    destroyAttempt(container);
-                    throw new ContainerException("Container log callback failed", callbackFailure);
+                Consumer<Container> prepare = spec.prepare();
+                if (prepare != null) {
+                    prepare.accept(container);
                 }
-                if (spec.onOutputConsumers().isEmpty()) {
+                waitUntilReady(container, waitConditions, spec.startupTimeout());
+                if (spec.outputListener() == null) {
                     closeLogHandle(containerId);
                 }
 
                 return container;
             } catch (ContainerException e) {
                 lastFailure = e;
-                if (container != null) {
-                    try {
-                        fireOnStartFailure(spec, new StartupFailure(container, attempt, spec.startupAttempts(), e), e);
-                    } catch (ContainerException callbackEx) {
-                        // onStartFailure callback threw — destroy and abort immediately
-                        destroyAttempt(container);
-                        throw callbackEx;
-                    }
-                }
                 destroyAttempt(container, containerId);
             } catch (RuntimeException e) {
                 String message =
                         e.getMessage() != null ? e.getMessage() : e.getClass().getName();
                 lastFailure = new ContainerException("Container startup failed: " + message, e);
-                if (container != null) {
-                    try {
-                        fireOnStartFailure(
-                                spec,
-                                new StartupFailure(container, attempt, spec.startupAttempts(), lastFailure),
-                                lastFailure);
-                    } catch (ContainerException callbackEx) {
-                        destroyAttempt(container);
-                        throw callbackEx;
-                    }
-                }
                 destroyAttempt(container, containerId);
             }
             if (attempt < spec.startupAttempts()) {
@@ -535,8 +501,7 @@ public final class ContainerManager {
     }
 
     /**
-     * Destroys a container. Null-safe. Fires {@code onClose} lifecycle
-     * callbacks before stopping and removing the container.
+     * Destroys a container. Null-safe.
      *
      * @param container the container to close; may be {@code null}
      */
@@ -544,16 +509,8 @@ public final class ContainerManager {
         if (container == null) {
             return;
         }
-        List<RuntimeException> closeFailures = fireOnClose(container.spec(), container);
         closeLogHandle(container.id());
         stopAndRemoveContainer(container.id());
-        if (!closeFailures.isEmpty()) {
-            ContainerException ex = new ContainerException("Container onClose callback failed", closeFailures.get(0));
-            for (int i = 1; i < closeFailures.size(); i++) {
-                ex.addSuppressed(closeFailures.get(i));
-            }
-            throw ex;
-        }
     }
 
     /**
@@ -591,6 +548,9 @@ public final class ContainerManager {
      * @param mode the file mode
      */
     public void putArchive(String id, String containerPath, String fileName, byte[] content, int mode) {
+        if (fileName.getBytes(StandardCharsets.UTF_8).length > 100) {
+            throw new ContainerException("Tar entry name is too long: " + fileName);
+        }
         putArchive(id, containerPath, fileName, new ByteArrayInputStream(content), content.length, mode);
     }
 
@@ -604,7 +564,7 @@ public final class ContainerManager {
      * @param contentLength the content length in bytes
      * @param mode the file mode
      */
-    private void putArchive(
+    void putArchive(
             String containerId,
             String containerPath,
             String fileName,
@@ -612,6 +572,7 @@ public final class ContainerManager {
             long contentLength,
             int mode) {
         try {
+            AtomicReference<IOException> writerFailure = new AtomicReference<>();
             PipedInputStream pipedIn = new PipedInputStream(PUT_ARCHIVE_PIPE_BUFFER_BYTES);
             PipedOutputStream pipedOut = new PipedOutputStream(pipedIn);
             Thread writer = new Thread(
@@ -619,21 +580,48 @@ public final class ContainerManager {
                         try (pipedOut) {
                             writeTarStream(pipedOut, fileName, content, contentLength, mode);
                         } catch (IOException e) {
-                            // Pipe broken
+                            writerFailure.compareAndSet(null, e);
                         }
                     },
                     "altcontainers-core-tar-writer");
             writer.setDaemon(true);
             writer.start();
-            dockerClient()
-                    .copyArchiveToContainerCmd(containerId)
-                    .withTarInputStream(pipedIn)
-                    .withRemotePath(containerPath)
-                    .exec();
-        } catch (RuntimeException e) {
-            throw e instanceof ContainerException ce
-                    ? ce
-                    : new ContainerException("Failed to copy archive to container", e);
+            RuntimeException execException = null;
+            try {
+                dockerClient()
+                        .copyArchiveToContainerCmd(containerId)
+                        .withTarInputStream(pipedIn)
+                        .withRemotePath(containerPath)
+                        .exec();
+            } catch (RuntimeException e) {
+                execException = e;
+            } finally {
+                try {
+                    pipedIn.close();
+                } catch (IOException ignored) {
+                }
+                try {
+                    writer.join(5_000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new ContainerException("Interrupted waiting for tar writer thread", e);
+                }
+            }
+            IOException wf = writerFailure.get();
+            if (execException != null) {
+                if (wf != null) {
+                    execException.addSuppressed(wf);
+                }
+                throw execException instanceof ContainerException ce
+                        ? ce
+                        : new ContainerException("Failed to copy archive to container", execException);
+            }
+            if (writer.isAlive()) {
+                throw new ContainerException("Tar writer thread did not finish in time");
+            }
+            if (wf != null) {
+                throw new ContainerException("Failed to copy archive to container: " + wf.getMessage(), wf);
+            }
         } catch (IOException e) {
             throw new ContainerException("Failed to copy archive to container", e);
         }
@@ -736,21 +724,20 @@ public final class ContainerManager {
     }
 
     /**
-     * Attaches log streaming for the container, fanning out to the spec's output
-     * frame consumers and any log-observing managed wait strategies.
+     * Attaches log streaming for the container.
      *
      * @param containerId the Docker container id
      * @param spec the container spec
      * @param waitConditions the wait strategies
-     * @return the log handle, or {@code null} if no output consumers are registered
+     * @return the log handle, or {@code null} if no listener or wait log consumer
      */
     private LogHandle attachLogs(String containerId, ContainerSpec spec, List<WaitStrategy> waitConditions) {
-        List<Consumer<OutputFrame>> outputConsumers = spec.onOutputConsumers();
+        Consumer<OutputFrame> listener = spec.outputListener();
         Consumer<String> waitLogConsumer = waitLogConsumer(waitConditions);
-        if (outputConsumers.isEmpty() && waitLogConsumer == null) {
+        if (listener == null && waitLogConsumer == null) {
             return null;
         }
-        LogHandle handle = startLogStream(containerId, outputConsumers, waitLogConsumer);
+        LogHandle handle = startLogStream(containerId, listener, waitLogConsumer);
         logHandles.put(containerId, handle);
         return handle;
     }
@@ -761,10 +748,10 @@ public final class ContainerManager {
      * <p>Frames are buffered and complete lines (terminated by {@code \n})
      * are dispatched to the downstream consumer. Partial lines are retained
      * across frames. Call {@link LineSplittingConsumer#flush()} on stream
-     * completion or error to emit any remaining partial line.
+     * completion to emit any remaining partial line.
      *
      * <p>Line splitting applies only to the raw log consumer path used by
-     * {@link LogWaitStrategy}. {@link OutputFrame} consumers continue to
+     * {@link LogWaitStrategy}. The {@link OutputFrame} listener continues to
      * receive raw Docker frames with no line-buffering, matching
      * testcontainers-java behavior.
      *
@@ -786,8 +773,7 @@ public final class ContainerManager {
      * newline.
      *
      * <p>Thread confinement: instances are only called from the single-threaded
-     * {@code onNext}/{@code onComplete}/{@code onError} callbacks in a log-stream
-     * subscription.
+     * {@code onNext}/{@code onComplete} callbacks in a log-stream subscription.
      */
     static final class LineSplittingConsumer implements Consumer<String> {
         private final Consumer<String> downstream;
@@ -820,7 +806,7 @@ public final class ContainerManager {
 
         /**
          * Flushes any remaining buffered text as a final line.
-         * Called when the log stream completes or errors.
+         * Called when the log stream completes.
          */
         void flush() {
             if (!buffer.isEmpty()) {
@@ -831,69 +817,60 @@ public final class ContainerManager {
     }
 
     /**
-     * Starts a log stream for the container, dispatching to output frame
-     * consumers and raw log consumers.
+     * Starts a log stream for the container, dispatching to the output frame
+     * listener and raw log consumers.
      *
-     * <p>Output frame consumers receive raw Docker frames matching
+     * <p>Output frame listener receives raw Docker frames matching
      * testcontainers-java {@code OutputFrame} semantics — the framework
      * does not strip, filter, decode, or line-buffer frames before
-     * invoking output consumers.
+     * invoking the output listener.
      *
      * <p>The raw log consumer path (used by {@link LogWaitStrategy})
      * is wrapped with line-splitting to deliver complete lines.
      *
      * @param containerId the Docker container id
-     * @param outputConsumers the output frame consumers (non-null, may be empty)
+     * @param listener the output frame listener, or {@code null}
      * @param rawConsumer the raw log consumer, or {@code null}
      * @return a handle for the attached log stream
      */
-    private LogHandle startLogStream(
-            String containerId, List<Consumer<OutputFrame>> outputConsumers, Consumer<String> rawConsumer) {
+    private LogHandle startLogStream(String containerId, Consumer<OutputFrame> listener, Consumer<String> rawConsumer) {
         LogHandle handle = new LogHandle();
-        AtomicBoolean complete = new AtomicBoolean(false);
+
         LineSplittingConsumer lineSplitter = rawConsumer != null ? lineSplitting(rawConsumer) : null;
         ResultCallback.Adapter<Frame> callback = new ResultCallback.Adapter<>() {
             @Override
             public void onNext(Frame frame) {
-                try {
-                    byte[] payload = frame.getPayload();
-                    OutputFrame.Type outputType;
-                    StreamType streamType = frame.getStreamType();
-                    if (streamType == StreamType.STDOUT) {
-                        outputType = OutputFrame.Type.STDOUT;
-                    } else if (streamType == StreamType.STDERR) {
-                        outputType = OutputFrame.Type.STDERR;
-                    } else if (streamType == StreamType.RAW) {
-                        outputType = OutputFrame.Type.RAW;
-                    } else {
-                        outputType = OutputFrame.Type.UNKNOWN;
-                    }
-                    OutputFrame outputFrame = new OutputFrame(outputType, payload != null ? payload : new byte[0]);
+                byte[] payload = frame.getPayload();
+                if (payload == null) {
+                    return;
+                }
+                OutputFrame.Type outputType;
+                StreamType streamType = frame.getStreamType();
+                if (streamType == StreamType.STDOUT) {
+                    outputType = OutputFrame.Type.STDOUT;
+                } else if (streamType == StreamType.STDERR) {
+                    outputType = OutputFrame.Type.STDERR;
+                } else if (streamType == StreamType.RAW) {
+                    outputType = OutputFrame.Type.RAW;
+                } else {
+                    outputType = OutputFrame.Type.UNKNOWN;
+                }
+                OutputFrame outputFrame = new OutputFrame(outputType, payload);
 
-                    String text = new String(payload != null ? payload : new byte[0], StandardCharsets.UTF_8);
-                    if (lineSplitter != null) {
-                        try {
-                            lineSplitter.accept(text);
-                        } catch (RuntimeException e) {
-                            logger.warn("Log raw consumer failed", e);
-                        }
+                String text = new String(payload, StandardCharsets.UTF_8);
+                if (lineSplitter != null) {
+                    try {
+                        lineSplitter.accept(text);
+                    } catch (RuntimeException e) {
+                        logger.warn("Log raw consumer failed: {}", e.getMessage());
                     }
-                    if (!outputConsumers.isEmpty() && !handle.isClosed()) {
-                        for (Consumer<OutputFrame> consumer : outputConsumers) {
-                            try {
-                                consumer.accept(outputFrame);
-                            } catch (RuntimeException e) {
-                                logger.error("Container output callback failed", e);
-                                handle.setCallbackFailure(e);
-                                closeQuietly(this);
-                                complete.set(true);
-                                return;
-                            }
-                        }
+                }
+                if (listener != null && !handle.isClosed()) {
+                    try {
+                        listener.accept(outputFrame);
+                    } catch (RuntimeException e) {
+                        logger.warn("Container output listener failed: {}", e.getMessage());
                     }
-                } catch (RuntimeException e) {
-                    closeQuietly(this);
-                    complete.set(true);
                 }
             }
 
@@ -932,7 +909,6 @@ public final class ContainerManager {
                         logger.warn("Log raw consumer failed during flush", e);
                     }
                 }
-                complete.set(true);
             }
         };
         try {
@@ -1276,7 +1252,6 @@ public final class ContainerManager {
     static final class LogHandle {
         private volatile ResultCallback<Frame> callback;
         private volatile boolean closed;
-        private volatile RuntimeException callbackFailure;
 
         /**
          * Returns whether this handle has been closed.
@@ -1296,128 +1271,5 @@ public final class ContainerManager {
                 closeQuietly(callback);
             }
         }
-
-        /**
-         * Records a callback failure.
-         *
-         * @param failure the callback failure
-         */
-        void setCallbackFailure(RuntimeException failure) {
-            this.callbackFailure = failure;
-        }
-
-        /**
-         * Returns the recorded callback failure.
-         *
-         * @return the callback failure, or {@code null}
-         */
-        RuntimeException callbackFailure() {
-            return callbackFailure;
-        }
-
-        /**
-         * Returns whether a callback failure has been recorded.
-         *
-         * @return {@code true} if a callback failure has been recorded
-         */
-        boolean hasCallbackFailure() {
-            return callbackFailure != null;
-        }
-    }
-
-    /**
-     * Fires all {@code onStart} callbacks in registration order.
-     * First callback failure is fatal.
-     *
-     * @param spec the container spec
-     * @param ctx the startup context
-     * @throws ContainerException if any callback fails
-     */
-    private static void fireOnStart(ContainerSpec spec, StartupContext ctx) {
-        for (Consumer<StartupContext> consumer : spec.onStartConsumers()) {
-            try {
-                consumer.accept(ctx);
-            } catch (RuntimeException e) {
-                logger.error("Container onStart callback failed: {}", e.getMessage());
-                throw toContainerException("Container onStart callback failed", e);
-            }
-        }
-    }
-
-    /**
-     * Fires all {@code onStartFailure} callbacks in registration order.
-     * First callback failure is fatal; the original failure is attached
-     * as a suppressed exception.
-     *
-     * @param spec the container spec
-     * @param ctx the startup failure context
-     * @param originalFailure the original startup failure, or {@code null}
-     * @throws ContainerException if any callback fails
-     */
-    private static void fireOnStartFailure(ContainerSpec spec, StartupFailure ctx, Throwable originalFailure) {
-        for (Consumer<StartupFailure> consumer : spec.onStartFailureConsumers()) {
-            try {
-                consumer.accept(ctx);
-            } catch (RuntimeException e) {
-                logger.error("Container onStartFailure callback failed: {}", e.getMessage());
-                ContainerException ex = toContainerException("Container onStartFailure callback failed", e);
-                if (originalFailure != null) {
-                    ex.addSuppressed(originalFailure);
-                }
-                throw ex;
-            }
-        }
-    }
-
-    /**
-     * Fires all {@code onReady} callbacks in registration order.
-     * First callback failure is fatal.
-     *
-     * @param spec the container spec
-     * @param ctx the startup context
-     * @throws ContainerException if any callback fails
-     */
-    private static void fireOnReady(ContainerSpec spec, StartupContext ctx) {
-        for (Consumer<StartupContext> consumer : spec.onReadyConsumers()) {
-            try {
-                consumer.accept(ctx);
-            } catch (RuntimeException e) {
-                logger.error("Container onReady callback failed: {}", e.getMessage());
-                throw toContainerException("Container onReady callback failed", e);
-            }
-        }
-    }
-
-    /**
-     * Fires all {@code onClose} callbacks in registration order. Each callback
-     * gets a chance to run; failures are collected and returned.
-     *
-     * @param spec the container spec
-     * @param container the container being closed
-     * @return the collected callback failures, or an empty list
-     */
-    private static List<RuntimeException> fireOnClose(ContainerSpec spec, Container container) {
-        List<RuntimeException> failures = new ArrayList<>();
-        for (Consumer<Container> consumer : spec.onCloseConsumers()) {
-            try {
-                consumer.accept(container);
-            } catch (RuntimeException e) {
-                logger.error("Container onClose callback failed: {}", e.getMessage());
-                failures.add(e);
-            }
-        }
-        return failures;
-    }
-
-    /**
-     * Wraps a {@link RuntimeException} in a {@link ContainerException} if it is
-     * not already one.
-     *
-     * @param message the exception message
-     * @param cause the cause
-     * @return a {@link ContainerException}
-     */
-    private static ContainerException toContainerException(String message, RuntimeException cause) {
-        return cause instanceof ContainerException ce ? ce : new ContainerException(message, cause);
     }
 }
