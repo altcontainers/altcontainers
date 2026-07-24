@@ -461,6 +461,42 @@ public final class ContainerManager {
     }
 
     /**
+     * Extracts container-port to host-port mappings from a Docker inspect
+     * port bindings object.
+     * Returns an empty map when the {@code ports} argument is {@code null}
+     * or contains no bindings.
+     *
+     * @param ports the port bindings from an inspect response; may be {@code null}
+     * @return container-port to host-port bindings map, never {@code null}
+     * @throws ContainerException if any host port spec is non-numeric
+     */
+    static Map<Integer, Integer> parsePortBindings(Ports ports) {
+        if (ports == null) {
+            return Map.of();
+        }
+        var bindings = ports.getBindings();
+        if (bindings == null) {
+            return Map.of();
+        }
+        Map<Integer, Integer> portBindings = new HashMap<>();
+        for (var entry : bindings.entrySet()) {
+            if (entry.getValue() != null && entry.getValue().length > 0) {
+                try {
+                    portBindings.put(entry.getKey().getPort(), Integer.parseInt(entry.getValue()[0].getHostPortSpec()));
+                } catch (NumberFormatException e) {
+                    throw new ContainerException(
+                            "Docker returned non-numeric host port spec '"
+                                    + entry.getValue()[0].getHostPortSpec()
+                                    + "' for container port "
+                                    + entry.getKey().getPort(),
+                            e);
+                }
+            }
+        }
+        return Map.copyOf(portBindings);
+    }
+
+    /**
      * Inspects the container after start to collect port bindings and
      * running status.
      *
@@ -476,27 +512,12 @@ public final class ContainerManager {
             return new ContainerMetadata(host(), false, Map.of());
         }
         String host = host();
-        boolean running = Boolean.TRUE.equals(response.getState().getRunning());
-        var bindings = response.getNetworkSettings().getPorts().getBindings();
-        Map<Integer, Integer> portBindings = new HashMap<>();
-        if (bindings != null) {
-            for (var entry : bindings.entrySet()) {
-                if (entry.getValue() != null && entry.getValue().length > 0) {
-                    try {
-                        portBindings.put(
-                                entry.getKey().getPort(), Integer.parseInt(entry.getValue()[0].getHostPortSpec()));
-                    } catch (NumberFormatException e) {
-                        throw new ContainerException(
-                                "Docker returned non-numeric host port spec '"
-                                        + entry.getValue()[0].getHostPortSpec()
-                                        + "' for container port "
-                                        + entry.getKey().getPort(),
-                                e);
-                    }
-                }
-            }
-        }
-        return new ContainerMetadata(host, running, Map.copyOf(portBindings));
+        boolean running = response.getState() != null
+                && Boolean.TRUE.equals(response.getState().getRunning());
+        var networkSettings = response.getNetworkSettings();
+        Ports ports = networkSettings != null ? networkSettings.getPorts() : null;
+        Map<Integer, Integer> portBindings = parsePortBindings(ports);
+        return new ContainerMetadata(host, running, portBindings);
     }
 
     /**
