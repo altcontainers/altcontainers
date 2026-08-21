@@ -1,3 +1,0 @@
-Valid JSON
-outcome=SUCCESS
-artifacts=['artifacts/plan.md', 'artifacts/review-plan.md', 'artifacts/implementation-report.md', 'artifacts/review-implementation.md', 'artifacts/validation-report.md']

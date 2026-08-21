@@ -1,1 +1,0 @@
-111:    static final String DOCKER_HOST = "altcontainers.docker.host";
