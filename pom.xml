@@ -57,7 +57,7 @@
         <!-- Dependency versions -->
         <assertj-core.version>3.27.7</assertj-core.version>
         <gson.version>2.14.0</gson.version>
-        <okhttp.version>5.4.0</okhttp.version>
+        <okhttp.version>5.5.0</okhttp.version>
         <junit.version>6.1.3</junit.version>
         <slf4j.version>2.0.18</slf4j.version>
         <paramixel.version>6.2.1</paramixel.version>
@@ -79,7 +79,7 @@
         <maven-resources-plugin.version>3.5.0</maven-resources-plugin.version>
         <maven-source-plugin.version>3.4.0</maven-source-plugin.version>
         <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
-        <spotless-maven-plugin.version>3.9.0</spotless-maven-plugin.version>
+        <spotless-maven-plugin.version>3.10.0</spotless-maven-plugin.version>
         <versions-maven-plugin.version>2.21.0</versions-maven-plugin.version>
     </properties>
 
