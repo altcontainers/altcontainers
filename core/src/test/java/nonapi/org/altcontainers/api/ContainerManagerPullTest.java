@@ -17,6 +17,7 @@
 package nonapi.org.altcontainers.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.lang.reflect.Field;
 import java.time.Duration;
@@ -199,5 +200,60 @@ class ContainerManagerPullTest {
         } finally {
             container2.close();
         }
+    }
+
+    @Test
+    @EnabledIf("dockerAvailable")
+    void shouldReportPullFailureNotTimeoutForMissingImage() {
+        // A daemon 404 during pull must surface as a pull failure, not as a
+        // timeout (awaitCompletion returns false for both error and timeout).
+        String image = "nonexistent-image-for-pull-test-" + System.currentTimeMillis() + ":latest";
+        assertThatThrownBy(() -> ContainerManager.getInstance().triggerPullImage(image))
+                .isInstanceOf(org.altcontainers.api.ContainerException.class)
+                .hasMessageContaining("Image pull failed");
+    }
+
+    @Test
+    @EnabledIf("dockerAvailable")
+    void shouldKeepInflightEntryWhileBackgroundPullContinuesAfterTimeout() throws Exception {
+        // After a pull times out, the callback keeps running in the background.
+        // The in-flight entry must stay registered until the callback actually
+        // terminates so concurrent callers keep deduplicating against it.
+        String image = "busybox:latest";
+        ContainerManager manager = ContainerManager.getInstance();
+        System.setProperty("altcontainers.image.pull.timeout.ms", "100");
+        try {
+            AltcontainersProperties.reset();
+            assertThatThrownBy(() -> manager.triggerPullImage(image))
+                    .isInstanceOf(org.altcontainers.api.ContainerException.class)
+                    .hasMessageContaining("timed out");
+
+            Map<String, CompletableFuture<Void>> inflight = inflightPulls(manager);
+            assertThat(inflight)
+                    .as("in-flight entry must remain while the background pull continues")
+                    .containsKey(image);
+
+            long deadline = System.currentTimeMillis() + 120_000;
+            while (System.currentTimeMillis() < deadline) {
+                if (!inflight.containsKey(image)) {
+                    break;
+                }
+                Thread.sleep(200);
+            }
+            assertThat(inflight)
+                    .as("in-flight entry must be removed once the background pull terminates")
+                    .doesNotContainKey(image);
+        } finally {
+            System.clearProperty("altcontainers.image.pull.timeout.ms");
+            AltcontainersProperties.reset();
+        }
+    }
+
+    private static Map<String, CompletableFuture<Void>> inflightPulls(ContainerManager manager) throws Exception {
+        Field field = ContainerManager.class.getDeclaredField("inflightPulls");
+        field.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Map<String, CompletableFuture<Void>> inflight = (Map<String, CompletableFuture<Void>>) field.get(manager);
+        return inflight;
     }
 }

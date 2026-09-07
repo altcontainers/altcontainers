@@ -30,6 +30,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -70,6 +72,8 @@ final class CleanupExecutor {
     private final ScheduledExecutorService scheduledExecutor;
     private final ExecutorService cachedDockerExecutor;
     private final Clock clock;
+    private final AtomicBoolean draining = new AtomicBoolean(false);
+    private final AtomicInteger pendingTasks = new AtomicInteger(0);
 
     /**
      * Creates a new cleanup executor.
@@ -102,14 +106,29 @@ final class CleanupExecutor {
     }
 
     /**
-     * Enqueues a task for immediate execution.
+     * Enqueues a task for immediate execution. Submissions are rejected once
+     * {@link #shutdown()} has initiated the drain; backoff retries scheduled
+     * from within {@link #process(CleanupTask)} are still accepted so that
+     * {@code maxAttempts} is honored during the session-sweep drain.
      *
      * @param task the cleanup task
      */
     void submit(CleanupTask task) {
+        if (draining.get()) {
+            logger.debug("Drain in progress, dropping submission for {} {}", task.type(), task.id());
+            return;
+        }
+        pendingTasks.incrementAndGet();
         try {
-            scheduledExecutor.execute(() -> process(task));
+            scheduledExecutor.execute(() -> {
+                try {
+                    process(task);
+                } finally {
+                    pendingTasks.decrementAndGet();
+                }
+            });
         } catch (RejectedExecutionException e) {
+            pendingTasks.decrementAndGet();
             logger.debug("Executor shut down, dropping submission for {} {}", task.type(), task.id());
         }
     }
@@ -121,36 +140,65 @@ final class CleanupExecutor {
      * @param delayMs the delay in milliseconds before execution
      */
     void schedule(CleanupTask task, long delayMs) {
+        pendingTasks.incrementAndGet();
         try {
-            scheduledExecutor.schedule(() -> process(task), delayMs, TimeUnit.MILLISECONDS);
+            scheduledExecutor.schedule(
+                    () -> {
+                        try {
+                            process(task);
+                        } finally {
+                            pendingTasks.decrementAndGet();
+                        }
+                    },
+                    delayMs,
+                    TimeUnit.MILLISECONDS);
         } catch (RejectedExecutionException e) {
+            pendingTasks.decrementAndGet();
             logger.debug("Executor shut down, dropping scheduled retry for {} {}", task.type(), task.id());
         }
     }
 
     /**
-     * Initiates graceful shutdown of both thread pools.
-     *
-     * <p>This method only initiates shutdown — it does not call
-     * {@code awaitTermination} or {@code shutdownNow()}. The drain
-     * deadline is enforced by the caller via {@link #awaitTermination}.
+     * Initiates the drain: rejects new external submissions while allowing
+     * in-flight and backoff-scheduled retries to complete. Does not stop the
+     * thread pools; call {@link #shutdownNow()} to abort them.
      */
     void shutdown() {
-        scheduledExecutor.shutdown();
-        cachedDockerExecutor.shutdown();
+        draining.set(true);
     }
 
     /**
-     * Blocks until all tasks have completed or the timeout expires,
-     * whichever comes first.
+     * Aborts both thread pools, cancelling queued and delayed tasks. Use after
+     * the drain deadline expires.
+     */
+    void shutdownNow() {
+        draining.set(true);
+        scheduledExecutor.shutdownNow();
+        cachedDockerExecutor.shutdownNow();
+    }
+
+    /**
+     * Blocks until all submitted and retried tasks have completed or the
+     * timeout expires, whichever comes first. May be called after
+     * {@link #shutdown()} without the pools having been stopped.
      *
      * @param timeout the maximum time to wait
      * @param unit the time unit of the timeout
-     * @return {@code true} if the executor terminated, {@code false} if timed out
+     * @return {@code true} if all tasks completed, {@code false} if timed out
      * @throws InterruptedException if interrupted while waiting
      */
     boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException {
-        return scheduledExecutor.awaitTermination(timeout, unit);
+        long deadlineNanos = System.nanoTime() + unit.toNanos(timeout);
+        while (true) {
+            if (pendingTasks.get() == 0) {
+                return true;
+            }
+            long remainingNanos = deadlineNanos - System.nanoTime();
+            if (remainingNanos <= 0) {
+                return false;
+            }
+            Thread.sleep(Math.min(remainingNanos / 1_000_000L, 200L));
+        }
     }
 
     /**
@@ -221,7 +269,7 @@ final class CleanupExecutor {
      */
     boolean destroyContainer(String id) {
         try {
-            int stopTimeoutSec = (int) (Reaper.STOP_TIMEOUT_MS / 1000L);
+            int stopTimeoutSec = stopTimeoutSeconds(Reaper.STOP_TIMEOUT_MS);
             CompletableFuture<Void> future = CompletableFuture.runAsync(
                     () -> {
                         try {
@@ -397,6 +445,18 @@ final class CleanupExecutor {
             logger.debug("Executor shut down, dropping force-remove for network {}", id);
             return false;
         }
+    }
+
+    /**
+     * Converts the configured stop timeout in milliseconds to whole seconds
+     * for the Docker stop API, with a floor of 1s so a sub-second
+     * configuration never produces a zero timeout.
+     *
+     * @param stopTimeoutMs the configured stop timeout in milliseconds
+     * @return the timeout in seconds, always {@code >= 1}
+     */
+    static int stopTimeoutSeconds(int stopTimeoutMs) {
+        return Math.max(1, stopTimeoutMs / 1000);
     }
 
     /**

@@ -29,6 +29,7 @@ import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
 import javax.net.ssl.TrustManager;
@@ -129,18 +130,7 @@ public final class HttpWaitStrategy implements ManagedWaitStrategy {
         }
     }
 
-    private static final Map<Protocol, HttpClient> HTTP_CLIENTS = Map.of(
-            Protocol.HTTP,
-                    buildHttpClient(
-                            Protocol.HTTP, AltcontainersProperties.instance().httpProbeTimeout()),
-            Protocol.HTTPS_INSECURE,
-                    buildHttpClient(
-                            Protocol.HTTPS_INSECURE,
-                            AltcontainersProperties.instance().httpProbeTimeout()),
-            Protocol.HTTPS_VERIFY,
-                    buildHttpClient(
-                            Protocol.HTTPS_VERIFY,
-                            AltcontainersProperties.instance().httpProbeTimeout()));
+    private static final Map<Duration, Map<Protocol, HttpClient>> HTTP_CLIENTS = new ConcurrentHashMap<>();
 
     private final int containerPort;
     private final String path;
@@ -208,7 +198,28 @@ public final class HttpWaitStrategy implements ManagedWaitStrategy {
         this.minStatus = minStatus;
         this.maxStatus = maxStatus;
         this.requestTimeout = AltcontainersProperties.instance().httpProbeTimeout();
-        this.httpClient = HTTP_CLIENTS.get(protocol);
+        this.httpClient = clientFor(protocol, this.requestTimeout);
+    }
+
+    /**
+     * Returns the shared {@link HttpClient} for the given protocol and
+     * connect timeout, building and caching it on first use. Clients are
+     * keyed by timeout so a changed probe timeout never reuses a client
+     * with a stale connect timeout.
+     *
+     * @param protocol the protocol variant
+     * @param connectTimeout the connect timeout baked into the client
+     * @return the shared client instance
+     */
+    private static HttpClient clientFor(Protocol protocol, Duration connectTimeout) {
+        return HTTP_CLIENTS
+                .computeIfAbsent(
+                        connectTimeout,
+                        timeout -> Map.of(
+                                Protocol.HTTP, buildHttpClient(Protocol.HTTP, timeout),
+                                Protocol.HTTPS_INSECURE, buildHttpClient(Protocol.HTTPS_INSECURE, timeout),
+                                Protocol.HTTPS_VERIFY, buildHttpClient(Protocol.HTTPS_VERIFY, timeout)))
+                .get(protocol);
     }
 
     /**

@@ -28,6 +28,7 @@ import com.github.dockerjava.api.model.Frame;
 import com.github.dockerjava.api.model.HostConfig;
 import com.github.dockerjava.api.model.PortBinding;
 import com.github.dockerjava.api.model.Ports;
+import com.github.dockerjava.api.model.PullResponseItem;
 import com.github.dockerjava.api.model.StreamType;
 import com.github.dockerjava.api.model.Ulimit;
 import java.io.ByteArrayInputStream;
@@ -191,6 +192,11 @@ public final class ContainerManager {
      * Pulls an image with deduplication. Concurrent callers for the same image
      * wait for the in-flight pull.
      *
+     * <p>The in-flight entry stays registered until the pull callback actually
+     * terminates. When the initiator times out, the pull keeps running in the
+     * background and later callers still deduplicate against it instead of
+     * starting a duplicate pull.
+     *
      * @param image the image name
      */
     private void pullImage(String image) {
@@ -200,32 +206,22 @@ public final class ContainerManager {
             CompletableFuture<Void> newFuture = new CompletableFuture<>();
             CompletableFuture<Void> existing = inflightPulls.putIfAbsent(image, newFuture);
             if (existing == null) {
+                startPull(image, newFuture);
                 try {
-                    boolean completed = dockerClient()
-                            .pullImageCmd(image)
-                            .start()
-                            .awaitCompletion(pullTimeoutMs, TimeUnit.MILLISECONDS);
-                    if (!completed) {
-                        String message = "Image pull timed out after " + pullTimeoutMs + " ms: " + image;
-                        newFuture.completeExceptionally(new ContainerException(message));
-                        inflightPulls.remove(image);
-                        throw new ContainerException(message);
-                    }
-                    newFuture.complete(null);
-                    localImageCache.add(image);
-                    inflightPulls.remove(image, newFuture);
+                    newFuture.get(pullTimeoutMs, TimeUnit.MILLISECONDS);
                     return;
+                } catch (TimeoutException e) {
+                    // The pull keeps running in the background; the in-flight
+                    // entry stays registered until the callback terminates.
+                    throw new ContainerException("Image pull timed out after " + pullTimeoutMs + " ms: " + image, e);
+                } catch (ExecutionException e) {
+                    Throwable cause = e.getCause();
+                    throw cause instanceof ContainerException ce
+                            ? ce
+                            : new ContainerException("Image pull failed: " + image, cause);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
-                    newFuture.completeExceptionally(e);
-                    inflightPulls.remove(image);
                     throw new ContainerException("Image pull interrupted: " + image, e);
-                } catch (RuntimeException e) {
-                    newFuture.completeExceptionally(e);
-                    inflightPulls.remove(image);
-                    throw e instanceof ContainerException ce
-                            ? ce
-                            : new ContainerException("Image pull failed: " + image, e);
                 }
             }
             try {
@@ -243,6 +239,41 @@ public final class ContainerManager {
                 Thread.currentThread().interrupt();
                 throw new ContainerException("Interrupted while waiting for image pull", e);
             }
+        }
+    }
+
+    /**
+     * Starts a Docker image pull whose callback drives the given completion
+     * future. On completion the image is cached locally; on failure the
+     * future fails with the underlying error. The in-flight entry is removed
+     * only when the callback actually terminates.
+     *
+     * @param image the image name
+     * @param completion the future completed when the pull callback terminates
+     */
+    private void startPull(String image, CompletableFuture<Void> completion) {
+        ResultCallback.Adapter<PullResponseItem> adapter = new ResultCallback.Adapter<>() {
+            @Override
+            public void onComplete() {
+                localImageCache.add(image);
+                completion.complete(null);
+                inflightPulls.remove(image, completion);
+            }
+
+            @Override
+            public void onError(Throwable throwable) {
+                RuntimeException failure =
+                        throwable instanceof RuntimeException re ? re : new RuntimeException(throwable);
+                completion.completeExceptionally(failure);
+                inflightPulls.remove(image, completion);
+            }
+        };
+        try {
+            dockerClient().pullImageCmd(image).exec(adapter);
+        } catch (RuntimeException e) {
+            completion.completeExceptionally(e);
+            inflightPulls.remove(image, completion);
+            throw e instanceof ContainerException ce ? ce : new ContainerException("Image pull failed: " + image, e);
         }
     }
 
@@ -477,7 +508,8 @@ public final class ContainerManager {
      * Extracts container-port to host-port mappings from a Docker inspect
      * port bindings object.
      * Returns an empty map when the {@code ports} argument is {@code null}
-     * or contains no bindings.
+     * or contains no bindings. When a container port has multiple host
+     * bindings, only the first binding is reported.
      *
      * @param ports the port bindings from an inspect response; may be {@code null}
      * @return container-port to host-port bindings map, never {@code null}
@@ -511,26 +543,43 @@ public final class ContainerManager {
 
     /**
      * Inspects the container after start to collect port bindings and
-     * running status.
+     * running status. Package-private for testing.
      *
      * @param containerId the Docker container id
      * @return post-start metadata including host, running flag, and port bindings
      */
-    private ContainerMetadata inspectAfterStart(String containerId) {
-        InspectContainerResponse response;
-        try {
-            response = dockerClient().inspectContainerCmd(containerId).exec();
-        } catch (RuntimeException e) {
-            logger.warn("Failed to inspect container {} for start metadata: {}", containerId, e.getMessage());
-            return new ContainerMetadata(host(), false, Map.of());
+    ContainerMetadata inspectAfterStart(String containerId) {
+        RuntimeException lastFailure = null;
+        for (int attempt = 1; attempt <= INSPECT_AFTER_START_ATTEMPTS; attempt++) {
+            try {
+                InspectContainerResponse response =
+                        dockerClient().inspectContainerCmd(containerId).exec();
+                String host = host();
+                boolean running = response.getState() != null
+                        && Boolean.TRUE.equals(response.getState().getRunning());
+                var networkSettings = response.getNetworkSettings();
+                Ports ports = networkSettings != null ? networkSettings.getPorts() : null;
+                Map<Integer, Integer> portBindings = parsePortBindings(ports);
+                return new ContainerMetadata(host, running, portBindings);
+            } catch (RuntimeException e) {
+                lastFailure = e;
+                logger.warn(
+                        "Failed to inspect container {} for start metadata (attempt {}/{}): {}",
+                        containerId,
+                        attempt,
+                        INSPECT_AFTER_START_ATTEMPTS,
+                        e.getMessage());
+                if (attempt < INSPECT_AFTER_START_ATTEMPTS) {
+                    try {
+                        Thread.sleep(INSPECT_AFTER_START_RETRY_DELAY_MS);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new ContainerException("Interrupted while inspecting container after start", ie);
+                    }
+                }
+            }
         }
-        String host = host();
-        boolean running = response.getState() != null
-                && Boolean.TRUE.equals(response.getState().getRunning());
-        var networkSettings = response.getNetworkSettings();
-        Ports ports = networkSettings != null ? networkSettings.getPorts() : null;
-        Map<Integer, Integer> portBindings = parsePortBindings(ports);
-        return new ContainerMetadata(host, running, portBindings);
+        throw new ContainerException("Failed to inspect container " + containerId + " after start", lastFailure);
     }
 
     /**
@@ -1043,6 +1092,18 @@ public final class ContainerManager {
     }
 
     /**
+     * Clamps the configured stop timeout to a whole number of seconds for the
+     * Docker stop API, with a floor of 1s so a sub-second configuration never
+     * produces a zero timeout.
+     *
+     * @param stopTimeoutSeconds the configured stop timeout in seconds
+     * @return the timeout to pass to the Docker stop API, always {@code >= 1}
+     */
+    static int dockerStopTimeoutSeconds(long stopTimeoutSeconds) {
+        return (int) Math.max(1L, Math.min(stopTimeoutSeconds, Integer.MAX_VALUE));
+    }
+
+    /**
      * Destroys a container from a failed startup attempt. Closes the log handle,
      * stops, and force-removes the container. Does not fire {@code onClose}
      * callbacks.
@@ -1076,6 +1137,10 @@ public final class ContainerManager {
 
     private static final long CONTAINER_REMOVE_RETRY_BASE_DELAY_MS = 200L;
 
+    private static final int INSPECT_AFTER_START_ATTEMPTS = 3;
+
+    private static final long INSPECT_AFTER_START_RETRY_DELAY_MS = 100L;
+
     /**
      * Stops and removes a container via Docker, delegating cleanup to the
      * reaper process only when the stop times out or the remove fails after
@@ -1091,7 +1156,7 @@ public final class ContainerManager {
         }
         long stopTimeoutSeconds =
                 ReaperController.instance().configuration().reaperStopTimeout().toSeconds();
-        int dockerStopTimeoutSeconds = (int) Math.min(stopTimeoutSeconds, Integer.MAX_VALUE);
+        int dockerStopTimeoutSeconds = dockerStopTimeoutSeconds(stopTimeoutSeconds);
         // Future timeout includes a buffer so Docker's own stop timeout doesn't race
         // the Java timeout, avoiding unnecessary delegation to the reaper.
         long futureTimeoutSeconds = Math.addExact(stopTimeoutSeconds, 10L);

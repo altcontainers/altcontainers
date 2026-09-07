@@ -90,6 +90,9 @@ public final class Launcher {
         }
 
         if (!Files.exists(jarPath)) {
+            logger.warn(
+                    "Reaper JAR unavailable at {}; the reaper will not start and Docker resources may not be cleaned up automatically",
+                    jarPath);
             return;
         }
 
@@ -163,6 +166,10 @@ public final class Launcher {
         cmd.add("-Daltcontainers.reaper.session.id=" + sessionId);
         cmd.add("-Daltcontainers.reaper.connection.timeout.ms=" + reaperConnectionTimeout.toMillis());
         cmd.add("-Daltcontainers.reaper.stop.timeout.ms=" + reaperStopTimeout.toMillis());
+        String dockerHost = AltcontainersProperties.instance().dockerHost();
+        if (dockerHost != null && !dockerHost.isBlank()) {
+            cmd.add("-D" + ALTCONTAINERS_DOCKER_HOST_PROPERTY + "=" + dockerHost);
+        }
         for (Map.Entry<Object, Object> e : new TreeMap<>(System.getProperties()).entrySet()) {
             String key = String.valueOf(e.getKey());
             if (shouldForwardSystemProperty(key)) {
@@ -176,7 +183,9 @@ public final class Launcher {
 
     /**
      * Returns whether the given system property key should be forwarded
-     * to the reaper process.
+     * to the reaper process. The Docker host is excluded because the
+     * resolved value (which may come from environment variables or
+     * properties files) is passed explicitly by {@link #buildCommand}.
      *
      * @param key the system property key
      * @return {@code true} if the property should be forwarded
@@ -188,7 +197,10 @@ public final class Launcher {
         if (isReaperTimeoutKey(key)) {
             return false;
         }
-        return key.startsWith("altcontainers.reaper.") || ALTCONTAINERS_DOCKER_HOST_PROPERTY.equals(key);
+        if (ALTCONTAINERS_DOCKER_HOST_PROPERTY.equals(key)) {
+            return false;
+        }
+        return key.startsWith("altcontainers.reaper.");
     }
 
     private static boolean isReaperTimeoutKey(String key) {

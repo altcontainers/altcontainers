@@ -81,8 +81,33 @@ class LauncherTest {
                 .isTrue();
         assertThat(Launcher.shouldForwardSystemProperty("altcontainers.reaper.log.level"))
                 .isTrue();
+        // The resolved docker host is passed explicitly; the raw system property
+        // must not be forwarded as well (it could shadow the resolved value).
         assertThat(Launcher.shouldForwardSystemProperty("altcontainers.docker.host"))
-                .isTrue();
+                .isFalse();
+    }
+
+    @Test
+    void shouldPassResolvedDockerHostToReaper() throws Exception {
+        // The docker host resolved from the user-home properties file (no system
+        // property set) must still reach the reaper process.
+        Path fakeHome = Files.createTempDirectory("altcontainers-home");
+        String originalHome = System.getProperty("user.home");
+        try {
+            Files.writeString(
+                    fakeHome.resolve(".altcontainers.properties"),
+                    "altcontainers.docker.host=tcp://remote-from-file:2375\n");
+            System.setProperty("user.home", fakeHome.toString());
+            AltcontainersProperties.reset();
+            List<String> cmd = Launcher.buildCommand(
+                    "session-123", Path.of("reaper.jar"), "java", false, Duration.ofSeconds(12), Duration.ofSeconds(7));
+            assertThat(cmd).contains("-Daltcontainers.docker.host=tcp://remote-from-file:2375");
+        } finally {
+            System.setProperty("user.home", originalHome);
+            AltcontainersProperties.reset();
+            Files.deleteIfExists(fakeHome.resolve(".altcontainers.properties"));
+            Files.deleteIfExists(fakeHome);
+        }
     }
 
     @Test

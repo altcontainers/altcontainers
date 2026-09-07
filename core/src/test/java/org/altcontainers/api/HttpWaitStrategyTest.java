@@ -311,6 +311,22 @@ class HttpWaitStrategyTest {
         assertThat(first.httpClient()).isSameAs(second.httpClient());
     }
 
+    @Test
+    void shouldRebuildClientWhenProbeTimeoutChanges() {
+        // A client built under one probe timeout must not be reused after the
+        // configured timeout changes (its connect timeout would be stale).
+        HttpWaitStrategy defaultStrategy =
+                new HttpWaitStrategy(HttpWaitStrategy.Protocol.HTTP, 8080, "/health", 200, 399);
+        java.net.http.HttpClient defaultClient = defaultStrategy.httpClient();
+
+        System.setProperty("altcontainers.wait.http.probe.timeout.ms", "7777");
+        AltcontainersProperties.reset();
+        HttpWaitStrategy customStrategy =
+                new HttpWaitStrategy(HttpWaitStrategy.Protocol.HTTP, 8080, "/health", 200, 399);
+
+        assertThat(customStrategy.httpClient()).isNotSameAs(defaultClient);
+    }
+
     private static HttpsServer createSelfSignedHttpsServer() throws Exception {
         KeyStore keyStore = KeyStore.getInstance("PKCS12");
         keyStore.load(Files.newInputStream(keystorePath), KEYSTORE_PASSWORD.toCharArray());
