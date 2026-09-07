@@ -34,6 +34,25 @@ import org.junit.jupiter.api.Test;
 class ContainerManagerTest {
 
     @Test
+    void shouldClampDockerStopTimeoutToAtLeastOneSecond() {
+        // A sub-second configured stop timeout must never produce a zero
+        // timeout for the Docker stop API.
+        assertThat(ContainerManager.dockerStopTimeoutSeconds(0)).isEqualTo(1);
+        assertThat(ContainerManager.dockerStopTimeoutSeconds(1)).isEqualTo(1);
+        assertThat(ContainerManager.dockerStopTimeoutSeconds(30)).isEqualTo(30);
+    }
+
+    @Test
+    void shouldFailFastWhenPostStartInspectFails() {
+        // A container id the daemon does not know: inspectAfterStart must not
+        // swallow the failure and return empty port bindings (which would turn
+        // into a full startup-timeout wait with a misleading diagnostic).
+        assertThatThrownBy(() -> ContainerManager.getInstance().inspectAfterStart("definitely-missing-container-id"))
+                .isInstanceOf(ContainerException.class)
+                .hasMessageContaining("definitely-missing-container-id");
+    }
+
+    @Test
     void shouldReturnTrueForDirectClosedByInterruptException() {
         ClosedByInterruptException ex = new ClosedByInterruptException();
         assertThat(ContainerManager.isClosedByInterrupt(ex)).isTrue();

@@ -60,9 +60,28 @@ public final class NetworkManager {
     private final ConcurrentHashMap<String, Boolean> releasedIds = new ConcurrentHashMap<>();
 
     private NetworkManager() {
-        int p = AltcontainersProperties.instance().networksParallelism();
-        this.networkSemaphore = p > 0 ? new Semaphore(p) : null;
+        this(AltcontainersProperties.instance().networksParallelism());
         registerShutdownHook();
+    }
+
+    /**
+     * Creates a manager with an explicit network parallelism limit, for
+     * testing. Does not register a shutdown hook.
+     *
+     * @param networksParallelism the parallelism limit; {@code <= 0} means no limit
+     */
+    NetworkManager(int networksParallelism) {
+        this.networkSemaphore = networksParallelism > 0 ? new Semaphore(networksParallelism) : null;
+    }
+
+    /**
+     * Returns the number of available network-creation permits. Intended for
+     * testing only.
+     *
+     * @return the available permit count, or {@code -1} if no limit is configured
+     */
+    int availableNetworkPermitsForTesting() {
+        return networkSemaphore != null ? networkSemaphore.availablePermits() : -1;
     }
 
     /**
@@ -101,7 +120,7 @@ public final class NetworkManager {
      */
     public Network createNetwork() {
         ReaperController ctrl = ReaperController.instance();
-        ctrl.ensureReady();
+        ResourceSession session = ctrl.ensureReady();
         if (networkSemaphore != null) {
             try {
                 networkSemaphore.acquire();
@@ -111,7 +130,6 @@ public final class NetworkManager {
             }
         }
         try {
-            var session = ReaperController.instance().ensureReady();
             var labels = session.labelsForNewResource();
             String name = "altcontainers-" + session.sessionId().substring(0, 8) + "-"
                     + UUID.randomUUID().toString().substring(0, 8);
@@ -189,7 +207,6 @@ public final class NetworkManager {
         } finally {
             if (networkSemaphore != null && releasedIds.putIfAbsent(network.id(), Boolean.TRUE) == null) {
                 networkSemaphore.release();
-                releasedIds.remove(network.id());
             }
         }
     }

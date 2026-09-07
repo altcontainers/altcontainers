@@ -23,8 +23,8 @@ import org.altcontainers.api.ContainerException;
 import org.altcontainers.api.StartupCheckStrategy;
 
 /**
- * Singleton startup check strategy that requires the container to still be
- * running after Docker reports it started.
+ * Singleton startup check strategy that requires the container to be
+ * running, polling until the configured timeout expires.
  *
  * <p>This class resides in the {@code nonapi} package because direct
  * construction is unsupported. Use
@@ -43,8 +43,27 @@ public final class IsRunningStartupCheckStrategy implements StartupCheckStrategy
     public void waitUntilStartupSuccessful(Container container, Duration timeout) {
         Objects.requireNonNull(container, "container must not be null");
         Objects.requireNonNull(timeout, "timeout must not be null");
-        if (ContainerManager.getInstance().isContainerRunning(container.id())) {
-            return;
+        long pollMs = AltcontainersProperties.instance()
+                .containerReadinessPollInitial()
+                .toMillis();
+        long pollMaxMs =
+                AltcontainersProperties.instance().containerReadinessPollMax().toMillis();
+        long deadlineNanos = System.nanoTime() + timeout.toNanos();
+        while (true) {
+            if (ContainerManager.getInstance().isContainerRunning(container.id())) {
+                return;
+            }
+            long remainingNanos = deadlineNanos - System.nanoTime();
+            if (remainingNanos <= 0) {
+                break;
+            }
+            try {
+                Thread.sleep(Math.min(pollMs, remainingNanos / 1_000_000L));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new ContainerException("Interrupted while waiting for container startup", e);
+            }
+            pollMs = Math.min(pollMs * 2, pollMaxMs);
         }
         throw new ContainerException("Container " + container.id() + " for image " + container.image()
                 + " failed startup check: container failed to remain running within " + format(timeout));

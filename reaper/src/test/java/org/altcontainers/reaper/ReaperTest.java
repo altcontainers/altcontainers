@@ -85,7 +85,7 @@ class ReaperTest {
 
             // Call the extracted cleanup method directly — this is the code path
             // exercised by run()'s HandshakeException catch block
-            Reaper.cleanupOnHandshakeFailure(sessionId, acceptedSocket, executor);
+            Reaper.cleanupOnHandshakeFailure(sessionId, 12345, acceptedSocket, executor);
 
             // Assert that both discovery files were deleted by the cleanup method
             assertThat(Files.exists(portFile)).isFalse();
@@ -93,6 +93,44 @@ class ReaperTest {
         }
 
         scheduler.shutdownNow();
+    }
+
+    @Test
+    void shouldClampStopTimeoutSecondsToAtLeastOne() {
+        // A sub-second configured stop timeout must never produce a zero
+        // timeout for the Docker stop API.
+        assertThat(CleanupExecutor.stopTimeoutSeconds(500)).isEqualTo(1);
+        assertThat(CleanupExecutor.stopTimeoutSeconds(1000)).isEqualTo(1);
+        assertThat(CleanupExecutor.stopTimeoutSeconds(30_000)).isEqualTo(30);
+    }
+
+    @Test
+    void shouldNotDeleteDiscoveryFilesOwnedByAnotherReaper() throws Exception {
+        String sessionId = UUID.randomUUID().toString();
+        Path portFile = portFilePath(sessionId);
+        Path jarFile = jarFilePath(sessionId);
+
+        // The port file advertises a different reaper's port (relaunch race).
+        Files.writeString(portFile, "54321", StandardCharsets.UTF_8);
+        Files.createFile(jarFile);
+
+        assertThat(Reaper.deleteDiscoveryFilesIfOwned(sessionId, 12345)).isFalse();
+        assertThat(Files.exists(portFile)).isTrue();
+        assertThat(Files.exists(jarFile)).isTrue();
+    }
+
+    @Test
+    void shouldDeleteDiscoveryFilesWhenPortFileIsOwned() throws Exception {
+        String sessionId = UUID.randomUUID().toString();
+        Path portFile = portFilePath(sessionId);
+        Path jarFile = jarFilePath(sessionId);
+
+        Files.writeString(portFile, "12345", StandardCharsets.UTF_8);
+        Files.createFile(jarFile);
+
+        assertThat(Reaper.deleteDiscoveryFilesIfOwned(sessionId, 12345)).isTrue();
+        assertThat(Files.exists(portFile)).isFalse();
+        assertThat(Files.exists(jarFile)).isFalse();
     }
 
     private static Path portFilePath(String sessionId) {
@@ -369,6 +407,26 @@ class ReaperTest {
         // Each process() calls stopContainerCmd once
         org.mockito.Mockito.verify(mockClient, org.mockito.Mockito.times(maxAttempts))
                 .stopContainerCmd("test-container");
+
+        scheduler.shutdownNow();
+    }
+
+    @Test
+    void shouldRetryFailedTasksDuringDrainAfterShutdown() throws Exception {
+        // Mirrors Reaper.cleanup(): shutdown is initiated before the drain wait.
+        // Backoff retries scheduled during the drain must not be dropped.
+        DockerClient mockClient = createAlwaysFailMockClient();
+
+        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+        Clock clock = Clock.systemUTC();
+        CleanupExecutor executor = new CleanupExecutor(mockClient, 3, 500L, 500L, scheduler, clock);
+
+        executor.submit(new CleanupTask("drain-container", CleanupTask.ResourceType.CONTAINER, 0));
+        executor.shutdown();
+        boolean drained = executor.awaitTermination(60, TimeUnit.SECONDS);
+
+        assertThat(drained).isTrue();
+        org.mockito.Mockito.verify(mockClient, org.mockito.Mockito.times(3)).stopContainerCmd("drain-container");
 
         scheduler.shutdownNow();
     }

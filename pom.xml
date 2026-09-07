@@ -60,7 +60,7 @@
         <okhttp.version>5.5.0</okhttp.version>
         <junit.version>6.1.3</junit.version>
         <slf4j.version>2.0.19</slf4j.version>
-        <paramixel.version>6.2.1</paramixel.version>
+        <paramixel.version>6.2.4</paramixel.version>
         <kafka-clients.version>4.3.1</kafka-clients.version>
         <mongodb-driver.version>5.11.0</mongodb-driver.version>
         <palantir-java-format.version>2.91.0</palantir-java-format.version>

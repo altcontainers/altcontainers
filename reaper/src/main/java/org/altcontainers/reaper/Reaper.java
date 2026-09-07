@@ -271,8 +271,7 @@ public final class Reaper {
             serverSocket.close();
         } catch (SocketTimeoutException e) {
             logger.error("No connection received within {}ms timeout", ACCEPT_TIMEOUT_MS);
-            deletePortFile(sessionId);
-            deleteJarFile(sessionId);
+            deleteDiscoveryFilesIfOwned(sessionId, port);
             try {
                 serverSocket.close();
             } catch (IOException ignored) {
@@ -281,8 +280,7 @@ public final class Reaper {
             return;
         } catch (IOException e) {
             logger.error("Accept failed: {}", e.getMessage());
-            deletePortFile(sessionId);
-            deleteJarFile(sessionId);
+            deleteDiscoveryFilesIfOwned(sessionId, port);
             try {
                 serverSocket.close();
             } catch (IOException ignored) {
@@ -300,7 +298,7 @@ public final class Reaper {
             logger.info("Disconnected (terminate={})", receivedTerminate);
         } catch (HandshakeException e) {
             logger.warn(e.getMessage());
-            cleanupOnHandshakeFailure(sessionId, clientSocket, executor);
+            cleanupOnHandshakeFailure(sessionId, port, clientSocket, executor);
             System.exit(1);
             return;
         } catch (IOException e) {
@@ -434,10 +432,12 @@ public final class Reaper {
             boolean completed = executor.awaitTermination(CleanupExecutor.DRAIN_DEADLINE_MINUTES, TimeUnit.MINUTES);
             if (!completed) {
                 logger.warn("drain incomplete; {} tasks abandoned", executor.getQueueSize());
+                executor.shutdownNow();
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             logger.warn("Drain interrupted; {} tasks may remain", executor.getQueueSize());
+            executor.shutdownNow();
         }
     }
 
@@ -495,6 +495,38 @@ public final class Reaper {
     }
 
     /**
+     * Deletes this reaper's discovery files only if the port file still
+     * contains this reaper's port. A relaunched reaper for the same session
+     * overwrites the port file; without this guard, a stale reaper timing out
+     * would delete the new reaper's port file (and possibly its JAR).
+     *
+     * @param sessionId the session UUID
+     * @param port this reaper's bound port
+     * @return {@code true} if the files were deleted, {@code false} if the
+     *     port file was missing or owned by another reaper
+     */
+    static boolean deleteDiscoveryFilesIfOwned(String sessionId, int port) {
+        boolean owned;
+        try {
+            owned = String.valueOf(port)
+                    .equals(Files.readString(portFilePath(sessionId), StandardCharsets.UTF_8)
+                            .trim());
+        } catch (IOException e) {
+            owned = false;
+        }
+        if (!owned) {
+            logger.warn(
+                    "Port file for session {} no longer advertises port {}; skipping discovery file cleanup",
+                    sessionId,
+                    port);
+            return false;
+        }
+        deletePortFile(sessionId);
+        deleteJarFile(sessionId);
+        return true;
+    }
+
+    /**
      * Returns the path to the port discovery file for a session.
      *
      * @param sessionId the session UUID
@@ -505,22 +537,23 @@ public final class Reaper {
     }
 
     /**
-     * Cleans up resources after a handshake failure: deletes discovery files,
-     * closes the client socket, and shuts down the executor.
+     * Cleans up resources after a handshake failure: deletes discovery files
+     * (only if still owned by this reaper), closes the client socket, and
+     * shuts down the executor.
      *
      * @param sessionId the session UUID
+     * @param port this reaper's bound port
      * @param clientSocket the connected client socket
      * @param executor the cleanup executor
      */
-    static void cleanupOnHandshakeFailure(String sessionId, Socket clientSocket, CleanupExecutor executor) {
-        deletePortFile(sessionId);
-        deleteJarFile(sessionId);
+    static void cleanupOnHandshakeFailure(String sessionId, int port, Socket clientSocket, CleanupExecutor executor) {
+        deleteDiscoveryFilesIfOwned(sessionId, port);
         try {
             clientSocket.close();
         } catch (IOException ignored) {
             // Best-effort close after failed handshake.
         }
-        executor.shutdown();
+        executor.shutdownNow();
     }
 
     /**

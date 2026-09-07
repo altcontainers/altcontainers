@@ -16,6 +16,7 @@
 
 package nonapi.org.altcontainers.api;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Duration;
@@ -50,5 +51,26 @@ class StartupCheckStrategyTest {
         assertThatThrownBy(() -> strategy.waitUntilStartupSuccessful(container, Duration.ofSeconds(1)))
                 .isInstanceOf(ContainerException.class)
                 .hasMessageContaining("failed startup check");
+    }
+
+    @Test
+    void shouldPollUntilTimeoutBeforeFailing() {
+        // A container id the daemon reports as not running: the strategy must
+        // keep polling until the timeout expires instead of failing instantly.
+        Container container = new ConcreteContainer(
+                "test-id",
+                "test-image:latest",
+                ContainerSpec.builder("test-image:latest").build(),
+                new ContainerMetadata("localhost", true, Map.of()));
+
+        long startNanos = System.nanoTime();
+        assertThatThrownBy(() ->
+                        StartupCheckStrategy.isRunning().waitUntilStartupSuccessful(container, Duration.ofSeconds(3)))
+                .isInstanceOf(ContainerException.class)
+                .hasMessageContaining("failed startup check");
+        long elapsedMs = Duration.ofNanos(System.nanoTime() - startNanos).toMillis();
+        assertThat(elapsedMs)
+                .as("strategy must wait for the configured timeout, not fail on a single check")
+                .isGreaterThanOrEqualTo(2_500L);
     }
 }
