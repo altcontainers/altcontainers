@@ -62,7 +62,7 @@
         <slf4j.version>2.0.20</slf4j.version>
         <paramixel.version>6.2.4</paramixel.version>
         <kafka-clients.version>4.4.0</kafka-clients.version>
-        <mongodb-driver.version>5.13.0</mongodb-driver.version>
+        <mongodb-driver.version>5.14.0</mongodb-driver.version>
         <palantir-java-format.version>2.91.0</palantir-java-format.version>
         <pmd.version>7.28.0</pmd.version>
         <!-- Plugin versions -->
