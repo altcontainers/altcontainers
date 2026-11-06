@@ -20,6 +20,7 @@ import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
+import nonapi.org.altcontainers.api.Durations;
 import nonapi.org.altcontainers.api.ManagedWaitStrategy;
 
 /**
@@ -127,7 +128,7 @@ public final class LogWaitStrategy implements ManagedWaitStrategy {
     public String timeoutDiagnostic(Container container, Duration startupTimeout) {
         return "LogWaitStrategy failed for image " + container.image() + ", container " + container.id()
                 + ", regex " + pattern.pattern() + ", matched " + count.get() + " of " + times + " within "
-                + format(startupTimeout);
+                + Durations.format(startupTimeout);
     }
 
     /**
@@ -144,11 +145,6 @@ public final class LogWaitStrategy implements ManagedWaitStrategy {
         if (pattern.matcher(line).matches()) {
             count.incrementAndGet();
         }
-    }
-
-    private static String format(Duration timeout) {
-        long timeoutMillis = timeout.toMillis();
-        return (timeoutMillis >= 1000 && timeoutMillis % 1000 == 0) ? timeout.toSeconds() + "s" : timeoutMillis + "ms";
     }
 
     /**

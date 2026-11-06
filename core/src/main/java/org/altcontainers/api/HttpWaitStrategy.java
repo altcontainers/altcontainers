@@ -35,6 +35,7 @@ import javax.net.ssl.SSLParameters;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 import nonapi.org.altcontainers.api.AltcontainersProperties;
+import nonapi.org.altcontainers.api.Durations;
 import nonapi.org.altcontainers.api.ManagedWaitStrategy;
 
 /**
@@ -176,8 +177,9 @@ public final class HttpWaitStrategy implements ManagedWaitStrategy {
      * @throws IllegalArgumentException if any parameter is invalid
      */
     public HttpWaitStrategy(Protocol protocol, int containerPort, String path, int minStatus, int maxStatus) {
-        if (containerPort < 1 || containerPort > 65535) {
-            throw new IllegalArgumentException("containerPort must be in 1..65535, was " + containerPort);
+        if (!ContainerPorts.isValid(containerPort)) {
+            throw new IllegalArgumentException(
+                    "containerPort must be in " + ContainerPorts.range() + ", was " + containerPort);
         }
         if (path == null || path.isBlank()) {
             throw new IllegalArgumentException("path must not be blank");
@@ -305,7 +307,7 @@ public final class HttpWaitStrategy implements ManagedWaitStrategy {
         String url = lastUrl != null ? lastUrl : protocol.scheme() + "://<unprobed>:" + containerPort + path;
         return "HttpWaitStrategy failed for image " + container.image() + ", container " + container.id() + ", URL "
                 + url + ", expected status " + minStatus + ".." + maxStatus + ", last status " + status
-                + " within " + format(startupTimeout) + error;
+                + " within " + Durations.format(startupTimeout) + error;
     }
 
     private static String normalizePath(String path) {
@@ -318,11 +320,6 @@ public final class HttpWaitStrategy implements ManagedWaitStrategy {
         } catch (URISyntaxException e) {
             throw new IllegalArgumentException("Invalid wait URL host/path", e);
         }
-    }
-
-    private static String format(Duration timeout) {
-        long timeoutMillis = timeout.toMillis();
-        return (timeoutMillis >= 1000 && timeoutMillis % 1000 == 0) ? timeout.toSeconds() + "s" : timeoutMillis + "ms";
     }
 
     private static HttpClient buildHttpClient(Protocol protocol, Duration connectTimeout) {
@@ -453,8 +450,8 @@ public final class HttpWaitStrategy implements ManagedWaitStrategy {
          *     {@code path} is invalid, or if the status range is invalid
          */
         public HttpWaitStrategy build() {
-            if (port < 1 || port > 65535) {
-                throw new IllegalArgumentException("port must be set in 1..65535, was " + port);
+            if (!ContainerPorts.isValid(port)) {
+                throw new IllegalArgumentException("port must be set in " + ContainerPorts.range() + ", was " + port);
             }
             return new HttpWaitStrategy(protocol, port, path, minStatus, maxStatus);
         }

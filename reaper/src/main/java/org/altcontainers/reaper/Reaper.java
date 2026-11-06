@@ -61,6 +61,10 @@ public final class Reaper {
 
     private static final Logger logger = LoggerFactory.getLogger(Reaper.class);
     private static final long GRACE_PERIOD_MS = 30_000L;
+    private static final String LOG_EXTENSION = ".log";
+    private static final String PORT_EXTENSION = ".port";
+    private static final String JAR_EXTENSION = ".jar";
+    private static final long ACCEPT_TIMEOUT_MS = 60_000L;
     static final int STOP_TIMEOUT_MS = parseStopTimeoutMsFromProperty();
     private static final int HANDSHAKE_TIMEOUT_MILLISECONDS =
             parsePositiveMillisecondsProperty("altcontainers.reaper.connection.timeout.ms", "10000");
@@ -72,10 +76,21 @@ public final class Reaper {
         try {
             MAX_ATTEMPTS = parseMaxAttempts(raw);
         } catch (IllegalArgumentException e) {
-            System.err.println("Reaper: " + e.getMessage());
-            System.exit(1);
+            exitWithError(e);
             throw e; // unreachable, satisfies definite assignment
         }
+    }
+
+    /**
+     * Reports an invalid property value on stderr and terminates the process.
+     * Returns only if {@link System#exit} is blocked, in which case the caller
+     * keeps its own unreachable fallback.
+     *
+     * @param failure the validation failure
+     */
+    private static void exitWithError(IllegalArgumentException failure) {
+        System.err.println("Reaper: " + failure.getMessage());
+        System.exit(1);
     }
 
     /**
@@ -89,8 +104,7 @@ public final class Reaper {
         try {
             return parseStopTimeoutMs(raw);
         } catch (IllegalArgumentException e) {
-            System.err.println("Reaper: " + e.getMessage());
-            System.exit(1);
+            exitWithError(e);
             return 5000; // unreachable
         }
     }
@@ -173,7 +187,7 @@ public final class Reaper {
         if (logDirectory == null || logDirectory.isBlank()) {
             logDirectory = System.getProperty("java.io.tmpdir");
         }
-        return logDirectory + File.separator + "altcontainers-reaper-" + sessionId + ".log";
+        return logDirectory + File.separator + sessionFileName(sessionId, LOG_EXTENSION);
     }
 
     private Reaper() {
@@ -210,8 +224,6 @@ public final class Reaper {
             }
         }
     }
-
-    private static final long ACCEPT_TIMEOUT_MS = 60_000L;
 
     /**
      * Creates a cleanup executor with production defaults for timeout values.
@@ -256,10 +268,7 @@ public final class Reaper {
             writePortFile(port, sessionId);
         } catch (IOException e) {
             logger.error("Failed to write port file: {}", e.getMessage());
-            try {
-                serverSocket.close();
-            } catch (IOException ignored) {
-            }
+            closeQuietly(serverSocket);
             System.exit(1);
             return;
         }
@@ -271,21 +280,11 @@ public final class Reaper {
             serverSocket.close();
         } catch (SocketTimeoutException e) {
             logger.error("No connection received within {}ms timeout", ACCEPT_TIMEOUT_MS);
-            deleteDiscoveryFilesIfOwned(sessionId, port);
-            try {
-                serverSocket.close();
-            } catch (IOException ignored) {
-            }
-            System.exit(1);
+            failAccept(sessionId, port, serverSocket);
             return;
         } catch (IOException e) {
             logger.error("Accept failed: {}", e.getMessage());
-            deleteDiscoveryFilesIfOwned(sessionId, port);
-            try {
-                serverSocket.close();
-            } catch (IOException ignored) {
-            }
-            System.exit(1);
+            failAccept(sessionId, port, serverSocket);
             return;
         }
 
@@ -324,6 +323,32 @@ public final class Reaper {
         cleanup(dockerClient, sessionId, executor);
         deletePortFile(sessionId);
         deleteJarFile(sessionId);
+    }
+
+    /**
+     * Cleans up after a failed accept: deletes the discovery files if they are
+     * still owned by this reaper, closes the socket, and exits.
+     *
+     * @param sessionId the session UUID
+     * @param port this reaper's bound port
+     * @param serverSocket the listening socket
+     */
+    private static void failAccept(String sessionId, int port, ServerSocket serverSocket) {
+        deleteDiscoveryFilesIfOwned(sessionId, port);
+        closeQuietly(serverSocket);
+        System.exit(1);
+    }
+
+    /**
+     * Closes the listening socket, ignoring errors.
+     *
+     * @param serverSocket the socket to close
+     */
+    private static void closeQuietly(ServerSocket serverSocket) {
+        try {
+            serverSocket.close();
+        } catch (IOException ignored) {
+        }
     }
 
     /**
@@ -488,10 +513,7 @@ public final class Reaper {
      * @param sessionId the session UUID
      */
     private static void deletePortFile(String sessionId) {
-        try {
-            Files.deleteIfExists(portFilePath(sessionId));
-        } catch (IOException ignored) {
-        }
+        deleteQuietly(portFilePath(sessionId));
     }
 
     /**
@@ -533,7 +555,7 @@ public final class Reaper {
      * @return the port file path
      */
     private static Path portFilePath(String sessionId) {
-        return Paths.get(System.getProperty("java.io.tmpdir"), "altcontainers-reaper-" + sessionId + ".port");
+        return Paths.get(System.getProperty("java.io.tmpdir"), sessionFileName(sessionId, PORT_EXTENSION));
     }
 
     /**
@@ -562,11 +584,31 @@ public final class Reaper {
      * @param sessionId the session UUID
      */
     private static void deleteJarFile(String sessionId) {
+        deleteQuietly(Paths.get(System.getProperty("java.io.tmpdir"), sessionFileName(sessionId, JAR_EXTENSION)));
+    }
+
+    /**
+     * Deletes a file if it exists, ignoring errors.
+     *
+     * @param path the file to delete
+     */
+    private static void deleteQuietly(Path path) {
         try {
-            Files.deleteIfExists(
-                    Paths.get(System.getProperty("java.io.tmpdir"), "altcontainers-reaper-" + sessionId + ".jar"));
+            Files.deleteIfExists(path);
         } catch (IOException ignored) {
         }
+    }
+
+    /**
+     * Returns the per-session file name used for the reaper's discovery, log,
+     * and JAR files.
+     *
+     * @param sessionId the session UUID
+     * @param extension the file extension, including the leading dot
+     * @return the file name
+     */
+    private static String sessionFileName(String sessionId, String extension) {
+        return "altcontainers-reaper-" + sessionId + extension;
     }
 
     /**

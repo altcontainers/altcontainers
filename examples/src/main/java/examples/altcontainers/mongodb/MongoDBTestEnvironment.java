@@ -94,14 +94,14 @@ public class MongoDBTestEnvironment implements AutoCloseable {
             stopQuietly();
             throw e;
         }
-        awaitBrokerReady();
+        awaitServerReady();
     }
 
-    private void awaitBrokerReady() {
+    private void awaitServerReady() {
         int pollIntervalMs = 500;
         long deadline = System.currentTimeMillis() + Duration.ofMinutes(2).toMillis();
         while (System.currentTimeMillis() < deadline) {
-            if (isBrokerReady()) {
+            if (isServerReady()) {
                 return;
             }
             try {
@@ -115,7 +115,7 @@ public class MongoDBTestEnvironment implements AutoCloseable {
         throw new ContainerException("MongoDB not ready within startup timeout");
     }
 
-    private boolean isBrokerReady() {
+    private boolean isServerReady() {
         try {
             var settings = MongoClientSettings.builder()
                     .applyConnectionString(new ConnectionString(getConnectionString()))

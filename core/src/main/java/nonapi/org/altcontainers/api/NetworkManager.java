@@ -88,19 +88,8 @@ public final class NetworkManager {
      * Registers a JVM shutdown hook that gracefully shuts down the stop executor.
      */
     private void registerShutdownHook() {
-        Runtime.getRuntime()
-                .addShutdownHook(new Thread(
-                        () -> {
-                            shuttingDown = true;
-                            STOP_EXECUTOR.shutdown();
-                            try {
-                                STOP_EXECUTOR.awaitTermination(10, TimeUnit.SECONDS);
-                            } catch (InterruptedException e) {
-                                Thread.currentThread().interrupt();
-                                STOP_EXECUTOR.shutdownNow();
-                            }
-                        },
-                        "altcontainers-network-remove-shutdown"));
+        ShutdownHooks.registerStopExecutorShutdown(
+                "altcontainers-network-remove-shutdown", () -> shuttingDown = true, STOP_EXECUTOR);
     }
 
     /**

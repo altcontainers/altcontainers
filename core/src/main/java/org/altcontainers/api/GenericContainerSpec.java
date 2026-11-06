@@ -379,9 +379,6 @@ public class GenericContainerSpec implements ContainerSpec {
      */
     public static final class Builder {
 
-        private static final int MIN_CONTAINER_PORT = 1;
-        private static final int MAX_CONTAINER_PORT = 65535;
-
         final String image;
         final List<String> commandParts = new ArrayList<>();
         final List<Integer> portSpecs = new ArrayList<>();
@@ -512,7 +509,7 @@ public class GenericContainerSpec implements ContainerSpec {
             }
             networkAliases.clear();
             for (String alias : aliases) {
-                networkAliases.add(requireNonBlankAlias(alias));
+                networkAliases.add(requireNonBlank(alias, "alias"));
             }
             return this;
         }
@@ -707,9 +704,7 @@ public class GenericContainerSpec implements ContainerSpec {
          * @throws IllegalArgumentException if {@code bytes} is negative
          */
         public Builder memory(long bytes) {
-            if (bytes < 0) {
-                throw new IllegalArgumentException("memory must be >= 0, was " + bytes);
-            }
+            requireNonNegative(bytes, "memory");
             this.memory = bytes;
             return this;
         }
@@ -722,9 +717,7 @@ public class GenericContainerSpec implements ContainerSpec {
          * @throws IllegalArgumentException if {@code bytes} is negative
          */
         public Builder memorySwap(long bytes) {
-            if (bytes < 0) {
-                throw new IllegalArgumentException("memorySwap must be >= 0, was " + bytes);
-            }
+            requireNonNegative(bytes, "memorySwap");
             this.memorySwap = bytes;
             return this;
         }
@@ -737,9 +730,7 @@ public class GenericContainerSpec implements ContainerSpec {
          * @throws IllegalArgumentException if {@code bytes} is negative
          */
         public Builder shmSize(long bytes) {
-            if (bytes < 0) {
-                throw new IllegalArgumentException("shmSize must be >= 0, was " + bytes);
-            }
+            requireNonNegative(bytes, "shmSize");
             this.shmSize = bytes;
             return this;
         }
@@ -752,9 +743,7 @@ public class GenericContainerSpec implements ContainerSpec {
          * @throws IllegalArgumentException if {@code shares} is negative
          */
         public Builder cpuShares(int shares) {
-            if (shares < 0) {
-                throw new IllegalArgumentException("cpuShares must be >= 0, was " + shares);
-            }
+            requireNonNegative(shares, "cpuShares");
             this.cpuShares = shares;
             return this;
         }
@@ -767,9 +756,7 @@ public class GenericContainerSpec implements ContainerSpec {
          * @throws IllegalArgumentException if {@code period} is negative
          */
         public Builder cpuPeriod(long period) {
-            if (period < 0) {
-                throw new IllegalArgumentException("cpuPeriod must be >= 0, was " + period);
-            }
+            requireNonNegative(period, "cpuPeriod");
             this.cpuPeriod = period;
             return this;
         }
@@ -782,9 +769,7 @@ public class GenericContainerSpec implements ContainerSpec {
          * @throws IllegalArgumentException if {@code quota} is negative
          */
         public Builder cpuQuota(long quota) {
-            if (quota < 0) {
-                throw new IllegalArgumentException("cpuQuota must be >= 0, was " + quota);
-            }
+            requireNonNegative(quota, "cpuQuota");
             this.cpuQuota = quota;
             return this;
         }
@@ -837,14 +822,15 @@ public class GenericContainerSpec implements ContainerSpec {
                 if (hostPort == null) {
                     throw new IllegalArgumentException("portBindings values must not be null");
                 }
-                if (hostPort < 0 || hostPort > MAX_CONTAINER_PORT) {
+                if (hostPort < 0 || hostPort > ContainerPorts.MAX) {
                     throw new IllegalArgumentException(
-                            "portBindings values must be in 0.." + MAX_CONTAINER_PORT + ", was " + hostPort);
+                            "portBindings values must be in 0.." + ContainerPorts.MAX + ", was " + hostPort);
                 }
             }
             for (Integer port : bindings.keySet()) {
-                if (port == null || port < MIN_CONTAINER_PORT || port > MAX_CONTAINER_PORT) {
-                    throw new IllegalArgumentException("portBindings keys must be in 1..65535, was " + port);
+                if (port == null || !ContainerPorts.isValid(port)) {
+                    throw new IllegalArgumentException(
+                            "portBindings keys must be in " + ContainerPorts.range() + ", was " + port);
                 }
                 if (!portSpecs.contains(port)) {
                     throw new IllegalArgumentException(
@@ -906,13 +892,7 @@ public class GenericContainerSpec implements ContainerSpec {
          *     {@code 1..65535}
          */
         public Builder waitForHttpResponse(int containerPort) {
-            requireContainerPort(containerPort, "containerPort");
-            waitConditions.add(Wait.forHttpResponse(
-                    HttpWaitStrategy.Protocol.HTTP,
-                    containerPort,
-                    HttpWaitStrategy.DEFAULT_MIN_STATUS,
-                    HttpWaitStrategy.DEFAULT_MAX_STATUS));
-            return this;
+            return waitForHttpResponse(HttpWaitStrategy.Protocol.HTTP, containerPort);
         }
 
         /**
@@ -936,12 +916,13 @@ public class GenericContainerSpec implements ContainerSpec {
          *     {@code 1..65535}
          */
         public Builder waitForHttpsResponse(int containerPort) {
+            return waitForHttpResponse(HttpWaitStrategy.Protocol.HTTPS_INSECURE, containerPort);
+        }
+
+        private Builder waitForHttpResponse(HttpWaitStrategy.Protocol protocol, int containerPort) {
             requireContainerPort(containerPort, "containerPort");
             waitConditions.add(Wait.forHttpResponse(
-                    HttpWaitStrategy.Protocol.HTTPS_INSECURE,
-                    containerPort,
-                    HttpWaitStrategy.DEFAULT_MIN_STATUS,
-                    HttpWaitStrategy.DEFAULT_MAX_STATUS));
+                    protocol, containerPort, HttpWaitStrategy.DEFAULT_MIN_STATUS, HttpWaitStrategy.DEFAULT_MAX_STATUS));
             return this;
         }
 
@@ -971,6 +952,19 @@ public class GenericContainerSpec implements ContainerSpec {
     }
 
     /**
+     * Throws {@link IllegalArgumentException} if the given value is negative.
+     *
+     * @param value the value to check
+     * @param name the argument name used in the error message
+     * @throws IllegalArgumentException if {@code value} is negative
+     */
+    private static void requireNonNegative(long value, String name) {
+        if (value < 0) {
+            throw new IllegalArgumentException(name + " must be >= 0, was " + value);
+        }
+    }
+
+    /**
      * Validates that a port is within the range {@code 1..65535}.
      *
      * @param port the port value
@@ -979,23 +973,9 @@ public class GenericContainerSpec implements ContainerSpec {
      * @throws IllegalArgumentException if {@code port} is outside {@code 1..65535}
      */
     private static int requireContainerPort(int port, String name) {
-        if (port < Builder.MIN_CONTAINER_PORT || port > Builder.MAX_CONTAINER_PORT) {
-            throw new IllegalArgumentException(name + " must be in 1..65535, was " + port);
+        if (!ContainerPorts.isValid(port)) {
+            throw new IllegalArgumentException(name + " must be in " + ContainerPorts.range() + ", was " + port);
         }
         return port;
-    }
-
-    /**
-     * Validates that a network alias is non-null and non-blank.
-     *
-     * @param alias the alias value
-     * @return the validated alias
-     * @throws IllegalArgumentException if {@code alias} is {@code null} or blank
-     */
-    private static String requireNonBlankAlias(String alias) {
-        if (alias == null || alias.isBlank()) {
-            throw new IllegalArgumentException("alias must not be blank");
-        }
-        return alias;
     }
 }

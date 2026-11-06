@@ -118,19 +118,7 @@ final class CleanupExecutor {
             logger.debug("Drain in progress, dropping submission for {} {}", task.type(), task.id());
             return;
         }
-        pendingTasks.incrementAndGet();
-        try {
-            scheduledExecutor.execute(() -> {
-                try {
-                    process(task);
-                } finally {
-                    pendingTasks.decrementAndGet();
-                }
-            });
-        } catch (RejectedExecutionException e) {
-            pendingTasks.decrementAndGet();
-            logger.debug("Executor shut down, dropping submission for {} {}", task.type(), task.id());
-        }
+        enqueue(task, "submission", () -> scheduledExecutor.execute(tracked(task)));
     }
 
     /**
@@ -140,21 +128,44 @@ final class CleanupExecutor {
      * @param delayMs the delay in milliseconds before execution
      */
     void schedule(CleanupTask task, long delayMs) {
+        enqueue(
+                task,
+                "scheduled retry",
+                () -> scheduledExecutor.schedule(tracked(task), delayMs, TimeUnit.MILLISECONDS));
+    }
+
+    /**
+     * Wraps a task so the pending count stays accurate whether the task
+     * completes normally or throws.
+     *
+     * @param task the cleanup task
+     * @return a runnable that processes the task and maintains the pending count
+     */
+    private Runnable tracked(CleanupTask task) {
+        return () -> {
+            try {
+                process(task);
+            } finally {
+                pendingTasks.decrementAndGet();
+            }
+        };
+    }
+
+    /**
+     * Runs a submission action, maintaining the pending count and logging a
+     * dropped task when the executor has been shut down.
+     *
+     * @param task the cleanup task
+     * @param action the action noun used in the drop log message
+     * @param submission the submission action
+     */
+    private void enqueue(CleanupTask task, String action, Runnable submission) {
         pendingTasks.incrementAndGet();
         try {
-            scheduledExecutor.schedule(
-                    () -> {
-                        try {
-                            process(task);
-                        } finally {
-                            pendingTasks.decrementAndGet();
-                        }
-                    },
-                    delayMs,
-                    TimeUnit.MILLISECONDS);
+            submission.run();
         } catch (RejectedExecutionException e) {
             pendingTasks.decrementAndGet();
-            logger.debug("Executor shut down, dropping scheduled retry for {} {}", task.type(), task.id());
+            logger.debug("Executor shut down, dropping {} for {} {}", action, task.type(), task.id());
         }
     }
 
@@ -268,46 +279,15 @@ final class CleanupExecutor {
      * @return {@code true} if the container was successfully stopped and removed
      */
     boolean destroyContainer(String id) {
-        try {
-            int stopTimeoutSec = stopTimeoutSeconds(Reaper.STOP_TIMEOUT_MS);
-            CompletableFuture<Void> future = CompletableFuture.runAsync(
-                    () -> {
-                        try {
-                            client.stopContainerCmd(id)
-                                    .withTimeout(stopTimeoutSec)
-                                    .exec();
-                        } catch (NotFoundException | NotModifiedException e) {
-                            // Best effort: container already stopped or removed — proceed to remove
-                        }
-                        client.removeContainerCmd(id).exec();
-                    },
-                    cachedDockerExecutor);
-            future.get(destroyTimeoutMs, TimeUnit.MILLISECONDS);
-            logger.info("Removed container {}", id);
-            return true;
-        } catch (ExecutionException e) {
-            Throwable cause = e.getCause();
-            if (cause instanceof NotFoundException) {
-                logger.debug("Container {} not found during destroy (already removed)", id);
-                return true;
+        int stopTimeoutSec = stopTimeoutSeconds(Reaper.STOP_TIMEOUT_MS);
+        return runTier(id, DESTROY_CONTAINER_LOG, destroyTimeoutMs, () -> {
+            try {
+                client.stopContainerCmd(id).withTimeout(stopTimeoutSec).exec();
+            } catch (NotFoundException | NotModifiedException e) {
+                // Best effort: container already stopped or removed — proceed to remove
             }
-            if (cause instanceof NotModifiedException) {
-                logger.debug("Container {} already stopped (Status 304)", id);
-                return true;
-            }
-            logger.warn("Failed to destroy container {}: {}", id, cause.getMessage());
-            return false;
-        } catch (TimeoutException e) {
-            logger.debug("Destroy timed out for container {} after {}ms", id, destroyTimeoutMs);
-            return false;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            logger.debug("Interrupted during destroy of container {}", id);
-            return false;
-        } catch (RejectedExecutionException e) {
-            logger.debug("Executor shut down, dropping destroy for container {}", id);
-            return false;
-        }
+            client.removeContainerCmd(id).exec();
+        });
     }
 
     /**
@@ -317,35 +297,11 @@ final class CleanupExecutor {
      * @return {@code true} if the container was successfully force-removed
      */
     boolean forceRemoveContainer(String id) {
-        try {
-            CompletableFuture<Void> future = CompletableFuture.runAsync(
-                    () -> client.removeContainerCmd(id).withForce(true).exec(), cachedDockerExecutor);
-            future.get(forceTimeoutMs, TimeUnit.MILLISECONDS);
-            logger.info("Force-removed container {}", id);
-            return true;
-        } catch (ExecutionException e) {
-            Throwable cause = e.getCause();
-            if (cause instanceof NotFoundException) {
-                logger.debug("Container {} not found during force-remove (already removed)", id);
-                return true;
-            }
-            if (cause instanceof NotModifiedException) {
-                logger.debug("Container {} already removed (Status 304)", id);
-                return true;
-            }
-            logger.warn("Failed to force-remove container {}: {}", id, cause.getMessage());
-            return false;
-        } catch (TimeoutException e) {
-            logger.debug("Force-remove timed out for container {} after {}ms", id, forceTimeoutMs);
-            return false;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            logger.debug("Interrupted during force-remove of container {}", id);
-            return false;
-        } catch (RejectedExecutionException e) {
-            logger.debug("Executor shut down, dropping force-remove for container {}", id);
-            return false;
-        }
+        return runTier(
+                id,
+                FORCE_REMOVE_CONTAINER_LOG,
+                forceTimeoutMs,
+                () -> client.removeContainerCmd(id).withForce(true).exec());
     }
 
     /**
@@ -355,35 +311,11 @@ final class CleanupExecutor {
      * @return {@code true} if the network was successfully removed
      */
     boolean removeNetwork(String id) {
-        try {
-            CompletableFuture<Void> future =
-                    CompletableFuture.runAsync(() -> client.removeNetworkCmd(id).exec(), cachedDockerExecutor);
-            future.get(forceTimeoutMs, TimeUnit.MILLISECONDS);
-            logger.info("Removed network {}", id);
-            return true;
-        } catch (ExecutionException e) {
-            Throwable cause = e.getCause();
-            if (cause instanceof NotFoundException) {
-                logger.debug("Network {} not found (already removed)", id);
-                return true;
-            }
-            if (cause instanceof NotModifiedException) {
-                logger.debug("Network {} already removed (Status 304)", id);
-                return true;
-            }
-            logger.warn("Failed to remove network {}: {}", id, cause.getMessage());
-            return false;
-        } catch (TimeoutException e) {
-            logger.debug("Remove timed out for network {} after {}ms", id, forceTimeoutMs);
-            return false;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            logger.debug("Interrupted during remove of network {}", id);
-            return false;
-        } catch (RejectedExecutionException e) {
-            logger.debug("Executor shut down, dropping remove for network {}", id);
-            return false;
-        }
+        return runTier(
+                id,
+                REMOVE_NETWORK_LOG,
+                forceTimeoutMs,
+                () -> client.removeNetworkCmd(id).exec());
     }
 
     /**
@@ -393,59 +325,129 @@ final class CleanupExecutor {
      * @return {@code true} if the network was successfully force-removed
      */
     boolean forceRemoveNetwork(String id) {
+        return runTier(id, FORCE_REMOVE_NETWORK_LOG, forceTimeoutMs, () -> {
+            Network network = client.inspectNetworkCmd().withNetworkId(id).exec();
+            java.util.Map<String, Network.ContainerNetworkConfig> containers = network.getContainers();
+            if (containers != null) {
+                for (String containerId : containers.keySet()) {
+                    try {
+                        client.disconnectFromNetworkCmd()
+                                .withContainerId(containerId)
+                                .withNetworkId(id)
+                                .withForce(true)
+                                .exec();
+                    } catch (RuntimeException e) {
+                        logger.warn(
+                                "Failed to disconnect container {} from network {}: {}",
+                                containerId,
+                                id,
+                                e.getMessage());
+                    }
+                }
+            }
+            client.removeNetworkCmd(id).exec();
+        });
+    }
+
+    /**
+     * Runs one tier of the cleanup ladder: a Docker call bounded by a Java-side
+     * timeout, with the shared cause-to-outcome mapping. Absent or already
+     * removed resources count as success; timeouts, interrupts, and rejections
+     * count as failure.
+     *
+     * @param id the resource ID
+     * @param log the tier's log wording
+     * @param timeoutMs the Java-side timeout in milliseconds
+     * @param call the Docker call to run
+     * @return {@code true} if the resource is gone after this tier
+     */
+    private boolean runTier(String id, TierLog log, long timeoutMs, Runnable call) {
         try {
-            CompletableFuture<Void> future = CompletableFuture.runAsync(
-                    () -> {
-                        Network network =
-                                client.inspectNetworkCmd().withNetworkId(id).exec();
-                        java.util.Map<String, Network.ContainerNetworkConfig> containers = network.getContainers();
-                        if (containers != null) {
-                            for (String containerId : containers.keySet()) {
-                                try {
-                                    client.disconnectFromNetworkCmd()
-                                            .withContainerId(containerId)
-                                            .withNetworkId(id)
-                                            .withForce(true)
-                                            .exec();
-                                } catch (RuntimeException e) {
-                                    logger.warn(
-                                            "Failed to disconnect container {} from network {}: {}",
-                                            containerId,
-                                            id,
-                                            e.getMessage());
-                                }
-                            }
-                        }
-                        client.removeNetworkCmd(id).exec();
-                    },
-                    cachedDockerExecutor);
-            future.get(forceTimeoutMs, TimeUnit.MILLISECONDS);
-            logger.info("Force-removed network {}", id);
+            CompletableFuture<Void> future = CompletableFuture.runAsync(call, cachedDockerExecutor);
+            future.get(timeoutMs, TimeUnit.MILLISECONDS);
+            logger.info(log.success(), id);
             return true;
         } catch (ExecutionException e) {
             Throwable cause = e.getCause();
             if (cause instanceof NotFoundException) {
-                logger.debug("Network {} not found during force-remove (already removed)", id);
+                logger.debug(log.notFound(), id);
                 return true;
             }
             if (cause instanceof NotModifiedException) {
-                logger.debug("Network {} already removed (Status 304)", id);
+                logger.debug(log.notModified(), id);
                 return true;
             }
-            logger.warn("Failed to force-remove network {}: {}", id, cause.getMessage());
+            logger.warn(log.failed(), id, cause.getMessage());
             return false;
         } catch (TimeoutException e) {
-            logger.debug("Force-remove timed out for network {} after {}ms", id, forceTimeoutMs);
+            logger.debug(log.timedOut(), id, timeoutMs);
             return false;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            logger.debug("Interrupted during force-remove of network {}", id);
+            logger.debug(log.interrupted(), id);
             return false;
         } catch (RejectedExecutionException e) {
-            logger.debug("Executor shut down, dropping force-remove for network {}", id);
+            logger.debug(log.dropped(), id);
             return false;
         }
     }
+
+    /**
+     * Log wording for one cleanup tier, kept per tier so every message is
+     * emitted verbatim.
+     *
+     * @param success the success message
+     * @param notFound the not-found (treated as success) message
+     * @param notModified the not-modified (treated as success) message
+     * @param failed the failure warning
+     * @param timedOut the timeout message
+     * @param interrupted the interrupt message
+     * @param dropped the executor-rejected message
+     */
+    private record TierLog(
+            String success,
+            String notFound,
+            String notModified,
+            String failed,
+            String timedOut,
+            String interrupted,
+            String dropped) {}
+
+    private static final TierLog DESTROY_CONTAINER_LOG = new TierLog(
+            "Removed container {}",
+            "Container {} not found during destroy (already removed)",
+            "Container {} already stopped (Status 304)",
+            "Failed to destroy container {}: {}",
+            "Destroy timed out for container {} after {}ms",
+            "Interrupted during destroy of container {}",
+            "Executor shut down, dropping destroy for container {}");
+
+    private static final TierLog FORCE_REMOVE_CONTAINER_LOG = new TierLog(
+            "Force-removed container {}",
+            "Container {} not found during force-remove (already removed)",
+            "Container {} already removed (Status 304)",
+            "Failed to force-remove container {}: {}",
+            "Force-remove timed out for container {} after {}ms",
+            "Interrupted during force-remove of container {}",
+            "Executor shut down, dropping force-remove for container {}");
+
+    private static final TierLog REMOVE_NETWORK_LOG = new TierLog(
+            "Removed network {}",
+            "Network {} not found (already removed)",
+            "Network {} already removed (Status 304)",
+            "Failed to remove network {}: {}",
+            "Remove timed out for network {} after {}ms",
+            "Interrupted during remove of network {}",
+            "Executor shut down, dropping remove for network {}");
+
+    private static final TierLog FORCE_REMOVE_NETWORK_LOG = new TierLog(
+            "Force-removed network {}",
+            "Network {} not found during force-remove (already removed)",
+            "Network {} already removed (Status 304)",
+            "Failed to force-remove network {}: {}",
+            "Force-remove timed out for network {} after {}ms",
+            "Interrupted during force-remove of network {}",
+            "Executor shut down, dropping force-remove for network {}");
 
     /**
      * Converts the configured stop timeout in milliseconds to whole seconds

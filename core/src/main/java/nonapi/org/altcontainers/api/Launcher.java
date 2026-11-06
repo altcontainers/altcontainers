@@ -39,6 +39,7 @@ public final class Launcher {
 
     private static final Logger logger = LoggerFactory.getLogger(Launcher.class);
     private static final String ALTCONTAINERS_DOCKER_HOST_PROPERTY = AltcontainersProperties.DOCKER_HOST;
+    private static final String REAPER_SESSION_ID_PROPERTY = "altcontainers.reaper.session.id";
 
     private Launcher() {
         // Intentionally empty
@@ -127,12 +128,13 @@ public final class Launcher {
                 javaCommand,
                 detached,
                 properties.reaperConnectionTimeout(),
-                properties.reaperStopTimeout());
+                properties.reaperStopTimeout(),
+                properties.dockerHost());
     }
 
     /**
-     * Builds the command line for launching the reaper JAR with explicit
-     * resolved reaper timeouts.
+     * Builds the command line for launching the reaper JAR from already
+     * resolved configuration values, without consulting ambient configuration.
      *
      * @param sessionId the session UUID
      * @param jarPath the path to the reaper JAR
@@ -140,6 +142,7 @@ public final class Launcher {
      * @param detached whether to detach via setsid/nohup
      * @param reaperConnectionTimeout the resolved reaper connection timeout
      * @param reaperStopTimeout the resolved reaper stop timeout
+     * @param dockerHost the resolved Docker host, or {@code null} or blank when unset
      * @return the command line arguments
      */
     static List<String> buildCommand(
@@ -148,7 +151,8 @@ public final class Launcher {
             String javaCommand,
             boolean detached,
             Duration reaperConnectionTimeout,
-            Duration reaperStopTimeout) {
+            Duration reaperStopTimeout,
+            String dockerHost) {
         Objects.requireNonNull(sessionId, "sessionId must not be null");
         Objects.requireNonNull(jarPath, "jarPath must not be null");
         Objects.requireNonNull(javaCommand, "javaCommand must not be null");
@@ -163,10 +167,9 @@ public final class Launcher {
             }
         }
         cmd.add(javaCommand);
-        cmd.add("-Daltcontainers.reaper.session.id=" + sessionId);
-        cmd.add("-Daltcontainers.reaper.connection.timeout.ms=" + reaperConnectionTimeout.toMillis());
-        cmd.add("-Daltcontainers.reaper.stop.timeout.ms=" + reaperStopTimeout.toMillis());
-        String dockerHost = AltcontainersProperties.instance().dockerHost();
+        cmd.add("-D" + REAPER_SESSION_ID_PROPERTY + "=" + sessionId);
+        cmd.add("-D" + AltcontainersProperties.REAPER_CONNECTION_TIMEOUT_MS + "=" + reaperConnectionTimeout.toMillis());
+        cmd.add("-D" + AltcontainersProperties.REAPER_STOP_TIMEOUT_MS + "=" + reaperStopTimeout.toMillis());
         if (dockerHost != null && !dockerHost.isBlank()) {
             cmd.add("-D" + ALTCONTAINERS_DOCKER_HOST_PROPERTY + "=" + dockerHost);
         }
@@ -191,7 +194,7 @@ public final class Launcher {
      * @return {@code true} if the property should be forwarded
      */
     static boolean shouldForwardSystemProperty(String key) {
-        if ("altcontainers.reaper.session.id".equals(key)) {
+        if (REAPER_SESSION_ID_PROPERTY.equals(key)) {
             return false;
         }
         if (isReaperTimeoutKey(key)) {
@@ -204,8 +207,8 @@ public final class Launcher {
     }
 
     private static boolean isReaperTimeoutKey(String key) {
-        return "altcontainers.reaper.connection.timeout.ms".equals(key)
-                || "altcontainers.reaper.startup.timeout.ms".equals(key)
-                || "altcontainers.reaper.stop.timeout.ms".equals(key);
+        return AltcontainersProperties.REAPER_CONNECTION_TIMEOUT_MS.equals(key)
+                || AltcontainersProperties.REAPER_STARTUP_TIMEOUT_MS.equals(key)
+                || AltcontainersProperties.REAPER_STOP_TIMEOUT_MS.equals(key);
     }
 }

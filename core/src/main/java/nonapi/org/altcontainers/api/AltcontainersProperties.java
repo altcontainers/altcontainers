@@ -315,47 +315,45 @@ public final class AltcontainersProperties {
     }
 
     private static String resolveRaw(KeyDef def, Properties classpath, Properties userHome, Map<String, String> env) {
-        // 1. System property (primary key)
-        String sysPropValue = System.getProperty(def.key);
+        String resolved = lookup(def.key, classpath, userHome, env);
+        if (resolved != null) {
+            return resolved;
+        }
+        // Legacy key fallback (same order)
+        if (def.legacyKey != null) {
+            String legacy = lookup(def.legacyKey, classpath, userHome, env);
+            if (legacy != null) {
+                return legacy;
+            }
+        }
+        // Hardcoded default
+        return def.defaultValue;
+    }
+
+    /**
+     * Looks up a key through the resolution precedence ladder: system property,
+     * environment variable, user-home file, then classpath resource.
+     *
+     * @param key the property key
+     * @param classpath the classpath properties (may be empty)
+     * @param userHome the user-home properties (may be empty)
+     * @param env the environment variable map
+     * @return the first value found, or {@code null} if the key is absent everywhere
+     */
+    private static String lookup(String key, Properties classpath, Properties userHome, Map<String, String> env) {
+        String sysPropValue = System.getProperty(key);
         if (sysPropValue != null && !sysPropValue.isEmpty()) {
             return sysPropValue;
         }
-        // 2. Environment variable (primary key)
-        String envValue = env.get(envVarName(def.key));
+        String envValue = env.get(envVarName(key));
         if (envValue != null && !envValue.isEmpty()) {
             return envValue;
         }
-        // 3. User-home file (primary key)
-        String userHomeValue = userHome.getProperty(def.key);
+        String userHomeValue = userHome.getProperty(key);
         if (userHomeValue != null) {
             return userHomeValue;
         }
-        // 4. Classpath resource (primary key)
-        String classpathValue = classpath.getProperty(def.key);
-        if (classpathValue != null) {
-            return classpathValue;
-        }
-        // 5-8. Legacy key fallback (same order)
-        if (def.legacyKey != null) {
-            String legacySysProp = System.getProperty(def.legacyKey);
-            if (legacySysProp != null && !legacySysProp.isEmpty()) {
-                return legacySysProp;
-            }
-            String legacyEnvValue = env.get(envVarName(def.legacyKey));
-            if (legacyEnvValue != null && !legacyEnvValue.isEmpty()) {
-                return legacyEnvValue;
-            }
-            String legacyUserHome = userHome.getProperty(def.legacyKey);
-            if (legacyUserHome != null) {
-                return legacyUserHome;
-            }
-            String legacyClasspath = classpath.getProperty(def.legacyKey);
-            if (legacyClasspath != null) {
-                return legacyClasspath;
-            }
-        }
-        // 9. Hardcoded default
-        return def.defaultValue;
+        return classpath.getProperty(key);
     }
 
     private static Object parse(KeyDef def, String raw) {

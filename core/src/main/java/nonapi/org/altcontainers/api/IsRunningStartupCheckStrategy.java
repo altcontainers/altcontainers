@@ -66,11 +66,6 @@ public final class IsRunningStartupCheckStrategy implements StartupCheckStrategy
             pollMs = Math.min(pollMs * 2, pollMaxMs);
         }
         throw new ContainerException("Container " + container.id() + " for image " + container.image()
-                + " failed startup check: container failed to remain running within " + format(timeout));
-    }
-
-    private static String format(Duration timeout) {
-        long timeoutMillis = timeout.toMillis();
-        return (timeoutMillis >= 1000 && timeoutMillis % 1000 == 0) ? timeout.toSeconds() + "s" : timeoutMillis + "ms";
+                + " failed startup check: container failed to remain running within " + Durations.format(timeout));
     }
 }
