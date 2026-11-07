@@ -18,6 +18,7 @@ package nonapi.org.altcontainers.api;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 /**
  * Registers the JVM shutdown hook that drains a stop executor.
@@ -34,27 +35,43 @@ public final class ShutdownHooks {
     }
 
     /**
-     * Registers a shutdown hook that marks shutdown in progress, then drains
-     * the given executor, forcing it down if it does not terminate in time.
+     * Registers a shutdown hook that marks shutdown in progress, then drains the
+     * executor, forcing it down if it does not terminate in time.
+     *
+     * <p>The executor is supplied rather than passed, because the managers
+     * register their hook from a constructor that runs while their static
+     * fields are still being initialized; the field holds its value only once
+     * the hook runs.
      *
      * @param threadName the shutdown hook thread name
      * @param markShuttingDown action run first to flag shutdown in progress
-     * @param stopExecutor the executor to drain
+     * @param stopExecutor supplies the executor to drain, resolved when the hook runs
      */
     public static void registerStopExecutorShutdown(
-            String threadName, Runnable markShuttingDown, ExecutorService stopExecutor) {
+            String threadName, Runnable markShuttingDown, Supplier<ExecutorService> stopExecutor) {
         Runtime.getRuntime()
-                .addShutdownHook(new Thread(
-                        () -> {
-                            markShuttingDown.run();
-                            stopExecutor.shutdown();
-                            try {
-                                stopExecutor.awaitTermination(TERMINATION_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-                            } catch (InterruptedException e) {
-                                Thread.currentThread().interrupt();
-                                stopExecutor.shutdownNow();
-                            }
-                        },
-                        threadName));
+                .addShutdownHook(new Thread(stopExecutorShutdown(markShuttingDown, stopExecutor), threadName));
+    }
+
+    /**
+     * Builds the shutdown task: mark shutdown in progress, drain the executor,
+     * and force it down if it does not terminate in time.
+     *
+     * @param markShuttingDown action run first to flag shutdown in progress
+     * @param stopExecutor supplies the executor to drain, resolved when the task runs
+     * @return the shutdown task, package-private for testing
+     */
+    static Runnable stopExecutorShutdown(Runnable markShuttingDown, Supplier<ExecutorService> stopExecutor) {
+        return () -> {
+            markShuttingDown.run();
+            ExecutorService executor = stopExecutor.get();
+            executor.shutdown();
+            try {
+                executor.awaitTermination(TERMINATION_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                executor.shutdownNow();
+            }
+        };
     }
 }

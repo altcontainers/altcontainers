@@ -89,7 +89,7 @@ public final class NetworkManager {
      */
     private void registerShutdownHook() {
         ShutdownHooks.registerStopExecutorShutdown(
-                "altcontainers-network-remove-shutdown", () -> shuttingDown = true, STOP_EXECUTOR);
+                "altcontainers-network-remove-shutdown", () -> shuttingDown = true, () -> STOP_EXECUTOR);
     }
 
     /**

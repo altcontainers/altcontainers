@@ -126,7 +126,7 @@ public final class ContainerManager {
      */
     private void registerShutdownHook() {
         ShutdownHooks.registerStopExecutorShutdown(
-                "altcontainers-container-stop-shutdown", () -> shuttingDown = true, STOP_EXECUTOR);
+                "altcontainers-container-stop-shutdown", () -> shuttingDown = true, () -> STOP_EXECUTOR);
     }
 
     /**
