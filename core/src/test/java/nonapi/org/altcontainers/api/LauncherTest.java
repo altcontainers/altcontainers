@@ -60,7 +60,13 @@ class LauncherTest {
     @Test
     void shouldPassResolvedReaperTimeoutsAsExplicitArgs() {
         List<String> cmd = Launcher.buildCommand(
-                "session-123", Path.of("reaper.jar"), "java", false, Duration.ofSeconds(12), Duration.ofSeconds(7));
+                "session-123",
+                Path.of("reaper.jar"),
+                "java",
+                false,
+                Duration.ofSeconds(12),
+                Duration.ofSeconds(7),
+                null);
         assertThat(cmd).contains("-Daltcontainers.reaper.session.id=session-123");
         assertThat(cmd).contains("-Daltcontainers.reaper.connection.timeout.ms=12000");
         assertThat(cmd).contains("-Daltcontainers.reaper.stop.timeout.ms=7000");
@@ -99,8 +105,7 @@ class LauncherTest {
                     "altcontainers.docker.host=tcp://remote-from-file:2375\n");
             System.setProperty("user.home", fakeHome.toString());
             AltcontainersProperties.reset();
-            List<String> cmd = Launcher.buildCommand(
-                    "session-123", Path.of("reaper.jar"), "java", false, Duration.ofSeconds(12), Duration.ofSeconds(7));
+            List<String> cmd = Launcher.buildCommand("session-123", Path.of("reaper.jar"), "java", false);
             assertThat(cmd).contains("-Daltcontainers.docker.host=tcp://remote-from-file:2375");
         } finally {
             System.setProperty("user.home", originalHome);
@@ -120,7 +125,7 @@ class LauncherTest {
         try {
             Launcher.launch(sessionId);
 
-            Integer port = waitForPort(sessionId, 10_000);
+            Integer port = ReaperTestSupport.waitForPort(sessionId, 10_000);
             assertThat(port).as("reaper port should appear").isNotNull();
 
             completeHandshake(port, sessionId);
@@ -145,7 +150,7 @@ class LauncherTest {
         try {
             Launcher.launch(sessionId);
 
-            Integer port = waitForPort(sessionId, 10_000);
+            Integer port = ReaperTestSupport.waitForPort(sessionId, 10_000);
             assertThat(port)
                     .as("reaper port should appear after relaunch with unchanged JAR")
                     .isNotNull();
@@ -170,22 +175,10 @@ class LauncherTest {
         }
     }
 
-    private static Integer waitForPort(String sessionId, long timeoutMs) throws InterruptedException {
-        long deadline = System.currentTimeMillis() + timeoutMs;
-        Integer port = null;
-        while (System.currentTimeMillis() < deadline && port == null) {
-            port = ReaperDiscovery.readPort(sessionId).orElse(null);
-            if (port == null) {
-                Thread.sleep(100);
-            }
-        }
-        return port;
-    }
-
     private static void cleanupSession(String sessionId, Path jarPath) {
         // Kill any lingering reaper processes for this session
         try {
-            Integer port = waitForPort(sessionId, CLEANUP_PORT_WAIT_MS);
+            Integer port = ReaperTestSupport.waitForPort(sessionId, CLEANUP_PORT_WAIT_MS);
             if (port != null) {
                 try (Socket socket = connectToReaper(port);
                         BufferedWriter writer = new BufferedWriter(

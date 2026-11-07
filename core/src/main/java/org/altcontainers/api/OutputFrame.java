@@ -126,14 +126,7 @@ public final class OutputFrame {
      * @return the UTF-8 decoded string without trailing line ending
      */
     public String utf8StringWithoutLineEnding() {
-        String text = utf8String();
-        if (text.endsWith("\r\n")) {
-            return text.substring(0, text.length() - 2);
-        }
-        if (text.endsWith("\n")) {
-            return text.substring(0, text.length() - 1);
-        }
-        return text;
+        return stripTrailingLineEnding(utf8String());
     }
 
     /**
@@ -184,7 +177,10 @@ public final class OutputFrame {
      * @since 0.2.0
      */
     public String safeUtf8StringWithoutLineEnding() {
-        String text = safeUtf8String();
+        return stripTrailingLineEnding(safeUtf8String());
+    }
+
+    private static String stripTrailingLineEnding(String text) {
         if (text.endsWith("\r\n")) {
             return text.substring(0, text.length() - 2);
         }

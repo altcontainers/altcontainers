@@ -21,6 +21,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
+import nonapi.org.altcontainers.api.ManagedWaitStrategies;
 import nonapi.org.altcontainers.api.ManagedWaitStrategy;
 
 /**
@@ -75,17 +76,7 @@ abstract class CompositeWaitStrategy implements ManagedWaitStrategy {
      */
     @Override
     public Consumer<String> logLineConsumer() {
-        List<Consumer<String>> consumers = strategies.stream()
-                .filter(s -> s instanceof ManagedWaitStrategy)
-                .map(s -> ((ManagedWaitStrategy) s).logLineConsumer())
-                .filter(Objects::nonNull)
-                .toList();
-        if (consumers.isEmpty()) {
-            return null;
-        }
-        // Single consumer that fans out to all sub-consumers.
-        // Each consumer processes the line independently.
-        return line -> consumers.forEach(c -> c.accept(line));
+        return ManagedWaitStrategies.logLineConsumer(strategies);
     }
 
     /**
@@ -98,13 +89,7 @@ abstract class CompositeWaitStrategy implements ManagedWaitStrategy {
      */
     @Override
     public String timeoutDiagnostic(Container container, Duration startupTimeout) {
-        return String.join(
-                "; ",
-                strategies.stream()
-                        .map(s -> s instanceof ManagedWaitStrategy m
-                                ? m.timeoutDiagnostic(container, startupTimeout)
-                                : s.getClass().getSimpleName())
-                        .toList());
+        return ManagedWaitStrategies.joinDiagnostics(strategies, container, startupTimeout);
     }
 
     /**

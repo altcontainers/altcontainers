@@ -41,16 +41,14 @@ public record Configuration(
      * @param reaperStopTimeout the reaper stop timeout
      */
     public Configuration {
-        if (reaperConnectionTimeout == null
-                || reaperConnectionTimeout.isZero()
-                || reaperConnectionTimeout.isNegative()) {
-            throw new ContainerException(PREFIX + "connection.timeout.ms must be positive");
-        }
-        if (reaperStartupTimeout == null || reaperStartupTimeout.isZero() || reaperStartupTimeout.isNegative()) {
-            throw new ContainerException(PREFIX + "startup.timeout.ms must be positive");
-        }
-        if (reaperStopTimeout == null || reaperStopTimeout.isZero() || reaperStopTimeout.isNegative()) {
-            throw new ContainerException(PREFIX + "stop.timeout.ms must be positive");
+        requirePositive(reaperConnectionTimeout, "connection.timeout.ms");
+        requirePositive(reaperStartupTimeout, "startup.timeout.ms");
+        requirePositive(reaperStopTimeout, "stop.timeout.ms");
+    }
+
+    private static void requirePositive(Duration value, String keySuffix) {
+        if (value == null || value.isZero() || value.isNegative()) {
+            throw new ContainerException(PREFIX + keySuffix + " must be positive");
         }
     }
 

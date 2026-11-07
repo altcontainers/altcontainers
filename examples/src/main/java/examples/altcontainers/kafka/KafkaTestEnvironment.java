@@ -53,6 +53,7 @@ public class KafkaTestEnvironment implements AutoCloseable {
 
     private static final String ADMIN_REQUEST_TIMEOUT_MS = "5000";
     private static final int TOPIC_CREATE_TIMEOUT_SECONDS = 8;
+    private static final long TOPIC_VISIBILITY_POLL_MILLIS = 50L;
 
     private final String dockerImageName;
 
@@ -188,13 +189,20 @@ public class KafkaTestEnvironment implements AutoCloseable {
     }
 
     /**
-     * Creates a Kafka topic with a single partition and replication factor of 1.
-     * Silently succeeds if the topic already exists.
+     * Creates a Kafka topic with a single partition and replication factor of 1,
+     * then waits until clients can use it. Silently succeeds if the topic already
+     * exists.
+     *
+     * <p>Returns only once the broker serves the topic with an elected leader for
+     * every partition. A successful create request means the controller accepted
+     * the metadata; until the broker's metadata cache applies it, clients still
+     * observe {@code UNKNOWN_TOPIC_OR_PARTITION}, which also makes producer
+     * clients ask the broker to create the topic implicitly.
      *
      * @param topic the topic name to create
      * @throws ExecutionException if an asynchronous admin operation fails (other than topic-exists)
      * @throws InterruptedException if the calling thread is interrupted; the interrupt flag is restored
-     * @throws IllegalStateException if the create operation times out
+     * @throws IllegalStateException if the create operation times out, or the topic never becomes available
      */
     public void createTopic(final String topic) throws ExecutionException, InterruptedException {
         var properties = new Properties();
@@ -203,24 +211,74 @@ public class KafkaTestEnvironment implements AutoCloseable {
         properties.put(AdminClientConfig.DEFAULT_API_TIMEOUT_MS_CONFIG, ADMIN_REQUEST_TIMEOUT_MS);
 
         try (var adminClient = AdminClient.create(properties)) {
-            adminClient
-                    .createTopics(List.of(new NewTopic(topic, 1, (short) 1)))
-                    .all()
-                    .get(TOPIC_CREATE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-        } catch (TimeoutException e) {
-            throw new IllegalStateException("Timed out creating topic: " + topic, e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw e;
-        } catch (ExecutionException e) {
-            var cause = e.getCause();
-            if (cause instanceof TopicExistsException
-                    || (cause != null && cause.getCause() instanceof TopicExistsException)) {
-                return;
+            try {
+                adminClient
+                        .createTopics(List.of(new NewTopic(topic, 1, (short) 1)))
+                        .all()
+                        .get(TOPIC_CREATE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            } catch (TimeoutException e) {
+                throw new IllegalStateException("Timed out creating topic: " + topic, e);
+            } catch (ExecutionException e) {
+                if (!isTopicExists(e)) {
+                    throw e;
+                }
             }
-
-            throw e;
+            awaitTopicAvailable(adminClient, topic);
         }
+    }
+
+    /**
+     * Polls the broker until the topic is served with an elected leader for every
+     * partition.
+     *
+     * @param adminClient the admin client to poll with
+     * @param topic the topic to wait for
+     * @throws InterruptedException if the calling thread is interrupted; the interrupt flag is restored
+     * @throws IllegalStateException if the topic does not become available in time
+     */
+    private void awaitTopicAvailable(final AdminClient adminClient, final String topic) throws InterruptedException {
+        long deadline = System.nanoTime()
+                + Duration.ofSeconds(TOPIC_CREATE_TIMEOUT_SECONDS).toNanos();
+        Exception lastFailure = null;
+        while (System.nanoTime() < deadline) {
+            try {
+                var descriptions = adminClient
+                        .describeTopics(List.of(topic))
+                        .allTopicNames()
+                        .get(TOPIC_CREATE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                var description = descriptions.get(topic);
+                if (description != null
+                        && description.partitions().stream()
+                                .allMatch(partition -> partition.leader() != null
+                                        && partition.leader().id() >= 0)) {
+                    return;
+                }
+            } catch (ExecutionException | TimeoutException e) {
+                lastFailure = e;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw e;
+            }
+            try {
+                Thread.sleep(TOPIC_VISIBILITY_POLL_MILLIS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw e;
+            }
+        }
+        throw new IllegalStateException("Topic did not become available: " + topic, lastFailure);
+    }
+
+    /**
+     * Returns whether the failure reports that the topic already exists.
+     *
+     * @param failure the create-topics failure
+     * @return {@code true} if the topic already exists
+     */
+    private static boolean isTopicExists(final ExecutionException failure) {
+        var cause = failure.getCause();
+        return cause instanceof TopicExistsException
+                || (cause != null && cause.getCause() instanceof TopicExistsException);
     }
 
     /**

@@ -76,13 +76,7 @@ public class ConcreteContainer implements Container {
 
     @Override
     public Integer hostPort(int containerPort) {
-        if (metadata != null) {
-            Integer cached = metadata.portBindings().get(containerPort);
-            if (cached != null) {
-                return cached;
-            }
-        }
-        return null;
+        return metadata == null ? null : metadata.portBindings().get(containerPort);
     }
 
     @Override

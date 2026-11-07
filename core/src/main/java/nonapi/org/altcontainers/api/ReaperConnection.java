@@ -48,10 +48,7 @@ final class ReaperConnection implements AutoCloseable {
      * @throws IOException if the write fails
      */
     void sendTerminate() throws IOException {
-        synchronized (writer) {
-            writer.write("TERMINATE\n");
-            writer.flush();
-        }
+        send("TERMINATE");
     }
 
     /**
@@ -62,10 +59,7 @@ final class ReaperConnection implements AutoCloseable {
      * @throws IOException if the write fails
      */
     void sendTerminateContainer(String containerId) throws IOException {
-        synchronized (writer) {
-            writer.write("TERMINATE_CONTAINER " + containerId + "\n");
-            writer.flush();
-        }
+        send("TERMINATE_CONTAINER " + containerId);
     }
 
     /**
@@ -76,8 +70,18 @@ final class ReaperConnection implements AutoCloseable {
      * @throws IOException if the write fails
      */
     void sendTerminateNetwork(String networkId) throws IOException {
+        send("TERMINATE_NETWORK " + networkId);
+    }
+
+    /**
+     * Writes a single newline-terminated command to the reaper.
+     *
+     * @param command the command, without the trailing newline
+     * @throws IOException if the write fails
+     */
+    private void send(String command) throws IOException {
         synchronized (writer) {
-            writer.write("TERMINATE_NETWORK " + networkId + "\n");
+            writer.write(command + "\n");
             writer.flush();
         }
     }

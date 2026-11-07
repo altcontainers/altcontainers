@@ -21,6 +21,7 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.time.Duration;
 import nonapi.org.altcontainers.api.AltcontainersProperties;
+import nonapi.org.altcontainers.api.Durations;
 import nonapi.org.altcontainers.api.ManagedWaitStrategy;
 
 /**
@@ -55,8 +56,9 @@ public final class PortWaitStrategy implements ManagedWaitStrategy {
      *     {@code 1..65535}
      */
     public PortWaitStrategy(int containerPort) {
-        if (containerPort < 1 || containerPort > 65535) {
-            throw new IllegalArgumentException("containerPort must be in 1..65535, was " + containerPort);
+        if (!ContainerPorts.isValid(containerPort)) {
+            throw new IllegalArgumentException(
+                    "containerPort must be in " + ContainerPorts.range() + ", was " + containerPort);
         }
         this.containerPort = containerPort;
         this.portProbeTimeoutMillis =
@@ -122,12 +124,7 @@ public final class PortWaitStrategy implements ManagedWaitStrategy {
         String error = lastError != null ? "; last error: " + lastError : "";
         return "PortWaitStrategy failed for image " + container.image() + ", container " + container.id()
                 + ", host " + host + ", container port " + containerPort + ", mapped host port " + mapped
-                + " within " + format(startupTimeout) + error;
-    }
-
-    private static String format(Duration timeout) {
-        long timeoutMillis = timeout.toMillis();
-        return (timeoutMillis >= 1000 && timeoutMillis % 1000 == 0) ? timeout.toSeconds() + "s" : timeoutMillis + "ms";
+                + " within " + Durations.format(startupTimeout) + error;
     }
 
     /**
@@ -166,8 +163,8 @@ public final class PortWaitStrategy implements ManagedWaitStrategy {
          *     {@code 1..65535}
          */
         public PortWaitStrategy build() {
-            if (port < 1 || port > 65535) {
-                throw new IllegalArgumentException("port must be set in 1..65535, was " + port);
+            if (!ContainerPorts.isValid(port)) {
+                throw new IllegalArgumentException("port must be set in " + ContainerPorts.range() + ", was " + port);
             }
             return new PortWaitStrategy(port);
         }

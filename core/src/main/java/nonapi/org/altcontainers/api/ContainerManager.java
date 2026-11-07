@@ -18,6 +18,7 @@ package nonapi.org.altcontainers.api;
 
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.async.ResultCallback;
+import com.github.dockerjava.api.command.CreateContainerCmd;
 import com.github.dockerjava.api.command.CreateContainerResponse;
 import com.github.dockerjava.api.command.InspectContainerResponse;
 import com.github.dockerjava.api.exception.NotFoundException;
@@ -37,12 +38,14 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
+import java.nio.channels.ClosedByInterruptException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -80,6 +83,16 @@ public final class ContainerManager {
     private static final long STARTUP_RETRY_BACKOFF_MAX_MS;
     private static final int PUT_ARCHIVE_PIPE_BUFFER_BYTES;
 
+    private static final int TAR_NAME_FIELD_BYTES = 100;
+
+    private static final int CONTAINER_REMOVE_RETRY_COUNT = 3;
+
+    private static final long CONTAINER_REMOVE_RETRY_BASE_DELAY_MS = 200L;
+
+    private static final int INSPECT_AFTER_START_ATTEMPTS = 3;
+
+    private static final long INSPECT_AFTER_START_RETRY_DELAY_MS = 100L;
+
     static {
         AltcontainersProperties properties = AltcontainersProperties.instance();
         READINESS_POLL_INITIAL_MS = properties.containerReadinessPollInitial().toMillis();
@@ -112,19 +125,8 @@ public final class ContainerManager {
      * Registers a JVM shutdown hook that gracefully shuts down the stop executor.
      */
     private void registerShutdownHook() {
-        Runtime.getRuntime()
-                .addShutdownHook(new Thread(
-                        () -> {
-                            shuttingDown = true;
-                            STOP_EXECUTOR.shutdown();
-                            try {
-                                STOP_EXECUTOR.awaitTermination(10, TimeUnit.SECONDS);
-                            } catch (InterruptedException e) {
-                                Thread.currentThread().interrupt();
-                                STOP_EXECUTOR.shutdownNow();
-                            }
-                        },
-                        "altcontainers-container-stop-shutdown"));
+        ShutdownHooks.registerStopExecutorShutdown(
+                "altcontainers-container-stop-shutdown", () -> shuttingDown = true, () -> STOP_EXECUTOR);
     }
 
     /**
@@ -312,14 +314,14 @@ public final class ContainerManager {
      * @return {@code true} if the failure is an image-not-found failure
      */
     private static boolean isMissingImageFailure(Throwable failure, String image) {
-        String imageLower = image.toLowerCase(java.util.Locale.ROOT);
+        String imageLower = image.toLowerCase(Locale.ROOT);
         for (Throwable current = failure; current != null; current = current.getCause()) {
             if (current instanceof NotFoundException notFound && notFound.getHttpStatus() == 404) {
                 String message = current.getMessage();
                 if (message == null) {
                     return false;
                 }
-                String messageLower = message.toLowerCase(java.util.Locale.ROOT);
+                String messageLower = message.toLowerCase(Locale.ROOT);
                 return messageLower.contains("no such image") || messageLower.contains(imageLower);
             }
         }
@@ -412,11 +414,7 @@ public final class ContainerManager {
         try {
             var createCmd = dockerClient().createContainerCmd(spec.image()).withCmd(spec.command());
 
-            if (!spec.environment().isEmpty()) {
-                List<String> envList = new ArrayList<>();
-                spec.environment().forEach((k, v) -> envList.add(k + "=" + v));
-                createCmd.withEnv(envList);
-            }
+            applyEnvironment(createCmd, spec);
             if (!labels.isEmpty()) {
                 createCmd.withLabels(labels);
             }
@@ -425,76 +423,11 @@ public final class ContainerManager {
             }
 
             HostConfig hostConfig = new HostConfig();
-            List<ExposedPort> exposedPorts = new ArrayList<>();
-            List<PortBinding> bindings = new ArrayList<>();
-            Set<Integer> boundContainerPorts = new HashSet<>();
-            if (!spec.portBindings().isEmpty()) {
-                for (Map.Entry<Integer, Integer> e : spec.portBindings().entrySet()) {
-                    int containerPort = e.getKey();
-                    int hostPort = e.getValue();
-                    ExposedPort exposedPort = ExposedPort.tcp(containerPort);
-                    exposedPorts.add(exposedPort);
-                    bindings.add(new PortBinding(Ports.Binding.bindPort(hostPort), exposedPort));
-                    boundContainerPorts.add(containerPort);
-                }
-            }
-            for (int containerPort : spec.exposedPorts()) {
-                ExposedPort exposedPort = ExposedPort.tcp(containerPort);
-                if (!exposedPorts.contains(exposedPort)) {
-                    exposedPorts.add(exposedPort);
-                }
-                if (!boundContainerPorts.contains(containerPort)) {
-                    bindings.add(new PortBinding(Ports.Binding.empty(), exposedPort));
-                }
-            }
-            if (!exposedPorts.isEmpty()) {
-                createCmd.withExposedPorts(exposedPorts);
-            }
-            if (!bindings.isEmpty()) {
-                hostConfig.withPortBindings(bindings);
-            }
-
-            if (spec.networkMode() != null && !spec.networkMode().isEmpty()) {
-                hostConfig.withNetworkMode(spec.networkMode());
-            }
-            if (spec.workingDirectory() != null) {
-                createCmd.withWorkingDir(spec.workingDirectory());
-            }
-
-            if (!spec.bindMounts().isEmpty()) {
-                List<Bind> binds = new ArrayList<>();
-                for (BindMount bm : spec.bindMounts()) {
-                    binds.add(Bind.parse(bm.hostPath() + ":" + bm.containerPath()));
-                }
-                hostConfig.withBinds(binds);
-            }
-
-            if (spec.memory() > 0) {
-                hostConfig.withMemory(spec.memory());
-            }
-            if (spec.memorySwap() > 0) {
-                hostConfig.withMemorySwap(spec.memorySwap());
-            }
-            if (spec.shmSize() > 0) {
-                hostConfig.withShmSize(spec.shmSize());
-            }
-            if (spec.cpuShares() > 0) {
-                hostConfig.withCpuShares(spec.cpuShares());
-            }
-            if (spec.cpuPeriod() > 0) {
-                hostConfig.withCpuPeriod(spec.cpuPeriod());
-            }
-            if (spec.cpuQuota() > 0) {
-                hostConfig.withCpuQuota(spec.cpuQuota());
-            }
-
-            if (!spec.ulimits().isEmpty()) {
-                List<Ulimit> ulimitList = new ArrayList<>();
-                for (org.altcontainers.api.Ulimit u : spec.ulimits()) {
-                    ulimitList.add(new Ulimit(u.name(), u.soft(), u.hard()));
-                }
-                hostConfig.withUlimits(ulimitList);
-            }
+            applyPorts(createCmd, hostConfig, spec);
+            applyNetworkAndWorkingDirectory(createCmd, hostConfig, spec);
+            applyBindMounts(hostConfig, spec);
+            applyResourceLimits(hostConfig, spec);
+            applyUlimits(hostConfig, spec);
 
             createCmd.withHostConfig(hostConfig);
             CreateContainerResponse response = createCmd.exec();
@@ -502,6 +435,139 @@ public final class ContainerManager {
         } catch (RuntimeException e) {
             throw e instanceof ContainerException ce ? ce : new ContainerException("Failed to create container", e);
         }
+    }
+
+    /**
+     * Applies the spec's environment variables to the create command.
+     *
+     * @param createCmd the create command
+     * @param spec the container spec
+     */
+    private static void applyEnvironment(CreateContainerCmd createCmd, ContainerSpec spec) {
+        if (spec.environment().isEmpty()) {
+            return;
+        }
+        List<String> envList = new ArrayList<>();
+        spec.environment().forEach((k, v) -> envList.add(k + "=" + v));
+        createCmd.withEnv(envList);
+    }
+
+    /**
+     * Applies exposed ports and fixed port bindings to the create command and
+     * host config. Ports without a fixed binding are published on an ephemeral
+     * host port.
+     *
+     * @param createCmd the create command
+     * @param hostConfig the host config
+     * @param spec the container spec
+     */
+    private static void applyPorts(CreateContainerCmd createCmd, HostConfig hostConfig, ContainerSpec spec) {
+        List<ExposedPort> exposedPorts = new ArrayList<>();
+        List<PortBinding> bindings = new ArrayList<>();
+        Set<Integer> boundContainerPorts = new HashSet<>();
+        if (!spec.portBindings().isEmpty()) {
+            for (Map.Entry<Integer, Integer> e : spec.portBindings().entrySet()) {
+                int containerPort = e.getKey();
+                int hostPort = e.getValue();
+                ExposedPort exposedPort = ExposedPort.tcp(containerPort);
+                exposedPorts.add(exposedPort);
+                bindings.add(new PortBinding(Ports.Binding.bindPort(hostPort), exposedPort));
+                boundContainerPorts.add(containerPort);
+            }
+        }
+        for (int containerPort : spec.exposedPorts()) {
+            ExposedPort exposedPort = ExposedPort.tcp(containerPort);
+            if (!exposedPorts.contains(exposedPort)) {
+                exposedPorts.add(exposedPort);
+            }
+            if (!boundContainerPorts.contains(containerPort)) {
+                bindings.add(new PortBinding(Ports.Binding.empty(), exposedPort));
+            }
+        }
+        if (!exposedPorts.isEmpty()) {
+            createCmd.withExposedPorts(exposedPorts);
+        }
+        if (!bindings.isEmpty()) {
+            hostConfig.withPortBindings(bindings);
+        }
+    }
+
+    /**
+     * Applies the network mode and working directory, when configured.
+     *
+     * @param createCmd the create command
+     * @param hostConfig the host config
+     * @param spec the container spec
+     */
+    private static void applyNetworkAndWorkingDirectory(
+            CreateContainerCmd createCmd, HostConfig hostConfig, ContainerSpec spec) {
+        if (spec.networkMode() != null && !spec.networkMode().isEmpty()) {
+            hostConfig.withNetworkMode(spec.networkMode());
+        }
+        if (spec.workingDirectory() != null) {
+            createCmd.withWorkingDir(spec.workingDirectory());
+        }
+    }
+
+    /**
+     * Applies bind mounts, when configured.
+     *
+     * @param hostConfig the host config
+     * @param spec the container spec
+     */
+    private static void applyBindMounts(HostConfig hostConfig, ContainerSpec spec) {
+        if (spec.bindMounts().isEmpty()) {
+            return;
+        }
+        List<Bind> binds = new ArrayList<>();
+        for (BindMount bm : spec.bindMounts()) {
+            binds.add(Bind.parse(bm.hostPath() + ":" + bm.containerPath()));
+        }
+        hostConfig.withBinds(binds);
+    }
+
+    /**
+     * Applies memory and CPU limits, skipping values left at zero.
+     *
+     * @param hostConfig the host config
+     * @param spec the container spec
+     */
+    private static void applyResourceLimits(HostConfig hostConfig, ContainerSpec spec) {
+        if (spec.memory() > 0) {
+            hostConfig.withMemory(spec.memory());
+        }
+        if (spec.memorySwap() > 0) {
+            hostConfig.withMemorySwap(spec.memorySwap());
+        }
+        if (spec.shmSize() > 0) {
+            hostConfig.withShmSize(spec.shmSize());
+        }
+        if (spec.cpuShares() > 0) {
+            hostConfig.withCpuShares(spec.cpuShares());
+        }
+        if (spec.cpuPeriod() > 0) {
+            hostConfig.withCpuPeriod(spec.cpuPeriod());
+        }
+        if (spec.cpuQuota() > 0) {
+            hostConfig.withCpuQuota(spec.cpuQuota());
+        }
+    }
+
+    /**
+     * Applies ulimits, when configured.
+     *
+     * @param hostConfig the host config
+     * @param spec the container spec
+     */
+    private static void applyUlimits(HostConfig hostConfig, ContainerSpec spec) {
+        if (spec.ulimits().isEmpty()) {
+            return;
+        }
+        List<Ulimit> ulimitList = new ArrayList<>();
+        for (org.altcontainers.api.Ulimit u : spec.ulimits()) {
+            ulimitList.add(new Ulimit(u.name(), u.soft(), u.hard()));
+        }
+        hostConfig.withUlimits(ulimitList);
     }
 
     /**
@@ -630,7 +696,7 @@ public final class ContainerManager {
      * @param mode the file mode
      */
     public void putArchive(String id, String containerPath, String fileName, byte[] content, int mode) {
-        if (fileName.getBytes(StandardCharsets.UTF_8).length > 100) {
+        if (isTarEntryNameTooLong(fileName)) {
             throw new ContainerException("Tar entry name is too long: " + fileName);
         }
         putArchive(id, containerPath, fileName, new ByteArrayInputStream(content), content.length, mode);
@@ -653,63 +719,126 @@ public final class ContainerManager {
             InputStream content,
             long contentLength,
             int mode) {
-        if (fileName.getBytes(StandardCharsets.UTF_8).length > 100) {
+        if (isTarEntryNameTooLong(fileName)) {
             throw new ContainerException("Tar entry name is too long: " + fileName);
         }
         try {
             AtomicReference<IOException> writerFailure = new AtomicReference<>();
             PipedInputStream pipedIn = new PipedInputStream(PUT_ARCHIVE_PIPE_BUFFER_BYTES);
             PipedOutputStream pipedOut = new PipedOutputStream(pipedIn);
-            Thread writer = new Thread(
-                    () -> {
-                        try (pipedOut) {
-                            writeTarStream(pipedOut, fileName, content, contentLength, mode);
-                        } catch (IOException e) {
-                            writerFailure.compareAndSet(null, e);
-                        }
-                    },
-                    "altcontainers-core-tar-writer");
-            writer.setDaemon(true);
-            writer.start();
-            RuntimeException execException = null;
-            try {
-                dockerClient()
-                        .copyArchiveToContainerCmd(containerId)
-                        .withTarInputStream(pipedIn)
-                        .withRemotePath(containerPath)
-                        .exec();
-            } catch (RuntimeException e) {
-                execException = e;
-            } finally {
-                try {
-                    pipedIn.close();
-                } catch (IOException ignored) {
-                }
-                try {
-                    writer.join(5_000);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw new ContainerException("Interrupted waiting for tar writer thread", e);
-                }
-            }
-            IOException wf = writerFailure.get();
-            if (execException != null) {
-                if (wf != null) {
-                    execException.addSuppressed(wf);
-                }
-                throw execException instanceof ContainerException ce
-                        ? ce
-                        : new ContainerException("Failed to copy archive to container", execException);
-            }
-            if (writer.isAlive()) {
-                throw new ContainerException("Tar writer thread did not finish in time");
-            }
-            if (wf != null) {
-                throw new ContainerException("Failed to copy archive to container: " + wf.getMessage(), wf);
-            }
+            Thread writer = startTarWriter(pipedOut, fileName, content, contentLength, mode, writerFailure);
+            RuntimeException execException = copyArchive(containerId, containerPath, pipedIn, writer);
+            throwIfCopyFailed(execException, writer, writerFailure.get());
         } catch (IOException e) {
             throw new ContainerException("Failed to copy archive to container", e);
         }
+    }
+
+    /**
+     * Starts the daemon writer thread that streams a single tar entry into the
+     * pipe.
+     *
+     * @param pipedOut the write end of the pipe, closed when the entry is complete
+     * @param fileName the tar entry name
+     * @param content the entry content stream
+     * @param contentLength the content length in bytes
+     * @param mode the file mode
+     * @param writerFailure receives the first writer-side I/O failure
+     * @return the started daemon thread
+     */
+    private static Thread startTarWriter(
+            PipedOutputStream pipedOut,
+            String fileName,
+            InputStream content,
+            long contentLength,
+            int mode,
+            AtomicReference<IOException> writerFailure) {
+        Thread writer = new Thread(
+                () -> {
+                    try (pipedOut) {
+                        writeTarStream(pipedOut, fileName, content, contentLength, mode);
+                    } catch (IOException e) {
+                        writerFailure.compareAndSet(null, e);
+                    }
+                },
+                "altcontainers-core-tar-writer");
+        writer.setDaemon(true);
+        writer.start();
+        return writer;
+    }
+
+    /**
+     * Streams the archive to the daemon, then closes the read end of the pipe
+     * and waits for the writer thread to finish.
+     *
+     * @param containerId the Docker container id
+     * @param containerPath the destination path in the container
+     * @param pipedIn the read end of the pipe
+     * @param writer the tar writer thread
+     * @return the daemon failure, or {@code null} if the copy call succeeded
+     */
+    private RuntimeException copyArchive(
+            String containerId, String containerPath, PipedInputStream pipedIn, Thread writer) {
+        RuntimeException execException = null;
+        try {
+            dockerClient()
+                    .copyArchiveToContainerCmd(containerId)
+                    .withTarInputStream(pipedIn)
+                    .withRemotePath(containerPath)
+                    .exec();
+        } catch (RuntimeException e) {
+            execException = e;
+        } finally {
+            try {
+                pipedIn.close();
+            } catch (IOException ignored) {
+            }
+            try {
+                writer.join(5_000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new ContainerException("Interrupted waiting for tar writer thread", e);
+            }
+        }
+        return execException;
+    }
+
+    /**
+     * Raises the recorded copy failure, if any, preserving suppression of the
+     * writer failure on the daemon exception.
+     *
+     * @param execException the daemon failure, or {@code null}
+     * @param writer the tar writer thread
+     * @param writerFailure the writer failure, or {@code null}
+     * @throws ContainerException if either the daemon call or the writer failed,
+     *     or the writer thread did not finish
+     */
+    private static void throwIfCopyFailed(RuntimeException execException, Thread writer, IOException writerFailure) {
+        if (execException != null) {
+            if (writerFailure != null) {
+                execException.addSuppressed(writerFailure);
+            }
+            throw execException instanceof ContainerException ce
+                    ? ce
+                    : new ContainerException("Failed to copy archive to container", execException);
+        }
+        if (writer.isAlive()) {
+            throw new ContainerException("Tar writer thread did not finish in time");
+        }
+        if (writerFailure != null) {
+            throw new ContainerException(
+                    "Failed to copy archive to container: " + writerFailure.getMessage(), writerFailure);
+        }
+    }
+
+    /**
+     * Returns whether the entry name exceeds the POSIX ustar name field.
+     *
+     * @param fileName the tar entry name
+     * @return {@code true} if the UTF-8 encoded name is too long for the header
+     */
+    private static boolean isTarEntryNameTooLong(String fileName) {
+        return fileName.getBytes(StandardCharsets.UTF_8).length > TAR_NAME_FIELD_BYTES;
     }
 
     /**
@@ -724,10 +853,10 @@ public final class ContainerManager {
      */
     private static void writeTarStream(
             OutputStream out, String fileName, InputStream content, long contentLength, int mode) throws IOException {
-        byte[] nameBytes = fileName.getBytes(StandardCharsets.UTF_8);
-        if (nameBytes.length > 100) {
+        if (isTarEntryNameTooLong(fileName)) {
             throw new IOException("Tar entry name is too long: " + fileName);
         }
+        byte[] nameBytes = fileName.getBytes(StandardCharsets.UTF_8);
         byte[] header = new byte[512];
         System.arraycopy(nameBytes, 0, header, 0, nameBytes.length);
         writeOctal(header, 100, 8, mode);
@@ -818,7 +947,7 @@ public final class ContainerManager {
      */
     private LogHandle attachLogs(String containerId, ContainerSpec spec, List<WaitStrategy> waitConditions) {
         Consumer<OutputFrame> listener = spec.outputListener();
-        Consumer<String> waitLogConsumer = waitLogConsumer(waitConditions);
+        Consumer<String> waitLogConsumer = ManagedWaitStrategies.logLineConsumer(waitConditions);
         if (listener == null && waitLogConsumer == null) {
             return null;
         }
@@ -876,7 +1005,7 @@ public final class ContainerManager {
             int prevLength = buffer.length();
             buffer.append(text);
             int start = 0;
-            java.util.List<String> lines = new java.util.ArrayList<>();
+            List<String> lines = new ArrayList<>();
             for (int i = prevLength; i < buffer.length(); i++) {
                 if (buffer.charAt(i) == '\n') {
                     lines.add(buffer.substring(start, i + 1));
@@ -970,18 +1099,9 @@ public final class ContainerManager {
                 }
                 if (shouldSuppressLogError(handle, throwable)) {
                     logger.debug(
-                            "Log stream closed during shutdown for container {}: {}",
-                            containerId,
-                            throwable.getMessage() != null
-                                    ? throwable.getMessage()
-                                    : throwable.getClass().getName());
+                            "Log stream closed during shutdown for container {}: {}", containerId, describe(throwable));
                 } else {
-                    logger.warn(
-                            "Log stream error for container {}: {}",
-                            containerId,
-                            throwable.getMessage() != null
-                                    ? throwable.getMessage()
-                                    : throwable.getClass().getName());
+                    logger.warn("Log stream error for container {}: {}", containerId, describe(throwable));
                 }
             }
 
@@ -1013,6 +1133,19 @@ public final class ContainerManager {
     }
 
     /**
+     * Returns the throwable's message, falling back to its class name when the
+     * message is absent.
+     *
+     * @param throwable the throwable to describe
+     * @return the message, or the class name if the message is {@code null}
+     */
+    private static String describe(Throwable throwable) {
+        return throwable.getMessage() != null
+                ? throwable.getMessage()
+                : throwable.getClass().getName();
+    }
+
+    /**
      * Closes a result callback, ignoring any I/O errors.
      *
      * @param callback the callback to close
@@ -1022,25 +1155,6 @@ public final class ContainerManager {
             callback.close();
         } catch (IOException ignored) {
         }
-    }
-
-    /**
-     * Builds a composite log consumer that fans out to all log-observing
-     * managed wait strategies.
-     *
-     * @param waitConditions the wait strategies
-     * @return a composite log consumer, or {@code null} if none observe logs
-     */
-    private static Consumer<String> waitLogConsumer(List<WaitStrategy> waitConditions) {
-        List<Consumer<String>> consumers = waitConditions.stream()
-                .filter(ws -> ws instanceof ManagedWaitStrategy)
-                .map(ws -> ((ManagedWaitStrategy) ws).logLineConsumer())
-                .filter(Objects::nonNull)
-                .toList();
-        if (consumers.isEmpty()) {
-            return null;
-        }
-        return line -> consumers.forEach(consumer -> consumer.accept(line));
     }
 
     /**
@@ -1081,13 +1195,7 @@ public final class ContainerManager {
             pollMs = Math.min(pollMs * 2, READINESS_POLL_MAX_MS);
         }
 
-        String diagnostics = String.join(
-                "; ",
-                waitConditions.stream()
-                        .map(condition -> condition instanceof ManagedWaitStrategy m
-                                ? m.timeoutDiagnostic(container, startupTimeout)
-                                : condition.getClass().getSimpleName())
-                        .toList());
+        String diagnostics = ManagedWaitStrategies.joinDiagnostics(waitConditions, container, startupTimeout);
         throw new ContainerException("Container did not become ready: " + diagnostics);
     }
 
@@ -1128,18 +1236,19 @@ public final class ContainerManager {
         if (container != null) {
             destroyAttempt(container);
         } else if (containerId != null) {
-            closeLogHandle(containerId);
-            stopAndRemoveContainer(containerId);
+            destroyAttempt(containerId);
         }
     }
 
-    private static final int CONTAINER_REMOVE_RETRY_COUNT = 3;
-
-    private static final long CONTAINER_REMOVE_RETRY_BASE_DELAY_MS = 200L;
-
-    private static final int INSPECT_AFTER_START_ATTEMPTS = 3;
-
-    private static final long INSPECT_AFTER_START_RETRY_DELAY_MS = 100L;
+    /**
+     * Destroys a startup attempt by its known Docker id.
+     *
+     * @param containerId the Docker container id
+     */
+    private void destroyAttempt(String containerId) {
+        closeLogHandle(containerId);
+        stopAndRemoveContainer(containerId);
+    }
 
     /**
      * Stops and removes a container via Docker, delegating cleanup to the
@@ -1156,7 +1265,7 @@ public final class ContainerManager {
         }
         long stopTimeoutSeconds =
                 ReaperController.instance().configuration().reaperStopTimeout().toSeconds();
-        int dockerStopTimeoutSeconds = dockerStopTimeoutSeconds(stopTimeoutSeconds);
+        int stopTimeoutForDocker = dockerStopTimeoutSeconds(stopTimeoutSeconds);
         // Future timeout includes a buffer so Docker's own stop timeout doesn't race
         // the Java timeout, avoiding unnecessary delegation to the reaper.
         long futureTimeoutSeconds = Math.addExact(stopTimeoutSeconds, 10L);
@@ -1164,7 +1273,7 @@ public final class ContainerManager {
             CompletableFuture<Void> future = CompletableFuture.runAsync(
                     () -> dockerClient()
                             .stopContainerCmd(containerId)
-                            .withTimeout(dockerStopTimeoutSeconds)
+                            .withTimeout(stopTimeoutForDocker)
                             .exec(),
                     STOP_EXECUTOR);
             future.get(futureTimeoutSeconds, TimeUnit.SECONDS);
@@ -1312,14 +1421,14 @@ public final class ContainerManager {
 
     /**
      * Returns {@code true} if the throwable chain contains a
-     * {@link java.nio.channels.ClosedByInterruptException}.
+     * {@link ClosedByInterruptException}.
      *
      * @param t the throwable to inspect
      * @return {@code true} if the chain contains a closed-by-interrupt exception
      */
     static boolean isClosedByInterrupt(Throwable t) {
         for (Throwable current = t; current != null; current = current.getCause()) {
-            if (current instanceof java.nio.channels.ClosedByInterruptException) {
+            if (current instanceof ClosedByInterruptException) {
                 return true;
             }
         }
@@ -1341,10 +1450,7 @@ public final class ContainerManager {
         if (handle.isClosed()) {
             return true;
         }
-        if (isClosedByInterrupt(throwable)) {
-            return true;
-        }
-        return false;
+        return isClosedByInterrupt(throwable);
     }
 
     /**

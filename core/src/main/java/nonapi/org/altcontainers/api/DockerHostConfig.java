@@ -24,9 +24,6 @@ import org.altcontainers.api.ContainerException;
 /** Docker host configuration helpers for core Docker clients. */
 final class DockerHostConfig {
 
-    /** Altcontainers system property used to override Docker host selection. */
-    static final String ALTCONTAINERS_DOCKER_HOST_PROPERTY = "altcontainers.docker.host";
-
     private DockerHostConfig() {
         // Intentionally empty
     }
@@ -58,7 +55,7 @@ final class DockerHostConfig {
             return builder.withDockerHost(dockerHost);
         } catch (RuntimeException e) {
             throw new ContainerException(
-                    ALTCONTAINERS_DOCKER_HOST_PROPERTY + " must be a valid Docker host URI, got '" + dockerHost + "'",
+                    AltcontainersProperties.DOCKER_HOST + " must be a valid Docker host URI, got '" + dockerHost + "'",
                     e);
         }
     }

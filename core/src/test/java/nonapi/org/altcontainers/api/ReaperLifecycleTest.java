@@ -248,7 +248,7 @@ class ReaperLifecycleTest {
         try {
             Process reaper = launchReaper(sessionId);
             try {
-                Integer port = waitForPort(sessionId, 10_000);
+                Integer port = ReaperTestSupport.waitForPort(sessionId, 10_000);
                 assertThat(port).isNotNull();
 
                 try (Socket socket = new Socket("localhost", port);
@@ -296,7 +296,7 @@ class ReaperLifecycleTest {
         try {
             Process reaper = launchReaper(sessionId);
             try {
-                Integer port = waitForPort(sessionId, 10_000);
+                Integer port = ReaperTestSupport.waitForPort(sessionId, 10_000);
                 assertThat(port).isNotNull();
 
                 try (Socket socket = new Socket("localhost", port);
@@ -346,7 +346,7 @@ class ReaperLifecycleTest {
 
                 Process reaper = launchReaper(sessionId);
                 try {
-                    Integer port = waitForPort(sessionId, 10_000);
+                    Integer port = ReaperTestSupport.waitForPort(sessionId, 10_000);
                     assertThat(port).isNotNull();
 
                     try (Socket socket = new Socket("localhost", port);
@@ -404,7 +404,7 @@ class ReaperLifecycleTest {
             // Launch reaper with max.attempts=2
             Process reaper = launchReaper(sessionId, Map.of("altcontainers.reaper.cleanup.max.attempts", "2"));
             try {
-                Integer port = waitForPort(sessionId, 10_000);
+                Integer port = ReaperTestSupport.waitForPort(sessionId, 10_000);
                 assertThat(port).isNotNull();
 
                 try (Socket socket = new Socket("localhost", port);
@@ -457,7 +457,7 @@ class ReaperLifecycleTest {
         try {
             Process reaper = launchReaper(sessionId);
             try {
-                Integer port = waitForPort(sessionId, 10_000);
+                Integer port = ReaperTestSupport.waitForPort(sessionId, 10_000);
                 assertThat(port).isNotNull();
 
                 try (Socket socket = new Socket("localhost", port);
@@ -653,25 +653,5 @@ class ReaperLifecycleTest {
         pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
         pb.redirectError(ProcessBuilder.Redirect.DISCARD);
         return pb.start();
-    }
-
-    /**
-     * Waits for the reaper port file to appear and returns the port.
-     *
-     * @param sessionId the session UUID
-     * @param timeoutMs the maximum time to wait in milliseconds
-     * @return the port, or {@code null} if the file did not appear in time
-     * @throws InterruptedException if the current thread is interrupted
-     */
-    private static Integer waitForPort(String sessionId, long timeoutMs) throws InterruptedException {
-        long deadline = System.currentTimeMillis() + timeoutMs;
-        Integer port = null;
-        while (System.currentTimeMillis() < deadline && port == null) {
-            port = ReaperDiscovery.readPort(sessionId).orElse(null);
-            if (port == null) {
-                Thread.sleep(100);
-            }
-        }
-        return port;
     }
 }

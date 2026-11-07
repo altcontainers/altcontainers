@@ -20,7 +20,7 @@ import static java.lang.String.format;
 
 /**
  * Lightweight stdout logger for example code. Each line is prefixed with the logger name,
- * typically the fully-qualified class name supplied at creation.
+ * typically the simple class name supplied at creation.
  */
 public class Logger {
 
@@ -55,7 +55,7 @@ public class Logger {
     }
 
     /**
-     * Creates a logger whose prefix is the fully-qualified name of the given class.
+     * Creates a logger whose prefix is the simple name of the given class.
      *
      * @param clazz the class to derive the logger name from
      * @return a new logger instance
