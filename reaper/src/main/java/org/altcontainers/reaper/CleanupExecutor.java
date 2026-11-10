@@ -17,6 +17,7 @@
 package org.altcontainers.reaper;
 
 import com.github.dockerjava.api.DockerClient;
+import com.github.dockerjava.api.exception.ConflictException;
 import com.github.dockerjava.api.exception.NotFoundException;
 import com.github.dockerjava.api.exception.NotModifiedException;
 import com.github.dockerjava.api.model.Network;
@@ -50,8 +51,11 @@ final class CleanupExecutor {
 
     private static final Logger logger = LoggerFactory.getLogger(CleanupExecutor.class);
 
-    /** Scheduled executor core pool size. */
-    static final int POOL_SIZE = 2;
+    /**
+     * Scheduled executor core pool size. Each worker blocks on one Docker call at a time, so this
+     * bounds how many removals are in flight; a session sweep may have hundreds of resources.
+     */
+    static final int POOL_SIZE = 8;
 
     /** Attempts before network force-disconnect activates. */
     static final int NETWORK_FORCE_THRESHOLD = 3;
@@ -199,6 +203,20 @@ final class CleanupExecutor {
      * @throws InterruptedException if interrupted while waiting
      */
     boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException {
+        return awaitIdle(timeout, unit);
+    }
+
+    /**
+     * Blocks until no submitted or retried task is pending, or the timeout expires. Unlike
+     * {@link #awaitTermination(long, TimeUnit)} this is used between sweep phases, before
+     * {@link #shutdown()}, so further submissions remain possible afterwards.
+     *
+     * @param timeout the maximum time to wait
+     * @param unit the time unit of the timeout
+     * @return {@code true} if no task is pending, {@code false} if timed out
+     * @throws InterruptedException if interrupted while waiting
+     */
+    boolean awaitIdle(long timeout, TimeUnit unit) throws InterruptedException {
         long deadlineNanos = System.nanoTime() + unit.toNanos(timeout);
         while (true) {
             if (pendingTasks.get() == 0) {
@@ -225,14 +243,15 @@ final class CleanupExecutor {
     }
 
     /**
-     * Processes a single cleanup task through the destroy → force → requeue ladder.
+     * Processes a single cleanup task through the destroy → force → requeue ladder. A container
+     * task flagged {@link CleanupTask#force()} skips the graceful destroy tier.
      *
      * @param task the cleanup task
      */
     void process(CleanupTask task) {
         boolean success;
         if (task.type() == CleanupTask.ResourceType.CONTAINER) {
-            success = destroyContainer(task.id());
+            success = !task.force() && destroyContainer(task.id());
             if (!success) {
                 success = forceRemoveContainer(task.id());
             }
@@ -377,6 +396,10 @@ final class CleanupExecutor {
                 logger.debug(log.notModified(), id);
                 return true;
             }
+            if (isRemovalInProgress(cause)) {
+                logger.debug(log.inProgress(), id);
+                return true;
+            }
             logger.warn(log.failed(), id, cause.getMessage());
             return false;
         } catch (TimeoutException e) {
@@ -393,12 +416,27 @@ final class CleanupExecutor {
     }
 
     /**
+     * Returns whether a Docker failure reports that removal of the resource is already in
+     * progress (HTTP 409). The daemon is already removing it, so the tier counts as successful
+     * instead of consuming a retry attempt.
+     *
+     * @param cause the failure cause
+     * @return {@code true} for a 409 "removal ... is already in progress" conflict
+     */
+    static boolean isRemovalInProgress(Throwable cause) {
+        return cause instanceof ConflictException
+                && cause.getMessage() != null
+                && cause.getMessage().contains("is already in progress");
+    }
+
+    /**
      * Log wording for one cleanup tier, kept per tier so every message is
      * emitted verbatim.
      *
      * @param success the success message
      * @param notFound the not-found (treated as success) message
      * @param notModified the not-modified (treated as success) message
+     * @param inProgress the removal-already-in-progress (treated as success) message
      * @param failed the failure warning
      * @param timedOut the timeout message
      * @param interrupted the interrupt message
@@ -408,6 +446,7 @@ final class CleanupExecutor {
             String success,
             String notFound,
             String notModified,
+            String inProgress,
             String failed,
             String timedOut,
             String interrupted,
@@ -417,6 +456,7 @@ final class CleanupExecutor {
             "Removed container {}",
             "Container {} not found during destroy (already removed)",
             "Container {} already stopped (Status 304)",
+            "Container {} removal already in progress (Status 409)",
             "Failed to destroy container {}: {}",
             "Destroy timed out for container {} after {}ms",
             "Interrupted during destroy of container {}",
@@ -426,6 +466,7 @@ final class CleanupExecutor {
             "Force-removed container {}",
             "Container {} not found during force-remove (already removed)",
             "Container {} already removed (Status 304)",
+            "Container {} removal already in progress (Status 409)",
             "Failed to force-remove container {}: {}",
             "Force-remove timed out for container {} after {}ms",
             "Interrupted during force-remove of container {}",
@@ -435,6 +476,7 @@ final class CleanupExecutor {
             "Removed network {}",
             "Network {} not found (already removed)",
             "Network {} already removed (Status 304)",
+            "Network {} removal already in progress (Status 409)",
             "Failed to remove network {}: {}",
             "Remove timed out for network {} after {}ms",
             "Interrupted during remove of network {}",
@@ -444,6 +486,7 @@ final class CleanupExecutor {
             "Force-removed network {}",
             "Network {} not found during force-remove (already removed)",
             "Network {} already removed (Status 304)",
+            "Network {} removal already in progress (Status 409)",
             "Failed to force-remove network {}: {}",
             "Force-remove timed out for network {} after {}ms",
             "Interrupted during force-remove of network {}",
