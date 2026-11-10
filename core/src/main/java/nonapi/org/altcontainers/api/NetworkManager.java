@@ -174,7 +174,7 @@ public final class NetworkManager {
             LOGGER.debug("Executor shut down, delegating network {} remove to reaper", network.id());
             delegateTerminateNetworkToReaper(network.id());
         } catch (TimeoutException e) {
-            LOGGER.debug(
+            LOGGER.info(
                     "Remove timed out for network {} after {}s, delegating to reaper",
                     network.id(),
                     futureTimeoutSeconds);
@@ -183,7 +183,7 @@ public final class NetworkManager {
             if (e.getCause() instanceof com.github.dockerjava.api.exception.NotFoundException) {
                 LOGGER.debug("Network {} not found during remove (already removed)", network.id());
             } else {
-                LOGGER.debug(
+                LOGGER.info(
                         "Remove failed for network {}, delegating to reaper: {}",
                         network.id(),
                         e.getCause() != null ? e.getCause().getMessage() : "unknown");
@@ -191,7 +191,7 @@ public final class NetworkManager {
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            LOGGER.debug("Interrupted during remove for network {}, delegating to reaper", network.id());
+            LOGGER.info("Interrupted during remove for network {}, delegating to reaper", network.id());
             delegateTerminateNetworkToReaper(network.id());
         } finally {
             if (networkSemaphore != null && releasedIds.putIfAbsent(network.id(), Boolean.TRUE) == null) {

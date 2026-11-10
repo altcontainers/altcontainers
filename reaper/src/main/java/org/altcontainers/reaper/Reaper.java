@@ -61,6 +61,10 @@ public final class Reaper {
 
     private static final Logger logger = LoggerFactory.getLogger(Reaper.class);
     private static final long GRACE_PERIOD_MS = 30_000L;
+
+    /** Part of the session-sweep drain deadline reserved for removing networks. */
+    static final long NETWORK_PHASE_RESERVE_MS = 60_000L;
+
     private static final String LOG_EXTENSION = ".log";
     private static final String PORT_EXTENSION = ".port";
     private static final String JAR_EXTENSION = ".jar";
@@ -409,15 +413,45 @@ public final class Reaper {
 
     /**
      * Cleans up all Docker resources (containers and networks) labeled with
-     * the given session ID by enqueuing them to the cleanup executor and
-     * draining before exit.
+     * the given session ID, within {@link CleanupExecutor#DRAIN_DEADLINE_MINUTES}.
      *
      * @param client the Docker client
      * @param sessionId the session UUID
      * @param executor the cleanup executor
      */
     private static void cleanup(DockerClient client, String sessionId, CleanupExecutor executor) {
+        cleanup(
+                client,
+                sessionId,
+                executor,
+                TimeUnit.MINUTES.toMillis(CleanupExecutor.DRAIN_DEADLINE_MINUTES),
+                NETWORK_PHASE_RESERVE_MS);
+    }
+
+    /**
+     * Cleans up all Docker resources labeled with the given session ID in two phases and drains
+     * the executor before returning.
+     *
+     * <p>Phase 1 force-removes every session container; the owning JVM is gone, so a graceful
+     * stop has no consumer. Phase 2 starts once container removal has drained (or the time left
+     * reaches the network reserve), lists the session networks afresh, and removes them. Removing
+     * containers first avoids "active endpoints" failures, and the reserve guarantees networks
+     * still get time when container removal is slow.
+     *
+     * @param client the Docker client
+     * @param sessionId the session UUID
+     * @param executor the cleanup executor
+     * @param drainMillis the overall drain deadline in milliseconds
+     * @param networkReserveMillis the part of the deadline reserved for the network phase
+     */
+    static void cleanup(
+            DockerClient client,
+            String sessionId,
+            CleanupExecutor executor,
+            long drainMillis,
+            long networkReserveMillis) {
         Map<String, String> filter = ResourceLabels.filterForSession(sessionId);
+        long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(drainMillis);
 
         // Phase 1: Containers
         List<String> containerIds = List.of();
@@ -430,7 +464,20 @@ public final class Reaper {
         }
 
         for (String id : containerIds) {
-            executor.submit(new CleanupTask(id, CleanupTask.ResourceType.CONTAINER, 0));
+            executor.submit(new CleanupTask(id, CleanupTask.ResourceType.CONTAINER, 0, true));
+        }
+        logger.info("Session cleanup enqueued (containers={})", containerIds.size());
+
+        long containerBudgetNanos =
+                deadlineNanos - System.nanoTime() - TimeUnit.MILLISECONDS.toNanos(networkReserveMillis);
+        try {
+            if (!executor.awaitIdle(Math.max(0L, containerBudgetNanos), TimeUnit.NANOSECONDS)) {
+                logger.warn(
+                        "Container removal incomplete before network phase; {} tasks pending", executor.getQueueSize());
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            logger.warn("Container phase interrupted for session {}", sessionId);
         }
 
         // Phase 2: Networks
@@ -450,11 +497,12 @@ public final class Reaper {
             executor.submit(new CleanupTask(id, CleanupTask.ResourceType.NETWORK, 0));
         }
 
-        logger.info("Session cleanup enqueued (containers={}, networks={})", containerIds.size(), networkIds.size());
+        logger.info("Session cleanup enqueued (networks={})", networkIds.size());
 
         executor.shutdown();
         try {
-            boolean completed = executor.awaitTermination(CleanupExecutor.DRAIN_DEADLINE_MINUTES, TimeUnit.MINUTES);
+            boolean completed =
+                    executor.awaitTermination(Math.max(0L, deadlineNanos - System.nanoTime()), TimeUnit.NANOSECONDS);
             if (!completed) {
                 logger.warn("drain incomplete; {} tasks abandoned", executor.getQueueSize());
                 executor.shutdownNow();

@@ -22,8 +22,21 @@ package org.altcontainers.reaper;
  * @param id the Docker resource ID (container ID or network ID)
  * @param type the type of Docker resource
  * @param attempts the number of failed cleanup attempts so far
+ * @param force whether a container is removed forcibly without a graceful stop; used by the
+ *     session sweep, when the owning JVM is gone
  */
-record CleanupTask(String id, CleanupTask.ResourceType type, int attempts) {
+record CleanupTask(String id, CleanupTask.ResourceType type, int attempts, boolean force) {
+
+    /**
+     * Creates a task that uses the graceful cleanup ladder.
+     *
+     * @param id the Docker resource ID (container ID or network ID)
+     * @param type the type of Docker resource
+     * @param attempts the number of failed cleanup attempts so far
+     */
+    CleanupTask(String id, CleanupTask.ResourceType type, int attempts) {
+        this(id, type, attempts, false);
+    }
 
     /**
      * The type of Docker resource to clean up.
@@ -36,12 +49,12 @@ record CleanupTask(String id, CleanupTask.ResourceType type, int attempts) {
     }
 
     /**
-     * Returns a new task with the same id and type but with an updated attempt count.
+     * Returns a new task with the same id, type, and force flag but with an updated attempt count.
      *
      * @param newAttempts the new attempt count
      * @return a new {@code CleanupTask} with the updated attempt count
      */
     CleanupTask withAttempts(int newAttempts) {
-        return new CleanupTask(id, type, newAttempts);
+        return new CleanupTask(id, type, newAttempts, force);
     }
 }
