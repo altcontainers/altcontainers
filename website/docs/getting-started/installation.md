@@ -13,7 +13,7 @@ Altcontainers requires Java 17 or newer and a running Docker daemon.
 <dependency>
   <groupId>org.altcontainers</groupId>
   <artifactId>core</artifactId>
-  <version>0.4.1</version>
+  <version>0.4.2</version>
 </dependency>
 ```
 

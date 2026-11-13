@@ -12,8 +12,7 @@ import tempfile
 import unittest
 
 SOURCE = Path(__file__).resolve().parents[1]
-HAS_GRADLE = "readonly HAS_GRADLE='true'" in (SOURCE / 'scripts/release.sh').read_text()
-HOST = 'WWW_PARAMIXEL_ORG' if HAS_GRADLE else 'WWW_ALTCONTAINERS_ORG'
+HAS_GRADLE = "readonly HAS_GRADLE='true'" in (SOURCE / 'scripts/publish-release.sh').read_text()
 REAL_GIT = shutil.which('git')
 
 STUB = r'''
@@ -44,12 +43,6 @@ if name == 'mvnw':
     elif 'spotless:apply' in args and os.environ.get('DIRTY_FORMAT'):
         with open(root / 'pom.xml', 'a') as pom_file:
             pom_file.write('\n')
-elif name == 'build-documentation.sh':
-    out = root / 'website/build'
-    out.mkdir(parents=True, exist_ok=True)
-    (out / 'index.html').write_text('release documentation')
-elif name == 'rsync' and os.environ.get('FAIL_DOCS'):
-    sys.exit(27)
 '''
 
 
@@ -71,18 +64,15 @@ class ReleaseTests(unittest.TestCase):
                         COMMAND_LOG=str(self.log), REAL_GIT=REAL_GIT,
                         PATH=str(self.bin) + os.pathsep + os.environ['PATH'])
         for key in ('WWW_PARAMIXEL_ORG', 'WWW_ALTCONTAINERS_ORG', 'FAIL_DEPLOY',
-                    'FAIL_DOCS', 'FAIL_REVISION', 'FAIL_REMOTE', 'FAIL_INSTALL', 'DIRTY_FORMAT'):
+                    'FAIL_REVISION', 'FAIL_REMOTE', 'FAIL_INSTALL', 'DIRTY_FORMAT'):
             self.env.pop(key, None)
-        self.env[HOST] = 'test-docs-host'
-        for name in ('git', 'gpg', 'rsync', 'ssh'):
+        for name in ('git', 'gpg'):
             self.stub(self.bin / name)
         (self.root / 'scripts').mkdir()
-        for name in ('release.sh', 'publish-documentation.sh'):
-            shutil.copy2(SOURCE / 'scripts' / name, self.root / 'scripts' / name)
-        for name in ('mvnw', 'gradlew', 'scripts/build-documentation.sh'):
+        shutil.copy2(SOURCE / 'scripts/publish-release.sh', self.root / 'scripts/publish-release.sh')
+        for name in ('mvnw', 'gradlew'):
             self.stub(self.root / name)
         (self.root / 'pom.xml').write_text('<project><properties><revision>0.9.0-POST</revision></properties></project>\n')
-        (self.root / '.gitignore').write_text('website/build/\n')
         self.git('init', '-b', 'main')
         self.git('config', 'user.name', 'Release Test')
         self.git('config', 'user.email', 'release-test@example.invalid')
@@ -104,7 +94,7 @@ class ReleaseTests(unittest.TestCase):
                               text=True, capture_output=True, check=True).stdout.strip()
 
     def run_release(self, *args, answers=None, success=True, extra_env=None):
-        result = subprocess.run(['bash', str(self.root / 'scripts/release.sh'), *args],
+        result = subprocess.run(['bash', str(self.root / 'scripts/publish-release.sh'), *args],
                                 cwd=self.base, env=dict(self.env, **(extra_env or {})),
                                 input=answers if answers is not None else 'y\n' * 20,
                                 text=True, capture_output=True, timeout=30)
@@ -133,7 +123,6 @@ class ReleaseTests(unittest.TestCase):
             self.run_release(*args, success=False)
 
     def test_dry_run_is_offline_and_does_not_build_or_write_state(self):
-        self.env.pop(HOST)
         self.run_release('1.0.0', extra_env={'FAIL_REMOTE': '1', 'FAIL_REVISION': '1'})
         self.assertFalse((self.root / '.git/release-state').exists())
         self.assertFalse((self.root / '.git/release-script.lock').exists())
@@ -141,14 +130,11 @@ class ReleaseTests(unittest.TestCase):
 
     def test_success_from_another_directory_and_completed_rerun(self):
         self.run_release('1.0.0', '--execute')
-        self.assertEqual(self.state()[0], '8')
+        self.assertEqual(self.state()[0], '7')
         self.assertEqual(self.git('rev-parse', 'v1.0.0^{commit}'), self.git('rev-parse', 'release/1.0.0'))
         self.assertIn('1.0.0-POST', (self.root / 'pom.xml').read_text())
         self.assertEqual(len(self.deployments()), 1)
-        self.assertEqual(len(self.commands('build-documentation.sh')), 1)
         self.assertEqual(len(self.commands('gradlew')), 2 if HAS_GRADLE else 0)
-        rsync = self.commands('rsync')[0]
-        self.assertEqual(rsync[2][-1], 'test-docs-host:/var/www/html/' + ('paramixel' if HAS_GRADLE else 'altcontainers') + '/')
         self.assertTrue(all(e[1] == str(self.root) for e in self.commands() if e[0] in ('mvnw', 'gradlew')))
         builds = [e for e in self.commands() if e[0] in ('mvnw', 'gradlew')]
         for i, entry in enumerate(builds):
@@ -157,24 +143,11 @@ class ReleaseTests(unittest.TestCase):
         self.assertIn('Signed-off-by:', self.git('log', '-1', '--format=%B'))
         self.run_release('1.0.0', '--execute')
         self.assertEqual(len(self.deployments()), 1)
-        self.assertEqual(len(self.commands('rsync')), 1)
 
-    def test_wrong_project_environment_is_rejected_before_build(self):
-        self.env.pop(HOST)
-        self.env['WWW_ALTCONTAINERS_ORG' if HAS_GRADLE else 'WWW_PARAMIXEL_ORG'] = 'wrong-host'
-        output = self.run_release('1.0.0', '--execute', success=False)
-        self.assertIn(HOST, output)
-        self.assertEqual(self.commands('mvnw'), [])
-
-    def test_docs_upload_failure_resumes_without_redeploy(self):
-        self.run_release('1.0.0', '--execute', success=False, extra_env={'FAIL_DOCS': '1'})
-        self.assertEqual(self.state()[0], '6')
-        self.assertEqual(self.git('branch', '--show-current'), 'release/1.0.0')
-        shutil.rmtree(self.root / 'website/build')
+    def test_documentation_publishing_is_not_part_of_the_release(self):
         self.run_release('1.0.0', '--execute')
-        self.assertEqual(self.state()[0], '8')
-        self.assertEqual(len(self.deployments()), 1)
-        self.assertEqual(len(self.commands('build-documentation.sh')), 2)
+        self.assertEqual(self.commands('rsync'), [])
+        self.assertNotIn('publish-documentation.sh', self.run_release('1.0.0', '--help'))
 
     def test_pending_publication_preserves_branches_and_does_not_redeploy(self):
         self.run_release('1.0.0', '--execute', answers='y\ny\nn\n', success=False)
@@ -207,7 +180,7 @@ class ReleaseTests(unittest.TestCase):
 
     def test_cancelled_main_push_resumes(self):
         self.run_release('1.0.0', '--execute', answers='y\ny\ny\ny\nn\n', success=False)
-        self.assertEqual(self.state()[0], '7')
+        self.assertEqual(self.state()[0], '6')
         self.run_release('1.0.0', '--execute')
         self.assertEqual(len(self.deployments()), 1)
 
@@ -224,7 +197,8 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(len(self.deployments()), 1)
 
     def test_remote_tag_conflict_is_rejected(self):
-        self.run_release('1.0.0', '--execute', success=False, extra_env={'FAIL_DOCS': '1'})
+        self.run_release('1.0.0', '--execute', answers='y\ny\ny\nn\n', success=False)
+        self.assertEqual(self.state()[0], '5')
         self.git('tag', '-f', 'v1.0.0', 'main')
         self.git('push', '--force', 'origin', 'refs/tags/v1.0.0')
         self.git('tag', '-d', 'v1.0.0')
@@ -245,16 +219,6 @@ class ReleaseTests(unittest.TestCase):
         self.git('reset', '--hard', 'HEAD~1')
         self.git('update-ref', 'refs/remotes/origin/main', 'HEAD')
         self.assertIn('not synced', self.run_release('1.0.0', '--execute', success=False))
-
-    def test_skip_docs_build_reuses_existing_output(self):
-        (self.root / 'website/build').mkdir(parents=True)
-        (self.root / 'website/build/index.html').write_text('prebuilt')
-        self.run_release('1.0.0', '--execute', '--skip-docs-build')
-        self.assertEqual(self.commands('build-documentation.sh'), [])
-
-    def test_missing_skipped_docs_build_fails_before_deploy(self):
-        self.run_release('1.0.0', '--execute', '--skip-docs-build', success=False)
-        self.assertEqual(self.deployments(), [])
 
     def test_revision_failure_aborts_before_mutation(self):
         self.run_release('1.0.0', '--execute', success=False, extra_env={'FAIL_REVISION': '1'})

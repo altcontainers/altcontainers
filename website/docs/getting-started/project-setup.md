@@ -19,7 +19,7 @@ Add the Altcontainers dependency to your `pom.xml`:
 <dependency>
   <groupId>org.altcontainers</groupId>
   <artifactId>core</artifactId>
-  <version>0.4.1</version>
+  <version>0.4.2</version>
   <scope>test</scope>
 </dependency>
 ```

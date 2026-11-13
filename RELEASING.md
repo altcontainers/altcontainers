@@ -44,11 +44,12 @@ echo "test" | gpg --batch --clearsign >/dev/null
 
 ### Documentation Publishing
 
+Documentation is published independently of Maven releases; see [Publishing Documentation](#publishing-documentation).
 The `WWW_ALTCONTAINERS_ORG` environment variable must be set to your SSH host alias for documentation publishing.
 
 ## Automated Release
 
-The `./scripts/release.sh` script automates the entire release process except for publishing from the Maven Central Portal, which requires manual verification.
+The `./scripts/publish-release.sh` script automates the entire release process except for publishing from the Maven Central Portal, which requires manual verification. It publishes Maven artifacts only; the documentation site is published separately with `./scripts/publish-documentation.sh`.
 
 The script records the next step and release commit in the Git common directory at
 `release-state/<version>`. Rerun the same command to resume a partial release;
@@ -63,13 +64,10 @@ Execution refreshes origin and validates the prerequisites for the remaining ste
 
 ```bash
 # Dry run (default) — prints all commands without executing
-./scripts/release.sh 1.2.3
+./scripts/publish-release.sh 1.2.3
 
 # Execute the release
-./scripts/release.sh 1.2.3 --execute
-
-# Skip documentation build (use if docs already built)
-./scripts/release.sh 1.2.3 --execute --skip-docs-build
+./scripts/publish-release.sh 1.2.3 --execute
 ```
 
 ### Options
@@ -77,7 +75,6 @@ Execution refreshes origin and validates the prerequisites for the remaining ste
 | Option | Description |
 | ------ | ----------- |
 | `--execute` | Execute the release (default is dry-run) |
-| `--skip-docs-build` | Reuse a nonempty `website/build` for this release; skip all documentation builds |
 | `--retry-deploy` | Retry step 3 from a step-4 checkpoint after confirming the version is unpublished and all pending deployments have been dropped |
 | `-h`, `--help` | Show help text |
 
@@ -85,14 +82,13 @@ Execution refreshes origin and validates the prerequisites for the remaining ste
 
 | Step | Action | Automated |
 | ---- | ------ | --------- |
-| Pre-flight | Validates version format, clean tree, branch sync, executables, GPG, settings.xml, env vars | Yes |
+| Pre-flight | Validates version format, clean tree, branch sync, executables, GPG, settings.xml | Yes |
 | 1 | Create release branch, set version, build, push | Yes |
 | 2 | Wait for CI to pass | Pause for user confirmation |
 | 3 | Deploy artifacts to Sonatype Central | Yes |
 | 4 | Verify and publish at Maven Central Portal | **Manual** — user publishes from the portal |
 | 5 | Tag and push tag | Yes (after Step 4 confirmed) |
-| 6 | Publish documentation | Yes |
-| 7 | Bump main to development version (`<VERSION>-POST`) | Yes |
+| 6 | Bump main to development version (`<VERSION>-POST`) | Yes |
 
 The script prompts before each required push and verifies existing tags against the
 release commit. Answering **N** at Step 4 stops and preserves the branches and
@@ -109,7 +105,6 @@ git checkout -b release/<VERSION>
 ./mvnw versions:set-property -Dproperty=revision -DnewVersion=<VERSION> -DgenerateBackupPoms=false
 ./mvnw spotless:apply
 ./mvnw clean install
-./scripts/build-documentation.sh
 git add -A
 git commit -s -m "chore: Release <VERSION>"
 git push -u origin release/<VERSION>
@@ -149,17 +144,7 @@ git tag -a v<VERSION> -m "Release <VERSION>"
 git push origin v<VERSION>
 ```
 
-#### Step 6 — Publish documentation
-
-A continuous run reuses the documentation built during preparation. A resumed
-publication step rebuilds for the checked-out release commit, unless
-`--skip-docs-build` explicitly requests existing output.
-
-```bash
-./scripts/publish-documentation.sh --skip-build
-```
-
-#### Step 7 — Bump main to the next development version
+#### Step 6 — Bump main to the next development version
 
 ```bash
 git checkout main
@@ -179,6 +164,82 @@ git push
 - Post-release development version: `<VERSION>-POST`
 - Accepted version format for the release script: `x.y.z` (e.g. `1.2.3`)
 - The release version must not already end in `-POST`
+- Documentation versions are independent of the release script; see [Publishing Documentation](#publishing-documentation)
+
+## Publishing Documentation
+
+Documentation is published independently of Maven releases. You can publish documentation changes at any time
+without releasing to Maven Central, and a release does not publish the site.
+
+```bash
+./scripts/publish-documentation.sh              # build and publish
+./scripts/publish-documentation.sh --dry-run    # build and show what would be transferred
+./scripts/publish-documentation.sh --skip-build --dry-run
+```
+
+The script requires the `WWW_ALTCONTAINERS_ORG` environment variable (or `--ssh-host <alias>`), and `rsync`/`ssh`.
+It builds the whole site — the unreleased working copy in `website/docs` plus every frozen version in
+`website/versioned_docs` — validates it, and rsyncs `website/build` to the documentation host. The build fails if
+`website/versions.json` lists a version without content or without a versioned sidebar, if a
+`versioned_docs/version-*` directory is not listed, or if `lastVersion` is not registered.
+
+### Documentation versions in the repository
+
+All documentation versions are kept in the repository:
+
+| Path | Purpose |
+| ---- | ------- |
+| `website/docs` | Working copy for the next release (labeled "Unreleased") |
+| `website/versioned_docs/version-<VERSION>/` | Frozen documentation for a released version |
+| `website/versioned_sidebars/version-<VERSION>-sidebars.json` | Sidebar for that version |
+| `website/versions.json` | Version order, newest first; drives the version dropdown |
+| `website/docusaurus.config.js` | `lastVersion` and per-version banners |
+
+The published site must never present unpublished artifacts as current:
+
+- `lastVersion` is always the newest version whose artifacts are published to Maven Central. It has
+  `banner: 'none'` and is served at the site root.
+- A version that exists in the repository but is not yet published to Maven Central stays in `versions.json` with
+  `banner: 'unreleased'`. It appears in the dropdown, is served under `/<VERSION>/`, and directs readers to the
+  latest published version.
+- Older versions keep `banner: 'unmaintained'` with the `(Unmaintained)` label and `className: 'notice-unmaintained'`.
+
+### Freezing the next version
+
+When the next release's documentation is ready, freeze it before the release is cut:
+
+```bash
+cd website
+npx docusaurus docs:version <VERSION>
+```
+
+This copies `website/docs` to `website/versioned_docs/version-<VERSION>/`, copies `sidebars.js` to
+`website/versioned_sidebars/version-<VERSION>-sidebars.json`, and prepends `<VERSION>` to `website/versions.json`.
+Then add `'<VERSION>': {banner: 'unreleased'}` to the `versions` map in `website/docusaurus.config.js` so the frozen
+version does not become the default before its artifacts exist. Commit both changes.
+
+### Promoting a version after publication
+
+Once the release is published to Maven Central and tagged, promote its documentation:
+
+1. Set `lastVersion: '<VERSION>'` in `website/docusaurus.config.js`.
+2. Change that version's entry to `banner: 'none'`.
+3. Change the previously selected version to `banner: 'unmaintained'` with
+   `label: '<VERSION> (Unmaintained)'` and `className: 'notice-unmaintained'`.
+4. Confirm the Maven snippets in `website/versioned_docs/version-<VERSION>/getting-started/installation.md` and
+   `.../project-setup.md` name `<VERSION>`.
+5. Commit, then run `./scripts/publish-documentation.sh`.
+
+These are ordinary reviewed changes; `scripts/publish-release.sh` neither reads nor modifies documentation versions.
+
+### Troubleshooting documentation publishing
+
+- **Upload fails:** the Maven release is unaffected. Fix credentials/connectivity and rerun
+  `./scripts/publish-documentation.sh`. Nothing is deleted.
+- **A version is missing from the dropdown:** confirm it is listed in `website/versions.json` and has both
+  `website/versioned_docs/version-<VERSION>/` and `website/versioned_sidebars/version-<VERSION>-sidebars.json`.
+- **The wrong version is served at the site root:** `lastVersion` in `website/docusaurus.config.js` is not the
+  version that should be current; see [Promoting a version after publication](#promoting-a-version-after-publication).
 
 ## Manual Release
 
@@ -197,7 +258,6 @@ git checkout -b release/<VERSION>
 
 ./mvnw spotless:apply
 ./mvnw clean install
-./scripts/build-documentation.sh
 
 git add -A
 git commit -s -m "chore: Release <VERSION>"
@@ -261,27 +321,10 @@ git tag -a v<VERSION> -m "Release <VERSION>"
 git push origin v<VERSION>
 ```
 
-### Step 6 — Publish documentation
+### Step 6 — Publish documentation (separate from the release)
 
-After tagging, publish the documentation site. This builds the Docusaurus site and deploys it via rsync over SSH.
-
-Requires the `WWW_ALTCONTAINERS_ORG` environment variable, or pass `--ssh-host`.
-
-```bash
-./scripts/publish-documentation.sh
-```
-
-To preview what will be deployed without transferring files:
-
-```bash
-./scripts/publish-documentation.sh --dry-run
-```
-
-If the documentation was already built during Step 1, skip the build step:
-
-```bash
-./scripts/publish-documentation.sh --skip-build
-```
+Documentation is published independently of the release with `./scripts/publish-documentation.sh`. See
+[Publishing Documentation](#publishing-documentation) for version promotion and troubleshooting.
 
 ### Step 7 — Bump main to the next development version
 
@@ -336,20 +379,20 @@ git push
 
 - **Build fails with working-tree changes:** Review and commit or stash the changes, then rerun. The script does not discard work. Resume on `main` or `release/<VERSION>`.
 - **CI fails:** Fix and push the release branch, then rerun and confirm CI for the new commit. After CI confirmation, changing the release commit requires manual recovery.
-- **Deploy fails or is interrupted:** The script records step 4 *before* uploading, because a failing client may already have created a deployment. Inspect the portal. If the deployment exists, verify and publish it, then rerun to confirm publication. If the version is unpublished and all pending deployments have been dropped (or none exists), run `./scripts/release.sh <VERSION> --execute --retry-deploy` and confirm the retry. The script cannot query Central publication status automatically.
+- **Deploy fails or is interrupted:** The script records step 4 *before* uploading, because a failing client may already have created a deployment. Inspect the portal. If the deployment exists, verify and publish it, then rerun to confirm publication. If the version is unpublished and all pending deployments have been dropped (or none exists), run `./scripts/publish-release.sh <VERSION> --execute --retry-deploy` and confirm the retry. The script cannot query Central publication status automatically.
 - **Publication is pending or declined:** Branches and checkpoint are retained. Rerun once ready. Nothing is automatically deleted.
 - **Tag push fails or is declined:** Rerun; a matching existing local or remote tag is reused. Conflicting tags stop the script.
-- **Documentation upload fails after publication:** Rerun; deployment and tagging are skipped. Set the documented project SSH host variable. Documentation is rebuilt for the release commit unless `--skip-docs-build` is supplied.
+- **Documentation publishing fails:** unrelated to the release. Fix credentials/connectivity and rerun `./scripts/publish-documentation.sh`; see [Publishing Documentation](#publishing-documentation).
 - **Development bump or main push fails:** Review any uncommitted changes, then rerun on `main`. The published release is not redeployed.
-- **Release was started with an older script or another clone:** Local checkpoints are unavailable. Follow the remaining manual steps after verifying the release commit and portal state. Do not delete published tags to restart automation.
+- **Release was started with an older script or another clone:** Local checkpoints are unavailable. Follow the remaining manual steps after verifying the release commit and portal state. Do not delete published tags to restart automation. Checkpoints written by an older script version are rejected when their step number is no longer valid.
 - **Release lock remains after a forced termination:** Confirm no release process is running, then remove the empty `release-script.lock` directory under `git rev-parse --git-common-dir`. Do not remove an active lock or delete checkpoint files to force a deployment retry.
 
 To validate the orchestration without publishing anything:
 
 ```bash
-bash -n scripts/release.sh
-shellcheck scripts/release.sh
-python3 scripts/test-release.py
+bash -n scripts/publish-release.sh
+shellcheck scripts/publish-release.sh
+python3 scripts/test-publish-release.py
 ```
 
 The tests use temporary local Git repositories and mocked build, signing, and

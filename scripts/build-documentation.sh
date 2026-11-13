@@ -22,6 +22,10 @@ readonly PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 readonly WEBSITE_DIR="${PROJECT_DIR}/website"
 readonly DOCS_DIR="${WEBSITE_DIR}/docs"
 readonly SIDEBARS_FILE="${WEBSITE_DIR}/sidebars.js"
+readonly VERSIONS_FILE="${WEBSITE_DIR}/versions.json"
+readonly VERSIONED_DOCS_DIR="${WEBSITE_DIR}/versioned_docs"
+readonly VERSIONED_SIDEBARS_DIR="${WEBSITE_DIR}/versioned_sidebars"
+readonly DOCUSAURUS_CONFIG="${WEBSITE_DIR}/docusaurus.config.js"
 readonly SIDEBAR_JS_DOC_ID_PATTERN="^['\"][a-zA-Z0-9_/-]+['\"]\$"
 
 log() {
@@ -84,6 +88,50 @@ get_all_doc_ids() {
     while IFS= read -r -d '' file; do
         resolve_doc_id "$file"
     done < <(find "$DOCS_DIR" -type f \( -name "*.md" -o -name "*.mdx" \) -print0) | sort -u
+}
+
+# Every documentation version lives in the repository, so a published site must contain all of them.
+# Fail before building when versions.json, the versioned content, the versioned sidebars, and
+# lastVersion disagree; otherwise a version silently disappears from the published site.
+validate_versioned_docs() {
+    log "Validating versioned documentation..."
+
+    [[ -f "$VERSIONS_FILE" ]] || fail "Version file not found: $VERSIONS_FILE"
+    jq -e 'type == "array" and length > 0' "$VERSIONS_FILE" >/dev/null 2>&1 \
+        || fail "Invalid version file (expected a non-empty JSON array): $VERSIONS_FILE"
+
+    local version dir name problems='' last_version
+
+    while IFS= read -r version; do
+        [[ -n "$version" ]] || continue
+        if [[ ! -d "${VERSIONED_DOCS_DIR}/version-${version}" ]]; then
+            problems="${problems}"$'\n'"  - missing ${VERSIONED_DOCS_DIR}/version-${version}"
+        elif [[ -z "$(find "${VERSIONED_DOCS_DIR}/version-${version}" -type f -print -quit)" ]]; then
+            problems="${problems}"$'\n'"  - empty ${VERSIONED_DOCS_DIR}/version-${version}"
+        fi
+        if [[ ! -f "${VERSIONED_SIDEBARS_DIR}/version-${version}-sidebars.json" ]]; then
+            problems="${problems}"$'\n'"  - missing ${VERSIONED_SIDEBARS_DIR}/version-${version}-sidebars.json"
+        fi
+    done < <(jq -r '.[]' "$VERSIONS_FILE")
+
+    while IFS= read -r -d '' dir; do
+        name="${dir##*/version-}"
+        if ! jq -e --arg v "$name" 'index($v) != null' "$VERSIONS_FILE" >/dev/null 2>&1; then
+            problems="${problems}"$'\n'"  - ${dir} is not listed in versions.json"
+        fi
+    done < <(find "$VERSIONED_DOCS_DIR" -mindepth 1 -maxdepth 1 -type d -name 'version-*' -print0 2>/dev/null)
+
+    last_version=$(sed -n "s/.*lastVersion:[[:space:]]*['\"\"]\([^'\"\"]*\)['\"\"].*/\1/p" "$DOCUSAURUS_CONFIG" 2>/dev/null | head -n 1)
+    [[ -n "$last_version" ]] || fail "Cannot determine lastVersion in $DOCUSAURUS_CONFIG"
+    if ! jq -e --arg v "$last_version" 'index($v) != null' "$VERSIONS_FILE" >/dev/null 2>&1; then
+        problems="${problems}"$'\n'"  - lastVersion '${last_version}' is not listed in versions.json"
+    fi
+
+    if [[ -n "$problems" ]]; then
+        fail "Versioned documentation is inconsistent:${problems}"
+    fi
+
+    log "Versioned documentation validated (all versions present)."
 }
 
 get_sidebar_doc_ids() {
@@ -248,6 +296,8 @@ main() {
     log "Checking documentation build..."
 
     check_dependencies
+
+    validate_versioned_docs
 
     validate_sidebar_ids
 

@@ -34,7 +34,9 @@ usage() {
     cat <<'EOF'
 Usage: ./scripts/publish-documentation.sh [OPTIONS]
 
-Build and publish the Altcontainers documentation site to a remote server via rsync over SSH.
+Build and publish every documentation version kept in the repository: the unreleased working copy in
+website/docs plus each frozen version in website/versioned_docs. Publication is independent of the Maven
+release; run it whenever documentation should go live (see RELEASING.md).
 
 The SSH connection uses your ~/.ssh/config aliases.
 

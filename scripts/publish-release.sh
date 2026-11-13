@@ -21,12 +21,10 @@ readonly SCRIPT_DIR
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 readonly PROJECT_DIR
 readonly PROJECT_NAME='Altcontainers'
-readonly DOCS_HOST_VARIABLE='WWW_ALTCONTAINERS_ORG'
 readonly HAS_GRADLE='false'
 readonly VERSION_REGEX='^[0-9]+\.[0-9]+\.[0-9]+$'
 
 EXECUTE=false
-SKIP_DOCS_BUILD=false
 SKIP_GRADLE=false
 RETRY_DEPLOY=false
 VERSION=''
@@ -38,14 +36,13 @@ REMOTE_TAG_COMMIT=''
 
 usage() {
     cat <<EOF_HELP
-Usage: ./scripts/release.sh <version> [OPTIONS]
+Usage: ./scripts/publish-release.sh <version> [OPTIONS]
 
 Release ${PROJECT_NAME}; Central publication requires manual portal verification.
 Default: offline dry run. Use --execute to run or resume a release.
 
 Options:
   --execute          Execute, resuming the local checkpoint when present
-  --skip-docs-build  Reuse website/build without building documentation
   --retry-deploy     Retry an uncertain deployment after checking/dropping it in Central
   -h, --help         Show help (no version required)
 
@@ -66,7 +63,6 @@ parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --execute) EXECUTE=true ;;
-            --skip-docs-build) SKIP_DOCS_BUILD=true ;;
             --skip-gradle)
                 [[ "$HAS_GRADLE" == true ]] || fail "Unknown argument: $1"
                 SKIP_GRADLE=true
@@ -108,7 +104,7 @@ load_state() {
         {
             read -r NEXT_STEP && read -r RELEASE_COMMIT && ! read -r extra && [[ -z "$extra" ]]
         } < "$STATE_FILE" || fail "Invalid checkpoint: $STATE_FILE"
-        [[ "$NEXT_STEP" =~ ^[1-8]$ ]] || fail "Invalid checkpoint step: $STATE_FILE"
+        [[ "$NEXT_STEP" =~ ^[1-7]$ ]] || fail "Invalid checkpoint step: $STATE_FILE"
         [[ -z "$RELEASE_COMMIT" || "$RELEASE_COMMIT" =~ ^[0-9a-f]{40,64}$ ]] \
             || fail "Invalid checkpoint commit: $STATE_FILE"
         [[ "$NEXT_STEP" == 1 || -n "$RELEASE_COMMIT" ]] || fail "Missing checkpoint commit."
@@ -140,11 +136,6 @@ validate_build() {
     fi
 }
 
-validate_docs_build() {
-    [[ -d website/build && -n "$(find website/build -type f -print -quit)" ]] \
-        || fail "website/build is missing or empty; build the release documentation first."
-}
-
 preflight_checks() {
     require_clean_tree
     git fetch --prune origin '+refs/heads/*:refs/remotes/origin/*' \
@@ -161,7 +152,7 @@ preflight_checks() {
         if ref_exists "refs/tags/v${VERSION}" || [[ -n "$REMOTE_TAG_COMMIT" ]]; then
             fail "Tag v${VERSION} exists without a prepared checkpoint. Recover manually; do not delete a published tag."
         fi
-    elif [[ "$NEXT_STEP" -lt 7 ]]; then
+    elif [[ "$NEXT_STEP" -lt 6 ]]; then
         [[ "$branch" == main || "$branch" == "release/${VERSION}" ]] || fail "Resume on main or release/${VERSION}."
     else
         [[ "$branch" == main || "$branch" == "release/${VERSION}" ]] || fail "Resume the development bump on main or release/${VERSION}."
@@ -176,19 +167,12 @@ preflight_checks() {
         [[ "$NEXT_STEP" -lt 6 || "$REMOTE_TAG_COMMIT" == "$RELEASE_COMMIT" ]] || fail "Published release tag is missing on origin."
     fi
 
-    if [[ "$NEXT_STEP" -le 6 ]]; then
-        [[ -n "${!DOCS_HOST_VARIABLE:-}" ]] || fail "Set ${DOCS_HOST_VARIABLE} to the documentation SSH host alias."
-        local dependency
-        for dependency in rsync ssh; do
-            command -v "$dependency" >/dev/null || fail "Required command missing: $dependency"
-        done
-    fi
     if [[ "$NEXT_STEP" -le 3 || "$RETRY_DEPLOY" == true ]]; then
         [[ -f "${HOME}/.m2/settings.xml" ]] || fail "Maven settings not found: ~/.m2/settings.xml"
         echo test | gpg --batch --clearsign >/dev/null 2>&1 || fail "GPG signing is not working."
     fi
     [[ -x ./mvnw ]] || fail "mvnw is not executable."
-    if [[ "$HAS_GRADLE" == true && "$SKIP_GRADLE" == false && ( "$NEXT_STEP" == 1 || "$NEXT_STEP" == 7 ) ]]; then
+    if [[ "$HAS_GRADLE" == true && "$SKIP_GRADLE" == false && ( "$NEXT_STEP" == 1 || "$NEXT_STEP" == 6 ) ]]; then
         [[ -x ./gradlew ]] || fail "gradlew is not executable (or use --skip-gradle)."
     fi
 }
@@ -208,10 +192,6 @@ prepare_release() {
         ./mvnw versions:set-property -Dproperty=revision -DnewVersion="$VERSION" -DgenerateBackupPoms=false
     fi
     validate_build
-    if [[ "$SKIP_DOCS_BUILD" == false ]]; then
-        "${SCRIPT_DIR}/build-documentation.sh"
-    fi
-    validate_docs_build
     commit_changes "chore: Release ${VERSION}"
     RELEASE_COMMIT=$(commit_at HEAD)
     push_release_branch
@@ -295,20 +275,8 @@ tag_release() {
     fi
 }
 
-publish_docs() {
-    log 'Step 6 — Publish documentation'
-    checkout_release
-    # An interrupted run may have lost ignored build output. Rebuild for this commit.
-    if [[ "$SKIP_DOCS_BUILD" == false && "$PREPARED_THIS_RUN" == false ]]; then
-        "${SCRIPT_DIR}/build-documentation.sh"
-    fi
-    validate_docs_build
-    require_clean_tree
-    "${SCRIPT_DIR}/publish-documentation.sh" --skip-build
-}
-
 bump_dev_version() {
-    log 'Step 7 — Bump development version'
+    log 'Step 6 — Bump development version'
     git checkout main
     git pull --ff-only origin main
     local revision
@@ -329,20 +297,15 @@ print_dry_run() {
     log 'Execution refreshes origin and validates prerequisites and the checkpoint.'
     log '1. Checkout release branch; set revision; spotless:apply; clean install.'
     if [[ "$HAS_GRADLE" == true && "$SKIP_GRADLE" == false ]]; then
-        log '   spotless:apply; gradlew clean check --no-daemon (also at step 7).'
-    fi
-    if [[ "$SKIP_DOCS_BUILD" == true ]]; then
-        log '   Reuse website/build (--skip-docs-build).'
-    else
-        log '   Build documentation.'
+        log '   spotless:apply; gradlew clean check --no-daemon (also at step 6).'
     fi
     log '   Commit; confirm release-branch push.'
     log '2. Confirm CI for the exact release commit.'
     log '3. spotless:apply; verify clean tree; checkpoint; mvnw -Prelease clean deploy.'
     log '4. Verify and manually publish in Central; confirm publication.'
     log '5. Create/reuse matching tag; confirm tag push.'
-    log '6. Publish documentation using the project documentation host variable.'
-    log "7. Set main revision to ${VERSION}-POST; spotless:apply; clean install; commit; confirm push."
+    log "6. Set main revision to ${VERSION}-POST; spotless:apply; clean install; commit; confirm push."
+    log 'Documentation is published separately with publish-documentation.sh.'
     log 'Completed steps are skipped during execution. No commands above were executed.'
 }
 
@@ -364,7 +327,7 @@ main() {
     trap 'rmdir "$LOCK_DIR"' EXIT
     mkdir -p "${git_common}/release-state"
     load_state
-    if [[ "$NEXT_STEP" == 8 ]]; then
+    if [[ "$NEXT_STEP" == 7 ]]; then
         log "Release ${VERSION} already completed."
         return
     fi
@@ -379,17 +342,15 @@ main() {
         save_state 3
     fi
 
-    PREPARED_THIS_RUN=false
-    while [[ "$NEXT_STEP" -le 7 ]]; do
+    while [[ "$NEXT_STEP" -le 6 ]]; do
         local step="$NEXT_STEP"
         case "$step" in
-            1) save_state 1; prepare_release; PREPARED_THIS_RUN=true ;;
+            1) save_state 1; prepare_release ;;
             2) wait_for_ci ;;
             3) deploy_to_central ;;
             4) verify_publication ;;
             5) tag_release ;;
-            6) publish_docs ;;
-            7) bump_dev_version ;;
+            6) bump_dev_version ;;
         esac
         save_state "$((step + 1))"
     done
