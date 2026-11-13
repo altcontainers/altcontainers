@@ -608,7 +608,9 @@ public class GenericContainerSpec implements ContainerSpec {
         }
 
         /**
-         * Bind-mounts an existing host directory into the container.
+         * Bind-mounts an existing host directory into the container read-write.
+         *
+         * <p>Equivalent to {@code bindDirectory(hostPath, containerPath, false)}.
          *
          * @param hostPath the absolute host path; must not be blank
          * @param containerPath the absolute in-container path; must not be blank
@@ -616,8 +618,24 @@ public class GenericContainerSpec implements ContainerSpec {
          * @throws IllegalArgumentException if either path is blank
          */
         public Builder bindDirectory(String hostPath, String containerPath) {
+            return bindDirectory(hostPath, containerPath, false);
+        }
+
+        /**
+         * Bind-mounts an existing host directory into the container.
+         *
+         * <p>The host directory is shared with the container directly; no content is copied. A read-only
+         * mount prevents the container from modifying the host directory.
+         *
+         * @param hostPath the absolute host path; must not be blank
+         * @param containerPath the absolute in-container path; must not be blank
+         * @param readOnly {@code true} to mount read-only, {@code false} to mount read-write
+         * @return this builder
+         * @throws IllegalArgumentException if either path is blank
+         */
+        public Builder bindDirectory(String hostPath, String containerPath, boolean readOnly) {
             bindTargets.add(new BindMount(
-                    requireNonBlank(hostPath, "hostPath"), requireNonBlank(containerPath, "containerPath")));
+                    requireNonBlank(hostPath, "hostPath"), requireNonBlank(containerPath, "containerPath"), readOnly));
             return this;
         }
 

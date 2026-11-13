@@ -36,7 +36,7 @@ public final class ShutdownHooks {
 
     /**
      * Registers a shutdown hook that marks shutdown in progress, then drains the
-     * executor, forcing it down if it does not terminate in time.
+     * executor, forcing it down if the drain is interrupted.
      *
      * <p>The executor is supplied rather than passed, because the managers
      * register their hook from a constructor that runs while their static
@@ -54,8 +54,9 @@ public final class ShutdownHooks {
     }
 
     /**
-     * Builds the shutdown task: mark shutdown in progress, drain the executor,
-     * and force it down if it does not terminate in time.
+     * Builds the shutdown task: mark shutdown in progress, drain the executor
+     * within {@code TERMINATION_TIMEOUT_SECONDS}, and force it down if the
+     * drain is interrupted.
      *
      * @param markShuttingDown action run first to flag shutdown in progress
      * @param stopExecutor supplies the executor to drain, resolved when the task runs

@@ -19,6 +19,8 @@ package nonapi.org.altcontainers.api;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Properties;
@@ -61,6 +63,47 @@ class AltcontainersPropertiesTest {
         assertThat(p.portProbeTimeout()).isEqualTo(Duration.ofMillis(500));
         assertThat(p.httpProbeTimeout()).isEqualTo(Duration.ofMillis(2000));
         assertThat(p.containerPutArchivePipeBufferBytes()).isEqualTo(65536);
+    }
+
+    @Test
+    void bundledClasspathResourceShouldNotChangeAnyDefault() throws IOException {
+        // The bundled altcontainers.properties is documented as containing the defaults
+        // (website/docs/guides/configuration.md). A stale bundled value silently overrides
+        // the hardcoded default for every user, so the two must stay in agreement.
+        AltcontainersProperties defaults =
+                AltcontainersProperties.forTesting(new Properties(), new Properties(), Map.of());
+        AltcontainersProperties bundled =
+                AltcontainersProperties.forTesting(loadBundledProperties(), new Properties(), Map.of());
+
+        assertThat(bundled.reaperDisabled()).isEqualTo(defaults.reaperDisabled());
+        assertThat(bundled.reaperConnectionTimeout()).isEqualTo(defaults.reaperConnectionTimeout());
+        assertThat(bundled.reaperStartupTimeout()).isEqualTo(defaults.reaperStartupTimeout());
+        assertThat(bundled.reaperStopTimeout()).isEqualTo(defaults.reaperStopTimeout());
+        assertThat(bundled.containerStartupTimeout()).isEqualTo(defaults.containerStartupTimeout());
+        assertThat(bundled.containerReadinessPollInitial()).isEqualTo(defaults.containerReadinessPollInitial());
+        assertThat(bundled.containerReadinessPollMax()).isEqualTo(defaults.containerReadinessPollMax());
+        assertThat(bundled.containerStartupRetryBackoffMultiplier())
+                .isEqualTo(defaults.containerStartupRetryBackoffMultiplier());
+        assertThat(bundled.containerStartupRetryBackoffMax()).isEqualTo(defaults.containerStartupRetryBackoffMax());
+        assertThat(bundled.portProbeTimeout()).isEqualTo(defaults.portProbeTimeout());
+        assertThat(bundled.httpProbeTimeout()).isEqualTo(defaults.httpProbeTimeout());
+        assertThat(bundled.containerPutArchivePipeBufferBytes())
+                .isEqualTo(defaults.containerPutArchivePipeBufferBytes());
+        assertThat(bundled.networksParallelism()).isEqualTo(defaults.networksParallelism());
+        assertThat(bundled.dockerHost()).isEqualTo(defaults.dockerHost());
+        assertThat(bundled.imagePullTimeout()).isEqualTo(defaults.imagePullTimeout());
+    }
+
+    private static Properties loadBundledProperties() throws IOException {
+        Properties properties = new Properties();
+        try (InputStream in =
+                AltcontainersPropertiesTest.class.getClassLoader().getResourceAsStream("altcontainers.properties")) {
+            assertThat(in)
+                    .as("bundled altcontainers.properties on the classpath")
+                    .isNotNull();
+            properties.load(in);
+        }
+        return properties;
     }
 
     @Test

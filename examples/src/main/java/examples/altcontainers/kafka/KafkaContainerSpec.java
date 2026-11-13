@@ -31,7 +31,7 @@ import org.altcontainers.api.OutputFrame;
  *
  * <p>KRAFT mode eliminates the ZooKeeper dependency by running Kafka with an internal consensus protocol.
  * The spec pre-fills Kafka-specific configuration: exposed port 9092, KRAFT environment variables,
- * a log-message wait condition for broker readiness, a 1-minute startup timeout, and 3 startup attempts.
+ * a log-message wait condition for broker readiness, a 2-minute startup timeout, and 3 startup attempts.
  *
  * <p>Use {@link #builder(String)} to create a {@code KafkaContainerSpec}:
  *
@@ -104,7 +104,7 @@ public final class KafkaContainerSpec extends GenericContainerSpec {
      * Mutable builder for configuring a {@link KafkaContainerSpec}.
      *
      * <p>The builder pre-fills Kafka defaults: port 9092, KRAFT environment variables,
-     * log-message wait condition, 1-minute startup timeout, 3 startup attempts.
+     * log-message wait condition, 2-minute startup timeout, 3 startup attempts.
      * Callers specify only image, network, and output consumer.
      *
      * <p>Instances are mutable and not thread-safe.

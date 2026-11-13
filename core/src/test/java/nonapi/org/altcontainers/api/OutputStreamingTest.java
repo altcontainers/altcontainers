@@ -28,7 +28,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
- * Verifies that {@code onOutput} consumers receive container output frames
+ * Verifies that {@code outputListener} consumers receive container output frames
  * after the container becomes ready (for the lifetime of the container).
  *
  * <p>These tests require a running Docker daemon.
@@ -44,7 +44,7 @@ class OutputStreamingTest {
             "echo READY; i=0; while [ $i -lt 60 ]; do echo TICK; sleep 1; i=$((i+1)); done";
 
     /**
-     * An {@code onOutput} consumer must receive output frames emitted after the container
+     * An {@code outputListener} consumer must receive output frames emitted after the container
      * becomes ready.
      *
      * <p>Readiness is satisfied by the {@code READY} line (consumed during startup
@@ -53,7 +53,7 @@ class OutputStreamingTest {
      * polled for a fresh post-startup {@code TICK}.
      */
     @Test
-    void onOutputReceivesFramesAfterReadiness() throws Exception {
+    void outputListenerReceivesFramesAfterReadiness() throws Exception {
         List<String> ticks = Collections.synchronizedList(new ArrayList<>());
         ContainerSpec spec = ContainerSpec.builder("alpine:latest")
                 .command("sh", "-c", COMMAND)

@@ -20,12 +20,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.github.dockerjava.api.exception.NotFoundException;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Map;
 import nonapi.org.altcontainers.api.ConcreteContainer;
 import nonapi.org.altcontainers.api.ContainerMetadata;
 import nonapi.org.altcontainers.api.DockerClientFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Verifies Container behavior: {@code isRunning()} performs a live daemon
@@ -175,6 +180,92 @@ class ContainerTest {
             } catch (RuntimeException ignored) {
                 // Best-effort cleanup.
             }
+        }
+    }
+
+    @Test
+    @EnabledIf("dockerAndReaperAvailable")
+    void readOnlyBindMountShouldExposeHostContentAndRejectWrites(@TempDir Path hostDir) throws IOException {
+        Files.writeString(hostDir.resolve("input.txt"), "bind-mount-content");
+        hostDir.toFile().setReadable(true, false);
+        hostDir.toFile().setExecutable(true, false);
+        hostDir.resolve("input.txt").toFile().setReadable(true, false);
+
+        StringBuffer output = new StringBuffer();
+        ContainerSpec spec = ContainerSpec.builder("alpine:latest")
+                .bindDirectory(hostDir.toString(), "/data", true)
+                .command(
+                        "sh",
+                        "-c",
+                        "echo \"READ:$(cat /data/input.txt)\";"
+                                + " if touch /data/output.txt 2>/dev/null; then echo WRITE_ALLOWED;"
+                                + " else echo WRITE_DENIED; fi; sleep 60")
+                .outputListener(frame -> output.append(frame.utf8String()))
+                .waitForLogMessage(".*WRITE_(ALLOWED|DENIED).*")
+                .startupAttempts(1)
+                .build();
+
+        try (Container container = Container.create(spec)) {
+            assertThat(container.isRunning()).isTrue();
+        }
+
+        assertThat(output.toString()).contains("READ:bind-mount-content").contains("WRITE_DENIED");
+        assertThat(hostDir.resolve("output.txt")).doesNotExist();
+    }
+
+    @Test
+    void shouldRejectNonPositiveStartupTimeoutBeforeTouchingDocker() {
+        // Documented contract: create() validates startupTimeout is positive and throws
+        // IllegalArgumentException. The check must run before any Docker or reaper work.
+        ContainerSpec zero = ContainerSpec.builder("alpine:latest")
+                .startupTimeout(Duration.ZERO)
+                .build();
+        assertThatThrownBy(() -> Container.create(zero))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("startupTimeout");
+
+        ContainerSpec negative = ContainerSpec.builder("alpine:latest")
+                .startupTimeout(Duration.ofSeconds(-1))
+                .build();
+        assertThatThrownBy(() -> Container.create(negative))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("startupTimeout");
+    }
+
+    @Test
+    void shouldRejectNonPositiveStartupAttemptsBeforeTouchingDocker() {
+        // A custom ContainerSpec can bypass the builder's >= 1 validation; create()
+        // must reject it instead of failing later with a cause-less startup failure.
+        ContainerSpec spec =
+                new ZeroAttemptsSpec(ContainerSpec.builder("alpine:latest").build());
+
+        assertThatThrownBy(() -> Container.create(spec))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("startupAttempts");
+    }
+
+    /** A spec whose startup attempt count bypasses the builder's validation. */
+    private static final class ZeroAttemptsSpec extends GenericContainerSpec {
+
+        private ZeroAttemptsSpec(GenericContainerSpec spec) {
+            super(spec);
+        }
+
+        @Override
+        public int startupAttempts() {
+            return 0;
+        }
+    }
+
+    @Test
+    @EnabledIf("dockerAndReaperAvailable")
+    void documentedSetupVerificationSampleShouldStart() {
+        // The setup-verification sample in website/docs/getting-started/project-setup.md must
+        // work as written: a long-running container, so the default is-running startup check
+        // passes. A one-shot image such as hello-world fails that check.
+        try (Container container = Container.create(
+                ContainerSpec.builder("alpine:latest").command("sleep", "30").build())) {
+            assertThat(container.isRunning()).isTrue();
         }
     }
 

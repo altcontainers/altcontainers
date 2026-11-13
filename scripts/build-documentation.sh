@@ -160,11 +160,9 @@ validate_frontmatter() {
 
         relative_path="${file#${DOCS_DIR}/}"
 
-        if ! awk '/^---$/{fm=(fm?0:1);next}fm&&/^title:/{t=1}fm&&/^description:/{d=1}END{exit(t&&d?0:1)}' "$file" 2>/dev/null; then
-            if ! awk 'BEGIN{fm=0} /^---$/{fm=(fm?0:1);next} fm && /^title:/ {t=1} fm && /^description:/ {d=1} END {exit (t && d ? 0 : 1)}' "$file" 2>/dev/null; then
-                warn "$relative_path: missing 'title' or 'description' in frontmatter"
-                ((issues++)) || true
-            fi
+        if ! awk 'BEGIN{fm=0} /^---$/{fm=(fm?0:1);next} fm && /^title:/ {t=1} fm && /^description:/ {d=1} END {exit (t && d ? 0 : 1)}' "$file" 2>/dev/null; then
+            warn "$relative_path: missing 'title' or 'description' in frontmatter"
+            ((issues++)) || true
         fi
 
         has_custom_id=$(awk '

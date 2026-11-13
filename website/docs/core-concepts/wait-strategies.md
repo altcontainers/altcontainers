@@ -96,7 +96,7 @@ ContainerSpec.builder("my-service")
 ## How wait strategies are evaluated
 
 1. Strategies are checked in a polling loop. The poll interval starts at 10 ms and doubles up to a 500 ms maximum (configurable via `altcontainers.container.startup.readiness.poll.initial.ms` and `altcontainers.container.startup.readiness.poll.max.ms`).
-2. Satisfied strategies are removed from the pending set — they are never rechecked.
+2. Every poll evaluates the strategies in configuration order, stopping at the first unsatisfied one. A satisfied strategy stays in the set, so it is rechecked on the next poll until all of them are satisfied.
 3. If the `startupTimeout` elapses before all strategies are satisfied, startup fails.
 4. Failed startups are retried (if `startupAttempts > 1`) with fresh strategy state — log-match counters are reset for each attempt.
 

@@ -23,6 +23,7 @@ import com.github.dockerjava.api.command.CreateContainerResponse;
 import com.github.dockerjava.api.command.InspectContainerResponse;
 import com.github.dockerjava.api.exception.NotFoundException;
 import com.github.dockerjava.api.exception.NotModifiedException;
+import com.github.dockerjava.api.model.AccessMode;
 import com.github.dockerjava.api.model.Bind;
 import com.github.dockerjava.api.model.ExposedPort;
 import com.github.dockerjava.api.model.Frame;
@@ -32,6 +33,7 @@ import com.github.dockerjava.api.model.Ports;
 import com.github.dockerjava.api.model.PullResponseItem;
 import com.github.dockerjava.api.model.StreamType;
 import com.github.dockerjava.api.model.Ulimit;
+import com.github.dockerjava.api.model.Volume;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -333,10 +335,13 @@ public final class ContainerManager {
      *
      * @param spec the container spec; must not be {@code null}
      * @return a container handle
+     * @throws IllegalArgumentException if {@code startupTimeout} is not positive or
+     *     {@code startupAttempts} is below one
      * @throws ContainerException if creation, startup, or readiness fails
      */
     public Container createContainer(ContainerSpec spec) {
         Objects.requireNonNull(spec, "spec must not be null");
+        validateSpec(spec);
         ReaperController ctrl = ReaperController.instance();
         ResourceSession session = ctrl.ensureReady();
 
@@ -400,6 +405,29 @@ public final class ContainerManager {
             }
         }
         throw lastFailure != null ? lastFailure : new ContainerException("Container startup failed");
+    }
+
+    /**
+     * Validates the spec values that container creation depends on, before any reaper
+     * or Docker work begins.
+     *
+     * <p>{@link org.altcontainers.api.ContainerSpec#builder(String)} rejects these values,
+     * but {@link ContainerSpec} is an open interface, and a non-positive startup timeout
+     * previously surfaced as a startup failure that was retried per attempt instead of as
+     * a configuration error.
+     *
+     * @param spec the container spec
+     * @throws IllegalArgumentException if {@code startupTimeout} is not positive or
+     *     {@code startupAttempts} is below one
+     */
+    private static void validateSpec(ContainerSpec spec) {
+        Duration startupTimeout = spec.startupTimeout();
+        if (startupTimeout == null || startupTimeout.isZero() || startupTimeout.isNegative()) {
+            throw new IllegalArgumentException("startupTimeout must be positive, was " + startupTimeout);
+        }
+        if (spec.startupAttempts() < 1) {
+            throw new IllegalArgumentException("startupAttempts must be >= 1, was " + spec.startupAttempts());
+        }
     }
 
     /**
@@ -521,9 +549,25 @@ public final class ContainerManager {
         }
         List<Bind> binds = new ArrayList<>();
         for (BindMount bm : spec.bindMounts()) {
-            binds.add(Bind.parse(bm.hostPath() + ":" + bm.containerPath()));
+            binds.add(toBind(bm));
         }
         hostConfig.withBinds(binds);
+    }
+
+    /**
+     * Converts a bind mount to its Docker representation, carrying the access mode.
+     *
+     * <p>Builds the {@link Bind} from its parts rather than parsing a {@code host:container} string, so
+     * paths containing {@code ':'} are not split.
+     *
+     * @param bindMount the bind mount
+     * @return the Docker bind
+     */
+    static Bind toBind(BindMount bindMount) {
+        return new Bind(
+                bindMount.hostPath(),
+                new Volume(bindMount.containerPath()),
+                bindMount.readOnly() ? AccessMode.ro : AccessMode.rw);
     }
 
     /**
@@ -1170,9 +1214,6 @@ public final class ContainerManager {
             Container container, List<WaitStrategy> waitConditions, Duration startupTimeout) {
         if (waitConditions.isEmpty()) {
             return;
-        }
-        if (startupTimeout == null || startupTimeout.isZero() || startupTimeout.isNegative()) {
-            throw new ContainerException("startupTimeout must be positive");
         }
 
         long deadlineNanos = System.nanoTime() + startupTimeout.toNanos();

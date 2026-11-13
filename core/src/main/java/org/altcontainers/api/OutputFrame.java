@@ -31,7 +31,7 @@ import java.util.Objects;
  *
  * <pre>{@code
  * ContainerSpec spec = ContainerSpec.builder("my-image:latest")
- *         .onOutput(frame -> {
+ *         .outputListener(frame -> {
  *             if (frame.type() == OutputFrame.Type.STDERR) {
  *                 System.err.println(frame.safeUtf8StringWithoutLineEnding());
  *             }

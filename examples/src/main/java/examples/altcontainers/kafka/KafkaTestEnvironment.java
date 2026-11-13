@@ -106,12 +106,12 @@ public class KafkaTestEnvironment implements AutoCloseable {
         awaitBrokerReady();
     }
 
+    private static final String PROBE_TOPIC = "_altcontainers_readiness_probe";
+
     /**
      * Polls the Kafka broker until it accepts API requests, or the broker
      * startup timeout elapses.
      */
-    private static final String PROBE_TOPIC = "_altcontainers_readiness_probe";
-
     private void awaitBrokerReady() {
         int pollIntervalMs = 500;
         long deadline = System.currentTimeMillis() + Duration.ofMinutes(2).toMillis();

@@ -239,9 +239,9 @@ public final class HttpWaitStrategy implements ManagedWaitStrategy {
      * {@code <protocol>://<container.host()>:<mappedPort><path>} returns a
      * status in {@code [minStatus, maxStatus]}.
      *
-     * <p>Returns {@code false} if the port is unmapped ({@code hostPort <= 0}),
-     * the request fails or times out (any {@link IOException}), or the status
-     * is out of range. On {@link InterruptedException} the interrupt status is
+     * <p>Returns {@code false} if the port is unmapped ({@link Container#hostPort(int)}
+     * returns {@code null}), the request fails or times out (any {@link IOException}), or
+     * the status is out of range. On {@link InterruptedException} the interrupt status is
      * restored and {@code false} is returned, so the outer readiness loop
      * propagates the interrupt.
      *

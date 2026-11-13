@@ -33,6 +33,8 @@ public interface Container extends AutoCloseable {
      *
      * @param containerSpec the container spec
      * @return a container handle
+     * @throws IllegalArgumentException if the spec has a non-positive {@code startupTimeout}
+     *     or fewer than one startup attempt
      * @throws ContainerException if creation fails
      */
     static Container create(ContainerSpec containerSpec) {

@@ -75,7 +75,7 @@ Altcontainers launches a separate **reaper process** for each JVM session. The r
 - **Per-session**: Each JVM session gets its own reaper process with a unique session ID.
 - **No Docker sidecar**: Unlike Testcontainers' Ryuk, the reaper is a plain Java process, not a Docker container. No privileged sidecar is required.
 - **Liveness-based**: The reaper watches a TCP connection. When the connection drops, cleanup begins.
-- **Asynchronous with bounded retries**: Cleanup commands are enqueued for asynchronous processing. Each resource cleanup is retried up to a configurable maximum number of attempts with exponential backoff, so transient Docker daemon failures no longer cause permanent resource leaks.
+- **Asynchronous with bounded retries**: Cleanup commands are enqueued for asynchronous processing. Each resource cleanup is retried up to a configurable maximum number of attempts with exponential backoff, and a session teardown re-discovers and retries leftovers in a bounded number of sweeps, so transient Docker daemon failures no longer cause permanent resource leaks.
 
 The reaper is a safety net. You should still explicitly clean up resources when possible; relying solely on the reaper can cause resource exhaustion in long-running processes.
 
@@ -83,12 +83,38 @@ The reaper is a safety net. You should still explicitly clean up resources when 
 
 When a cleanup operation fails (e.g., a network has active endpoints), the reaper retries with exponential backoff. Each resource follows an escalation ladder:
 
-1. **Graceful stop + remove** (containers): Attempts a graceful stop with a timeout, then removes the container.
-2. **Force remove** (containers): If the graceful path fails, force-removes the container.
+1. **Graceful stop + remove** (containers): Attempts a graceful stop with a timeout, then removes the container. Anonymous volumes created by the container are removed with it; named volumes and bind mounts are never touched.
+2. **Force remove** (containers): If the graceful path fails, force-removes the container (including its anonymous volumes).
 3. **Network remove**: Attempts to remove the network.
 4. **Network force-remove** (after threshold): If the network cannot be removed after several attempts (e.g., due to active endpoints), disconnects all endpoints with force and then removes the network.
 
-If all attempts are exhausted, the resource remains labeled for manual recovery via `docker ps -a --filter label=...`.
+### Verified sweeps
+
+A session teardown is not a single pass. The reaper runs up to four sweeps; each sweep lists the
+session's labeled containers, force-removes them, waits for that phase to drain (reserving time for
+networks), then lists the session's networks afresh and removes them. If any resource is still
+unresolved — its attempt ladder was exhausted — the reaper pauses briefly and sweeps again, which
+re-reads the daemon's current state and restarts that resource's attempt ladder.
+
+Sweeping stops as soon as nothing is unresolved, after four sweeps, or when the five-minute drain
+deadline expires, whichever comes first. Resource listings are retried three times, so a transient
+daemon error neither hides resources nor counts as "nothing to clean".
+
+### When cleanup cannot complete
+
+The reaper verifies the result before exiting. If labeled resources remain (or a listing kept
+failing), it logs an error naming them with the label filter to find them:
+
+```
+ERROR … Session <id> cleanup incomplete after 4 sweep(s) (discoveryComplete=true):
+containers=[<id>] networks=[]; resources remain labeled with altcontainers-containers.session-id=<id>
+```
+
+and exits with status `2` (`0` = session torn down, `1` = reaper failure). Resources are reported only
+after every sweep and the whole drain deadline have been exhausted, so a non-zero status means the
+daemon was persistently unable to remove them, not that a single attempt failed. They can be removed
+manually with `docker ps -a --filter label=altcontainers-containers.session-id=<id>` and
+`docker network ls --filter label=altcontainers-containers.session-id=<id>`.
 
 ### Configuration
 
@@ -96,7 +122,7 @@ The reaper's retry behavior can be tuned via a system property on the applicatio
 
 | Property | Default | Description |
 |----------|---------|-------------|
-| `altcontainers.reaper.cleanup.max.attempts` | `5` | Maximum cleanup attempts per resource before giving up. Must be >= 1. |
+| `altcontainers.reaper.cleanup.max.attempts` | `5` | Maximum cleanup attempts per resource per sweep before the sweep gives up on it. Must be >= 1. A resource is retried again in the next sweep, so the effective ceiling is `attempts × sweeps`, still bounded by the drain deadline. |
 
 Example:
 
@@ -112,7 +138,7 @@ If a container fails to start (timeout, pull error, Docker error):
 
 1. The partially created container is destroyed immediately.
 2. If `startupAttempts > 1`, the next attempt begins after a backoff delay.
-3. Cleanup failures are added as suppressed exceptions on the primary failure.
+3. Cleanup failures do not replace the startup failure: they are logged, and a stop or removal that times out is delegated to the reaper. The exception reported to the caller is always the startup failure.
 
 ## Learn next
 

@@ -60,8 +60,8 @@ Implement `WaitStrategy` directly for custom readiness logic:
 
 ```java
 WaitStrategy fileReady = container -> {
-    int port = container.hostPort(8080);
-    return port > 0;
+    Integer port = container.hostPort(8080);
+    return port != null && port > 0;
 };
 ```
 
@@ -119,7 +119,7 @@ ContainerSpec.builder("my-image")
 ## Evaluation
 
 - Strategies are polled repeatedly; the poll interval starts at 10 ms and doubles up to a 500 ms maximum (configurable via `altcontainers.container.startup.readiness.poll.*`)
-- Satisfied strategies are removed from the pending set
+- Each poll evaluates the strategies in configuration order and stops at the first unsatisfied one; satisfied strategies are rechecked on later polls
 - All strategies must be satisfied before the `startupTimeout` elapses
 - Stateful strategies (log matching) reset between startup attempts
 

@@ -19,11 +19,14 @@ package nonapi.org.altcontainers.api;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.github.dockerjava.api.model.AccessMode;
+import com.github.dockerjava.api.model.Bind;
 import com.github.dockerjava.api.model.ExposedPort;
 import com.github.dockerjava.api.model.Ports;
 import java.io.IOException;
 import java.nio.channels.ClosedByInterruptException;
 import java.util.Map;
+import org.altcontainers.api.BindMount;
 import org.altcontainers.api.ContainerException;
 import org.junit.jupiter.api.Test;
 
@@ -134,5 +137,32 @@ class ContainerManagerTest {
                 .isInstanceOf(ContainerException.class)
                 .hasMessageContaining("not-a-number")
                 .hasMessageContaining("80");
+    }
+
+    @Test
+    void toBindShouldMapReadWriteBindMount() {
+        Bind bind = ContainerManager.toBind(new BindMount("/host/dir", "/container/dir"));
+
+        assertThat(bind.getPath()).isEqualTo("/host/dir");
+        assertThat(bind.getVolume().getPath()).isEqualTo("/container/dir");
+        assertThat(bind.getAccessMode()).isEqualTo(AccessMode.rw);
+    }
+
+    @Test
+    void toBindShouldMapReadOnlyBindMount() {
+        Bind bind = ContainerManager.toBind(new BindMount("/host/dir", "/container/dir", true));
+
+        assertThat(bind.getPath()).isEqualTo("/host/dir");
+        assertThat(bind.getVolume().getPath()).isEqualTo("/container/dir");
+        assertThat(bind.getAccessMode()).isEqualTo(AccessMode.ro);
+        assertThat(bind.toString()).isEqualTo("/host/dir:/container/dir:ro");
+    }
+
+    @Test
+    void toBindShouldNotSplitHostPathContainingColon() {
+        Bind bind = ContainerManager.toBind(new BindMount("/host/a:b", "/container"));
+
+        assertThat(bind.getPath()).isEqualTo("/host/a:b");
+        assertThat(bind.getVolume().getPath()).isEqualTo("/container");
     }
 }

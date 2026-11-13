@@ -49,8 +49,8 @@ try (Network network = Network.create()) {
 
 `close(network)`:
 - Removes the Docker network
-- Blocks until Docker confirms removal
-- Retries transient `endpoint still attached` failures
+- Blocks until Docker confirms removal, or delegates the removal to the reaper and returns if it times out or fails
+- Retries transient `endpoint still attached` failures (the reaper retries with backoff)
 - Idempotent
 - No-op if `network` is `null`
 

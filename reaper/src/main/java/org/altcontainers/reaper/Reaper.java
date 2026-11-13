@@ -56,6 +56,11 @@ import org.slf4j.LoggerFactory;
  * <p>Launched by the core module. Watches a single persistent TCP
  * connection for liveness. When the connection drops, cleans up all
  * Docker resources labeled with the session ID.
+ *
+ * <p>Cleanup is verified, not fire-and-forget: the session is swept repeatedly (bounded by
+ * {@link #MAX_SWEEPS} and the drain deadline) until the daemon confirms that no labeled resource
+ * remains. Resources that survive every sweep, or a listing failure, are logged and reported through
+ * a non-zero exit status instead of being silently abandoned.
  */
 public final class Reaper {
 
@@ -64,6 +69,21 @@ public final class Reaper {
 
     /** Part of the session-sweep drain deadline reserved for removing networks. */
     static final long NETWORK_PHASE_RESERVE_MS = 60_000L;
+
+    /** Maximum number of full session sweeps; each sweep re-discovers and retries leftovers. */
+    static final int MAX_SWEEPS = 4;
+
+    /** Pause between sweeps so the daemon can settle in-flight removals. */
+    static final long SWEEP_PAUSE_MS = 1_000L;
+
+    /** Attempts for a session resource listing before the sweep reports incomplete discovery. */
+    static final int LIST_ATTEMPTS = 3;
+
+    /** Base delay between session resource listing attempts. */
+    static final long LIST_RETRY_DELAY_MS = 250L;
+
+    /** Exit status reported when labeled resources could not be removed. */
+    static final int EXIT_LEFTOVERS = 2;
 
     private static final String LOG_EXTENSION = ".log";
     private static final String PORT_EXTENSION = ".port";
@@ -216,8 +236,7 @@ public final class Reaper {
 
         DockerClient dockerClient = createDockerClient();
         try {
-            run(sessionId, dockerClient);
-            System.exit(0);
+            System.exit(exitCode(run(sessionId, dockerClient)));
         } catch (Throwable t) {
             logger.error("Fatal error: {}", t.getMessage(), t);
             System.exit(1);
@@ -233,7 +252,7 @@ public final class Reaper {
      * Creates a cleanup executor with production defaults for timeout values.
      *
      * @param client the Docker client
-     * @param maxAttempts the maximum number of attempts per resource
+     * @param maxAttempts the maximum number of attempts per resource per sweep
      * @return a new cleanup executor
      */
     static CleanupExecutor createCleanupExecutor(DockerClient client, int maxAttempts) {
@@ -254,7 +273,7 @@ public final class Reaper {
      * @param sessionId the session UUID
      * @param dockerClient the Docker client
      */
-    private static void run(String sessionId, DockerClient dockerClient) {
+    private static CleanupResult run(String sessionId, DockerClient dockerClient) {
 
         ServerSocket serverSocket;
         int port;
@@ -265,7 +284,7 @@ public final class Reaper {
         } catch (IOException e) {
             logger.error("Failed to bind server socket: {}", e.getMessage());
             System.exit(1);
-            return;
+            return CleanupResult.incomplete();
         }
 
         try {
@@ -274,7 +293,7 @@ public final class Reaper {
             logger.error("Failed to write port file: {}", e.getMessage());
             closeQuietly(serverSocket);
             System.exit(1);
-            return;
+            return CleanupResult.incomplete();
         }
         logger.info("Port {}", port);
 
@@ -285,11 +304,11 @@ public final class Reaper {
         } catch (SocketTimeoutException e) {
             logger.error("No connection received within {}ms timeout", ACCEPT_TIMEOUT_MS);
             failAccept(sessionId, port, serverSocket);
-            return;
+            return CleanupResult.incomplete();
         } catch (IOException e) {
             logger.error("Accept failed: {}", e.getMessage());
             failAccept(sessionId, port, serverSocket);
-            return;
+            return CleanupResult.incomplete();
         }
 
         CleanupExecutor executor = createCleanupExecutor(dockerClient, MAX_ATTEMPTS);
@@ -303,7 +322,7 @@ public final class Reaper {
             logger.warn(e.getMessage());
             cleanupOnHandshakeFailure(sessionId, port, clientSocket, executor);
             System.exit(1);
-            return;
+            return CleanupResult.incomplete();
         } catch (IOException e) {
             logger.info("Connection error for session {}: {}", sessionId, e.getMessage());
             receivedTerminate = false;
@@ -324,9 +343,44 @@ public final class Reaper {
             }
         }
 
-        cleanup(dockerClient, sessionId, executor);
+        CleanupResult result = cleanup(dockerClient, sessionId, executor);
+        logLeftovers(sessionId, result);
         deletePortFile(sessionId);
         deleteJarFile(sessionId);
+        return result;
+    }
+
+    /**
+     * Returns the process exit status for a cleanup result.
+     *
+     * @param result the cleanup result
+     * @return {@code 0} when no labeled resource remains, {@link #EXIT_LEFTOVERS} otherwise
+     */
+    static int exitCode(CleanupResult result) {
+        return result.clean() ? 0 : EXIT_LEFTOVERS;
+    }
+
+    /**
+     * Logs the resources that survived every sweep, with the label filter needed to find them.
+     *
+     * @param sessionId the session UUID
+     * @param result the cleanup result
+     */
+    private static void logLeftovers(String sessionId, CleanupResult result) {
+        if (result.clean()) {
+            logger.info("Session {} cleanup complete after {} sweep(s)", sessionId, result.sweeps());
+            return;
+        }
+        logger.error(
+                "Session {} cleanup incomplete after {} sweep(s) (discoveryComplete={}): containers={} networks={}; "
+                        + "resources remain labeled with {}={}",
+                sessionId,
+                result.sweeps(),
+                result.discoveryComplete(),
+                result.containerIds(),
+                result.networkIds(),
+                ResourceLabels.SESSION_ID,
+                sessionId);
     }
 
     /**
@@ -418,9 +472,10 @@ public final class Reaper {
      * @param client the Docker client
      * @param sessionId the session UUID
      * @param executor the cleanup executor
+     * @return the cleanup result
      */
-    private static void cleanup(DockerClient client, String sessionId, CleanupExecutor executor) {
-        cleanup(
+    private static CleanupResult cleanup(DockerClient client, String sessionId, CleanupExecutor executor) {
+        return cleanup(
                 client,
                 sessionId,
                 executor,
@@ -429,22 +484,31 @@ public final class Reaper {
     }
 
     /**
-     * Cleans up all Docker resources labeled with the given session ID in two phases and drains
-     * the executor before returning.
+     * Removes every Docker resource labeled with the given session ID, then verifies that nothing is
+     * left behind.
      *
-     * <p>Phase 1 force-removes every session container; the owning JVM is gone, so a graceful
-     * stop has no consumer. Phase 2 starts once container removal has drained (or the time left
-     * reaches the network reserve), lists the session networks afresh, and removes them. Removing
-     * containers first avoids "active endpoints" failures, and the reserve guarantees networks
-     * still get time when container removal is slow.
+     * <p>Cleanup runs in up to {@link #MAX_SWEEPS} sweeps. Each sweep has two phases: phase 1
+     * force-removes every session container (the owning JVM is gone, so a graceful stop has no
+     * consumer); phase 2 starts once container removal has drained (or the time left reaches the
+     * network reserve), lists the session networks afresh, and removes them. Removing containers
+     * first avoids "active endpoints" failures, and the reserve guarantees networks still get time
+     * when container removal is slow.
+     *
+     * <p>A sweep that leaves resources unresolved is repeated after {@link #SWEEP_PAUSE_MS}, which
+     * re-discovers the daemon's current state and restarts each resource's attempt ladder. Sweeping
+     * stops as soon as the daemon shows nothing unresolved and discovery succeeded, after
+     * {@link #MAX_SWEEPS}, or when the deadline expires. Resource listings are retried
+     * ({@link #LIST_ATTEMPTS}) within a sweep and re-attempted by the next sweep; a listing that keeps
+     * failing makes the run report incomplete discovery rather than appearing clean.
      *
      * @param client the Docker client
      * @param sessionId the session UUID
      * @param executor the cleanup executor
      * @param drainMillis the overall drain deadline in milliseconds
      * @param networkReserveMillis the part of the deadline reserved for the network phase
+     * @return the cleanup result, including any resources that survived every sweep
      */
-    static void cleanup(
+    static CleanupResult cleanup(
             DockerClient client,
             String sessionId,
             CleanupExecutor executor,
@@ -452,52 +516,22 @@ public final class Reaper {
             long networkReserveMillis) {
         Map<String, String> filter = ResourceLabels.filterForSession(sessionId);
         long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(drainMillis);
+        long pauseNanos = TimeUnit.MILLISECONDS.toNanos(SWEEP_PAUSE_MS);
+        boolean lastDiscoveryComplete = true;
+        int sweeps = 0;
 
-        // Phase 1: Containers
-        List<String> containerIds = List.of();
-        try {
-            containerIds = client.listContainersCmd().withShowAll(true).withLabelFilter(filter).exec().stream()
-                    .map(Container::getId)
-                    .toList();
-        } catch (RuntimeException e) {
-            logger.error("Failed to list containers for session {}: {}", sessionId, e.getMessage());
-        }
-
-        for (String id : containerIds) {
-            executor.submit(new CleanupTask(id, CleanupTask.ResourceType.CONTAINER, 0, true));
-        }
-        logger.info("Session cleanup enqueued (containers={})", containerIds.size());
-
-        long containerBudgetNanos =
-                deadlineNanos - System.nanoTime() - TimeUnit.MILLISECONDS.toNanos(networkReserveMillis);
-        try {
-            if (!executor.awaitIdle(Math.max(0L, containerBudgetNanos), TimeUnit.NANOSECONDS)) {
-                logger.warn(
-                        "Container removal incomplete before network phase; {} tasks pending", executor.getQueueSize());
+        while (sweeps < MAX_SWEEPS && (sweeps == 0 || deadlineNanos - System.nanoTime() >= pauseNanos)) {
+            sweeps++;
+            logger.info("Session {} sweep {}/{}", sessionId, sweeps, MAX_SWEEPS);
+            lastDiscoveryComplete = sweep(client, sessionId, executor, filter, deadlineNanos, networkReserveMillis);
+            boolean settled = executor.unresolvedCount() == 0 && executor.pendingCount() == 0;
+            if (settled && lastDiscoveryComplete) {
+                break;
             }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            logger.warn("Container phase interrupted for session {}", sessionId);
+            if (sweeps < MAX_SWEEPS && !pauseBeforeNextSweep(deadlineNanos)) {
+                break;
+            }
         }
-
-        // Phase 2: Networks
-        List<String> networkIds = List.of();
-        try {
-            List<String> filterValues = filter.entrySet().stream()
-                    .map(e -> e.getKey() + "=" + e.getValue())
-                    .toList();
-            networkIds = client.listNetworksCmd().withFilter("label", filterValues).exec().stream()
-                    .map(n -> n.getId())
-                    .toList();
-        } catch (RuntimeException e) {
-            logger.error("Failed to list networks for session {}: {}", sessionId, e.getMessage());
-        }
-
-        for (String id : networkIds) {
-            executor.submit(new CleanupTask(id, CleanupTask.ResourceType.NETWORK, 0));
-        }
-
-        logger.info("Session cleanup enqueued (networks={})", networkIds.size());
 
         executor.shutdown();
         try {
@@ -512,6 +546,208 @@ public final class Reaper {
             logger.warn("Drain interrupted; {} tasks may remain", executor.getQueueSize());
             executor.shutdownNow();
         }
+
+        return verify(client, sessionId, executor, sweeps, lastDiscoveryComplete);
+    }
+
+    /**
+     * Runs one sweep: force-remove every session container, wait for that phase to drain within the
+     * container budget, then list the session networks afresh and remove them.
+     *
+     * @param client the Docker client
+     * @param sessionId the session UUID
+     * @param executor the cleanup executor
+     * @param filter the session label filter
+     * @param deadlineNanos the sweep deadline in {@link System#nanoTime()} units
+     * @param networkReserveMillis the part of the deadline reserved for the network phase
+     * @return {@code true} if both phases were discovered successfully
+     */
+    private static boolean sweep(
+            DockerClient client,
+            String sessionId,
+            CleanupExecutor executor,
+            Map<String, String> filter,
+            long deadlineNanos,
+            long networkReserveMillis) {
+        boolean discoveryComplete = true;
+
+        List<String> containerIds = listContainers(client, sessionId, filter);
+        if (containerIds == null) {
+            discoveryComplete = false;
+        } else {
+            for (String id : containerIds) {
+                executor.submit(new CleanupTask(id, CleanupTask.ResourceType.CONTAINER, 0, true));
+            }
+            logger.info("Session cleanup enqueued (containers={})", containerIds.size());
+        }
+
+        long containerBudgetNanos =
+                deadlineNanos - System.nanoTime() - TimeUnit.MILLISECONDS.toNanos(networkReserveMillis);
+        if (!awaitIdle(executor, Math.max(0L, containerBudgetNanos), "Container removal before network phase")) {
+            logger.warn("Container removal incomplete before network phase; {} tasks pending", executor.getQueueSize());
+        }
+
+        List<String> networkIds = listNetworks(client, sessionId, filter);
+        if (networkIds == null) {
+            discoveryComplete = false;
+        } else {
+            for (String id : networkIds) {
+                executor.submit(new CleanupTask(id, CleanupTask.ResourceType.NETWORK, 0));
+            }
+            logger.info("Session cleanup enqueued (networks={})", networkIds.size());
+        }
+
+        if (!awaitIdle(executor, deadlineNanos - System.nanoTime(), "Network removal")) {
+            logger.warn("Network removal incomplete; {} tasks pending", executor.getQueueSize());
+        }
+        return discoveryComplete;
+    }
+
+    /**
+     * Waits until no submitted or retried cleanup task is pending.
+     *
+     * @param executor the cleanup executor
+     * @param budgetNanos the maximum time to wait in nanoseconds
+     * @param phase the phase name used in the interrupt log message
+     * @return {@code true} if the executor went idle within the budget
+     */
+    private static boolean awaitIdle(CleanupExecutor executor, long budgetNanos, String phase) {
+        try {
+            return executor.awaitIdle(Math.max(0L, budgetNanos), TimeUnit.NANOSECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            logger.warn("{} interrupted; {} tasks may remain", phase, executor.getQueueSize());
+            return false;
+        }
+    }
+
+    /**
+     * Pauses between sweeps so the daemon can settle in-flight removals.
+     *
+     * @param deadlineNanos the sweep deadline in {@link System#nanoTime()} units
+     * @return {@code false} if the pause was interrupted or no budget remains
+     */
+    private static boolean pauseBeforeNextSweep(long deadlineNanos) {
+        long remainingNanos = deadlineNanos - System.nanoTime();
+        if (remainingNanos <= 0) {
+            return false;
+        }
+        try {
+            Thread.sleep(Math.min(SWEEP_PAUSE_MS, TimeUnit.NANOSECONDS.toMillis(remainingNanos)));
+            return true;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            logger.warn("Sweep pause interrupted; stopping further sweeps");
+            return false;
+        }
+    }
+
+    /**
+     * Lists the containers labeled for the session, retrying transient daemon failures.
+     *
+     * @param client the Docker client
+     * @param sessionId the session UUID
+     * @param filter the session label filter
+     * @return the container ids, or {@code null} if the listing failed after every attempt
+     */
+    private static List<String> listContainers(DockerClient client, String sessionId, Map<String, String> filter) {
+        for (int attempt = 1; attempt <= LIST_ATTEMPTS; attempt++) {
+            try {
+                return client.listContainersCmd().withShowAll(true).withLabelFilter(filter).exec().stream()
+                        .map(Container::getId)
+                        .toList();
+            } catch (RuntimeException e) {
+                logger.warn(
+                        "Failed to list containers for session {} (attempt {}/{}): {}",
+                        sessionId,
+                        attempt,
+                        LIST_ATTEMPTS,
+                        e.getMessage());
+                if (attempt == LIST_ATTEMPTS || !pauseBeforeRetry(attempt)) {
+                    return null;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Lists the networks labeled for the session, retrying transient daemon failures.
+     *
+     * @param client the Docker client
+     * @param sessionId the session UUID
+     * @param filter the session label filter
+     * @return the network ids, or {@code null} if the listing failed after every attempt
+     */
+    private static List<String> listNetworks(DockerClient client, String sessionId, Map<String, String> filter) {
+        List<String> filterValues = filter.entrySet().stream()
+                .map(entry -> entry.getKey() + "=" + entry.getValue())
+                .toList();
+        for (int attempt = 1; attempt <= LIST_ATTEMPTS; attempt++) {
+            try {
+                return client.listNetworksCmd().withFilter("label", filterValues).exec().stream()
+                        .map(network -> network.getId())
+                        .toList();
+            } catch (RuntimeException e) {
+                logger.warn(
+                        "Failed to list networks for session {} (attempt {}/{}): {}",
+                        sessionId,
+                        attempt,
+                        LIST_ATTEMPTS,
+                        e.getMessage());
+                if (attempt == LIST_ATTEMPTS || !pauseBeforeRetry(attempt)) {
+                    return null;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Sleeps before the next discovery attempt.
+     *
+     * @param failedAttempt the 1-based index of the failed attempt
+     * @return {@code false} if the sleep was interrupted
+     */
+    private static boolean pauseBeforeRetry(int failedAttempt) {
+        try {
+            Thread.sleep(LIST_RETRY_DELAY_MS * failedAttempt);
+            return true;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    /**
+     * Produces the cleanup result, paying for an authoritative listing only when something is still
+     * unresolved.
+     *
+     * @param client the Docker client
+     * @param sessionId the session UUID
+     * @param executor the cleanup executor
+     * @param sweeps the number of sweeps that ran
+     * @param discoveryComplete whether every discovery in this run succeeded
+     * @return the cleanup result
+     */
+    private static CleanupResult verify(
+            DockerClient client, String sessionId, CleanupExecutor executor, int sweeps, boolean discoveryComplete) {
+        if (executor.unresolvedCount() == 0) {
+            return new CleanupResult(sweeps, discoveryComplete, List.of(), List.of());
+        }
+        Map<String, String> filter = ResourceLabels.filterForSession(sessionId);
+        List<String> remainingContainers = listContainers(client, sessionId, filter);
+        List<String> remainingNetworks = listNetworks(client, sessionId, filter);
+        boolean complete = discoveryComplete && remainingContainers != null && remainingNetworks != null;
+        return new CleanupResult(
+                sweeps,
+                complete,
+                remainingContainers != null
+                        ? remainingContainers
+                        : executor.unresolvedIds(CleanupTask.ResourceType.CONTAINER),
+                remainingNetworks != null
+                        ? remainingNetworks
+                        : executor.unresolvedIds(CleanupTask.ResourceType.NETWORK));
     }
 
     /**
@@ -526,6 +762,49 @@ public final class Reaper {
                 .sslConfig(config.getSSLConfig())
                 .build();
         return DockerClientImpl.getInstance(config, httpClient);
+    }
+
+    /**
+     * Outcome of a session cleanup: how many sweeps ran, whether discovery succeeded, and which
+     * labeled resources could not be removed.
+     *
+     * @param sweeps the number of sweeps that ran
+     * @param discoveryComplete whether every resource listing succeeded
+     * @param containerIds the labeled containers still present, sorted
+     * @param networkIds the labeled networks still present, sorted
+     */
+    record CleanupResult(int sweeps, boolean discoveryComplete, List<String> containerIds, List<String> networkIds) {
+
+        /**
+         * Validates and sorts the leftover id lists.
+         *
+         * @param sweeps the number of sweeps that ran
+         * @param discoveryComplete whether every resource listing succeeded
+         * @param containerIds the labeled containers still present
+         * @param networkIds the labeled networks still present
+         */
+        CleanupResult {
+            containerIds = List.copyOf(containerIds).stream().sorted().toList();
+            networkIds = List.copyOf(networkIds).stream().sorted().toList();
+        }
+
+        /**
+         * Returns whether the session left nothing behind and left no discovery unanswered.
+         *
+         * @return {@code true} if the cleanup is complete
+         */
+        boolean clean() {
+            return discoveryComplete && containerIds.isEmpty() && networkIds.isEmpty();
+        }
+
+        /**
+         * Returns the result used on paths that terminate the process before cleanup runs.
+         *
+         * @return an incomplete result
+         */
+        static CleanupResult incomplete() {
+            return new CleanupResult(0, false, List.of(), List.of());
+        }
     }
 
     /**

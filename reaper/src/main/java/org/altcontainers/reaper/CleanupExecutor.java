@@ -22,7 +22,10 @@ import com.github.dockerjava.api.exception.NotFoundException;
 import com.github.dockerjava.api.exception.NotModifiedException;
 import com.github.dockerjava.api.model.Network;
 import java.time.Clock;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -78,6 +81,7 @@ final class CleanupExecutor {
     private final Clock clock;
     private final AtomicBoolean draining = new AtomicBoolean(false);
     private final AtomicInteger pendingTasks = new AtomicInteger(0);
+    private final Map<String, CleanupTask> unresolved = new ConcurrentHashMap<>();
 
     /**
      * Creates a new cleanup executor.
@@ -262,26 +266,73 @@ final class CleanupExecutor {
             }
         }
 
-        if (!success) {
-            CleanupTask next = task.withAttempts(task.attempts() + 1);
-            if (next.attempts() < maxAttempts) {
-                long delay = backoffMs(next.attempts());
-                logger.debug(
-                        "Requeuing {} {} (attempt {}/{}) with backoff {}ms",
-                        task.type(),
-                        task.id(),
-                        next.attempts(),
-                        maxAttempts,
-                        delay);
-                schedule(next, delay);
-            } else {
-                logger.warn(
-                        "gave up on {} {} after {} attempts; remains labeled for manual cleanup",
-                        task.type(),
-                        task.id(),
-                        maxAttempts);
-            }
+        String key = key(task);
+        if (success) {
+            unresolved.remove(key);
+            return;
         }
+        CleanupTask next = task.withAttempts(task.attempts() + 1);
+        if (next.attempts() < maxAttempts) {
+            long delay = backoffMs(next.attempts());
+            logger.debug(
+                    "Requeuing {} {} (attempt {}/{}) with backoff {}ms",
+                    task.type(),
+                    task.id(),
+                    next.attempts(),
+                    maxAttempts,
+                    delay);
+            schedule(next, delay);
+        } else {
+            unresolved.put(key, next);
+            logger.warn(
+                    "gave up on {} {} after {} attempts in this sweep; the session sweep re-discovers it",
+                    task.type(),
+                    task.id(),
+                    maxAttempts);
+        }
+    }
+
+    /**
+     * Returns the map key identifying a resource independently of its attempt count.
+     *
+     * @param task the cleanup task
+     * @return the {@code type:id} key
+     */
+    private static String key(CleanupTask task) {
+        return task.type() + ":" + task.id();
+    }
+
+    /**
+     * Returns the number of resources whose attempt ladder was exhausted and that have not
+     * been removed since.
+     *
+     * @return the unresolved resource count
+     */
+    int unresolvedCount() {
+        return unresolved.size();
+    }
+
+    /**
+     * Returns the number of tasks submitted or retried but not yet completed.
+     *
+     * @return the pending task count
+     */
+    int pendingCount() {
+        return pendingTasks.get();
+    }
+
+    /**
+     * Returns the ids of unresolved resources of the given type.
+     *
+     * @param type the resource type
+     * @return the sorted resource ids
+     */
+    List<String> unresolvedIds(CleanupTask.ResourceType type) {
+        return unresolved.values().stream()
+                .filter(task -> task.type() == type)
+                .map(CleanupTask::id)
+                .sorted()
+                .toList();
     }
 
     /**
@@ -294,6 +345,9 @@ final class CleanupExecutor {
      * (the daemon-side operation may still be in-flight — accepted since
      * force-remove is idempotent and wins).
      *
+     * <p>Anonymous volumes created by the container are removed with it; named volumes and
+     * bind mounts are unaffected.
+     *
      * @param id the container ID
      * @return {@code true} if the container was successfully stopped and removed
      */
@@ -305,12 +359,12 @@ final class CleanupExecutor {
             } catch (NotFoundException | NotModifiedException e) {
                 // Best effort: container already stopped or removed — proceed to remove
             }
-            client.removeContainerCmd(id).exec();
+            client.removeContainerCmd(id).withRemoveVolumes(true).exec();
         });
     }
 
     /**
-     * Force-removes a container.
+     * Force-removes a container, including the anonymous volumes it created.
      *
      * @param id the container ID
      * @return {@code true} if the container was successfully force-removed
@@ -320,7 +374,10 @@ final class CleanupExecutor {
                 id,
                 FORCE_REMOVE_CONTAINER_LOG,
                 forceTimeoutMs,
-                () -> client.removeContainerCmd(id).withForce(true).exec());
+                () -> client.removeContainerCmd(id)
+                        .withForce(true)
+                        .withRemoveVolumes(true)
+                        .exec());
     }
 
     /**
@@ -511,6 +568,10 @@ final class CleanupExecutor {
      * @return the backoff delay in milliseconds
      */
     static long backoffMs(int attempts) {
-        return Math.min(BACKOFF_BASE_MS * (1L << attempts), BACKOFF_CAP_MS);
+        // Bound the shift exponent: a large configured attempt count would otherwise
+        // overflow the shift and produce a short (even negative) delay, retrying
+        // immediately instead of backing off. The cap is reached long before this bound.
+        int exponent = Math.min(Math.max(attempts, 0), 16);
+        return Math.min(BACKOFF_BASE_MS << exponent, BACKOFF_CAP_MS);
     }
 }

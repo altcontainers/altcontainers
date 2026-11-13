@@ -18,6 +18,7 @@ package org.altcontainers.reaper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
@@ -454,6 +455,7 @@ class ReaperTest {
         // removeContainerCmd also throws NotFoundException (container already gone)
         RemoveContainerCmd removeCmd = mock(RemoveContainerCmd.class);
         when(mockClient.removeContainerCmd(anyString())).thenReturn(removeCmd);
+        when(removeCmd.withRemoveVolumes(anyBoolean())).thenReturn(removeCmd);
         doThrow(new NotFoundException("not found")).when(removeCmd).exec();
 
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
@@ -480,6 +482,7 @@ class ReaperTest {
         RemoveContainerCmd removeCmd = mock(RemoveContainerCmd.class);
         when(mockClient.removeContainerCmd(anyString())).thenReturn(removeCmd);
         when(removeCmd.withForce(true)).thenReturn(removeCmd);
+        when(removeCmd.withRemoveVolumes(anyBoolean())).thenReturn(removeCmd);
         doNothing().when(removeCmd).exec();
 
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
@@ -582,6 +585,214 @@ class ReaperTest {
         assertThat(CleanupExecutor.backoffMs(5)).isEqualTo(30000L); // capped
     }
 
+    @Test
+    void shouldSaturateBackoffForLargeAttemptCounts() {
+        // A large configured max attempts must never shift into a negative (or
+        // otherwise short) delay: an overflowing shift would retry immediately and
+        // hammer the daemon instead of backing off.
+        assertThat(CleanupExecutor.backoffMs(62)).isEqualTo(CleanupExecutor.BACKOFF_CAP_MS);
+        assertThat(CleanupExecutor.backoffMs(63)).isEqualTo(CleanupExecutor.BACKOFF_CAP_MS);
+        assertThat(CleanupExecutor.backoffMs(64)).isEqualTo(CleanupExecutor.BACKOFF_CAP_MS);
+        assertThat(CleanupExecutor.backoffMs(Integer.MAX_VALUE)).isEqualTo(CleanupExecutor.BACKOFF_CAP_MS);
+    }
+
+    // ── Session sweep convergence tests (verified cleanup) ──
+
+    @Test
+    void shouldRepeatSweepUntilResourceRemovalSucceeds() throws Exception {
+        DockerClient mockClient = mock(DockerClient.class);
+        stubListContainers(mockClient, "flaky");
+        stubSessionNetworks(mockClient);
+        RemoveContainerCmd removeCmd = forcedRemoveStub(mockClient, "flaky");
+        // First removal attempt fails, later ones succeed.
+        doThrow(new RuntimeException("daemon busy")).doNothing().when(removeCmd).exec();
+
+        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(CleanupExecutor.POOL_SIZE);
+        CleanupExecutor executor = new CleanupExecutor(mockClient, 1, 1000L, 1000L, scheduler, Clock.systemUTC());
+
+        try {
+            Reaper.CleanupResult result = Reaper.cleanup(mockClient, "session", executor, 10_000L, 1000L);
+
+            assertThat(result.sweeps()).isEqualTo(2);
+            assertThat(result.discoveryComplete()).isTrue();
+            assertThat(result.containerIds()).isEmpty();
+            assertThat(result.clean()).isTrue();
+            assertThat(executor.unresolvedCount()).isZero();
+        } finally {
+            scheduler.shutdownNow();
+        }
+    }
+
+    @Test
+    void shouldBoundSweepsAndReportLeftovers() throws Exception {
+        DockerClient mockClient = mock(DockerClient.class);
+        stubListContainers(mockClient, "stuck");
+        stubSessionNetworks(mockClient);
+        RemoveContainerCmd removeCmd = forcedRemoveStub(mockClient, "stuck");
+        doThrow(new RuntimeException("daemon wedged")).when(removeCmd).exec();
+
+        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(CleanupExecutor.POOL_SIZE);
+        CleanupExecutor executor = new CleanupExecutor(mockClient, 1, 500L, 500L, scheduler, Clock.systemUTC());
+
+        long start = System.nanoTime();
+        try {
+            Reaper.CleanupResult result = Reaper.cleanup(mockClient, "session", executor, 20_000L, 1000L);
+            long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+
+            assertThat(result.sweeps()).as("sweeps are bounded, not endless").isEqualTo(Reaper.MAX_SWEEPS);
+            assertThat(result.clean()).isFalse();
+            assertThat(result.containerIds()).containsExactly("stuck");
+            assertThat(result.networkIds()).isEmpty();
+            assertThat(Reaper.exitCode(result)).isEqualTo(Reaper.EXIT_LEFTOVERS);
+            assertThat(elapsedMillis).as("elapsed time is bounded").isLessThan(60_000L);
+        } finally {
+            scheduler.shutdownNow();
+        }
+    }
+
+    @Test
+    void shouldNotSweepAgainWhenEverythingWasRemoved() throws Exception {
+        // The success path must keep today's Docker call sequence (one sweep).
+        DockerClient mockClient = mock(DockerClient.class);
+        stubListContainers(mockClient, "c1");
+        stubSessionNetworks(mockClient, "n1");
+        RemoveContainerCmd removeCmd = forcedRemoveStub(mockClient, "c1");
+        doNothing().when(removeCmd).exec();
+        RemoveNetworkCmd removeNetworkCmd = mock(RemoveNetworkCmd.class);
+        when(mockClient.removeNetworkCmd("n1")).thenReturn(removeNetworkCmd);
+        doNothing().when(removeNetworkCmd).exec();
+
+        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(CleanupExecutor.POOL_SIZE);
+        CleanupExecutor executor = new CleanupExecutor(mockClient, 5, 1000L, 1000L, scheduler, Clock.systemUTC());
+
+        try {
+            Reaper.CleanupResult result = Reaper.cleanup(mockClient, "session", executor, 10_000L, 1000L);
+
+            assertThat(result.sweeps()).isEqualTo(1);
+            assertThat(result.clean()).isTrue();
+            org.mockito.Mockito.verify(removeNetworkCmd).exec();
+        } finally {
+            scheduler.shutdownNow();
+        }
+    }
+
+    @Test
+    void shouldRetryTransientListingFailure() throws Exception {
+        DockerClient mockClient = mock(DockerClient.class);
+        ListContainersCmd listContainersCmd = mock(ListContainersCmd.class);
+        when(mockClient.listContainersCmd()).thenReturn(listContainersCmd);
+        when(listContainersCmd.withShowAll(true)).thenReturn(listContainersCmd);
+        when(listContainersCmd.withLabelFilter(anyMap())).thenReturn(listContainersCmd);
+        Container container = mock(Container.class);
+        when(container.getId()).thenReturn("c1");
+        // First listing fails, the retry succeeds.
+        doThrow(new RuntimeException("transient listing failure"))
+                .doReturn(List.of(container))
+                .when(listContainersCmd)
+                .exec();
+        stubSessionNetworks(mockClient);
+        RemoveContainerCmd removeCmd = forcedRemoveStub(mockClient, "c1");
+        doNothing().when(removeCmd).exec();
+
+        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(CleanupExecutor.POOL_SIZE);
+        CleanupExecutor executor = new CleanupExecutor(mockClient, 5, 1000L, 1000L, scheduler, Clock.systemUTC());
+
+        try {
+            Reaper.CleanupResult result = Reaper.cleanup(mockClient, "session", executor, 10_000L, 1000L);
+
+            assertThat(result.discoveryComplete())
+                    .as("a transient listing failure is retried, not treated as empty")
+                    .isTrue();
+            assertThat(result.clean()).isTrue();
+            org.mockito.Mockito.verify(removeCmd).exec();
+        } finally {
+            scheduler.shutdownNow();
+        }
+    }
+
+    @Test
+    void shouldReportIncompleteDiscoveryWhenListingKeepsFailing() throws Exception {
+        DockerClient mockClient = mock(DockerClient.class);
+        ListContainersCmd listContainersCmd = mock(ListContainersCmd.class);
+        when(mockClient.listContainersCmd()).thenReturn(listContainersCmd);
+        when(listContainersCmd.withShowAll(true)).thenReturn(listContainersCmd);
+        when(listContainersCmd.withLabelFilter(anyMap())).thenReturn(listContainersCmd);
+        doThrow(new RuntimeException("daemon unreachable"))
+                .when(listContainersCmd)
+                .exec();
+        stubSessionNetworks(mockClient);
+
+        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(CleanupExecutor.POOL_SIZE);
+        CleanupExecutor executor = new CleanupExecutor(mockClient, 5, 1000L, 1000L, scheduler, Clock.systemUTC());
+
+        try {
+            Reaper.CleanupResult result = Reaper.cleanup(mockClient, "session", executor, 10_000L, 1000L);
+
+            assertThat(result.discoveryComplete()).isFalse();
+            assertThat(result.clean())
+                    .as("a failed listing must never look clean")
+                    .isFalse();
+            assertThat(Reaper.exitCode(result)).isEqualTo(Reaper.EXIT_LEFTOVERS);
+        } finally {
+            scheduler.shutdownNow();
+        }
+    }
+
+    @Test
+    void shouldRemoveAnonymousVolumesInBothContainerTiers() throws Exception {
+        DockerClient mockClient = mock(DockerClient.class);
+        StopContainerCmd stopCmd = mock(StopContainerCmd.class);
+        when(mockClient.stopContainerCmd(anyString())).thenReturn(stopCmd);
+        when(stopCmd.withTimeout(anyInt())).thenReturn(stopCmd);
+        doNothing().when(stopCmd).exec();
+        RemoveContainerCmd removeCmd = mock(RemoveContainerCmd.class);
+        when(mockClient.removeContainerCmd(anyString())).thenReturn(removeCmd);
+        when(removeCmd.withForce(true)).thenReturn(removeCmd);
+        when(removeCmd.withRemoveVolumes(anyBoolean())).thenReturn(removeCmd);
+        doNothing().when(removeCmd).exec();
+
+        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(CleanupExecutor.POOL_SIZE);
+        CleanupExecutor executor = new CleanupExecutor(mockClient, 5, 5000L, 5000L, scheduler, Clock.systemUTC());
+
+        try {
+            assertThat(executor.destroyContainer("graceful")).isTrue();
+            assertThat(executor.forceRemoveContainer("forced")).isTrue();
+
+            // Both tiers must delete the container's anonymous volumes; named volumes are kept by Docker.
+            org.mockito.Mockito.verify(removeCmd, org.mockito.Mockito.times(2)).withRemoveVolumes(true);
+        } finally {
+            scheduler.shutdownNow();
+        }
+    }
+
+    /**
+     * Stubs an empty or populated network listing bound to the Docker client.
+     *
+     * @param mockClient the Docker client mock
+     * @param ids the network ids the listing returns
+     * @return the listing command mock
+     */
+    private static ListNetworksCmd stubSessionNetworks(DockerClient mockClient, String... ids) {
+        ListNetworksCmd listNetworksCmd = stubListNetworks(mockClient, ids);
+        when(mockClient.listNetworksCmd()).thenReturn(listNetworksCmd);
+        return listNetworksCmd;
+    }
+
+    /**
+     * Stubs a force-remove command that reports the given container id.
+     *
+     * @param mockClient the Docker client mock
+     * @param id the container id
+     * @return the remove command mock
+     */
+    private static RemoveContainerCmd forcedRemoveStub(DockerClient mockClient, String id) {
+        RemoveContainerCmd removeCmd = mock(RemoveContainerCmd.class);
+        when(mockClient.removeContainerCmd(id)).thenReturn(removeCmd);
+        when(removeCmd.withForce(true)).thenReturn(removeCmd);
+        when(removeCmd.withRemoveVolumes(anyBoolean())).thenReturn(removeCmd);
+        return removeCmd;
+    }
+
     // ── Timeout cutoff tests (UT-017 through UT-018) ──
 
     @Test
@@ -601,6 +812,7 @@ class ReaperTest {
         RemoveContainerCmd removeCmd = mock(RemoveContainerCmd.class);
         when(mockClient.removeContainerCmd(anyString())).thenReturn(removeCmd);
         when(removeCmd.withForce(true)).thenReturn(removeCmd);
+        when(removeCmd.withRemoveVolumes(anyBoolean())).thenReturn(removeCmd);
         doNothing().when(removeCmd).exec();
 
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
@@ -640,6 +852,7 @@ class ReaperTest {
         RemoveContainerCmd removeCmd = mock(RemoveContainerCmd.class);
         when(mockClient.removeContainerCmd(anyString())).thenReturn(removeCmd);
         when(removeCmd.withForce(true)).thenReturn(removeCmd);
+        when(removeCmd.withRemoveVolumes(anyBoolean())).thenReturn(removeCmd);
         // Block for longer than force timeout
         doAnswer(inv -> {
                     Thread.sleep(60_000);
@@ -712,6 +925,7 @@ class ReaperTest {
         RemoveContainerCmd removeCmd = mock(RemoveContainerCmd.class);
         when(mockClient.removeContainerCmd(anyString())).thenReturn(removeCmd);
         when(removeCmd.withForce(true)).thenReturn(removeCmd);
+        when(removeCmd.withRemoveVolumes(anyBoolean())).thenReturn(removeCmd);
         doAnswer(inv -> {
                     Thread.sleep(600_000);
                     return null;
@@ -837,6 +1051,7 @@ class ReaperTest {
         RemoveContainerCmd removeCmd = mock(RemoveContainerCmd.class);
         when(mockClient.removeContainerCmd(anyString())).thenReturn(removeCmd);
         when(removeCmd.withForce(true)).thenReturn(removeCmd);
+        when(removeCmd.withRemoveVolumes(anyBoolean())).thenReturn(removeCmd);
         doNothing().when(removeCmd).exec();
 
         ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(CleanupExecutor.POOL_SIZE);
@@ -876,6 +1091,8 @@ class ReaperTest {
             RemoveContainerCmd removeCmd = mock(RemoveContainerCmd.class);
             when(mockClient.removeContainerCmd(id)).thenReturn(removeCmd);
             when(removeCmd.withForce(true)).thenReturn(removeCmd);
+            when(removeCmd.withRemoveVolumes(anyBoolean())).thenReturn(removeCmd);
+            when(removeCmd.withRemoveVolumes(anyBoolean())).thenReturn(removeCmd);
             doAnswer(inv -> {
                         Thread.sleep(100);
                         events.add("container:" + id);
@@ -922,6 +1139,7 @@ class ReaperTest {
         RemoveContainerCmd removeCmd = mock(RemoveContainerCmd.class);
         when(mockClient.removeContainerCmd("stuck")).thenReturn(removeCmd);
         when(removeCmd.withForce(true)).thenReturn(removeCmd);
+        when(removeCmd.withRemoveVolumes(anyBoolean())).thenReturn(removeCmd);
         doAnswer(inv -> {
                     Thread.sleep(60_000);
                     return null;
@@ -957,6 +1175,7 @@ class ReaperTest {
         RemoveContainerCmd removeCmd = mock(RemoveContainerCmd.class);
         when(mockClient.removeContainerCmd(anyString())).thenReturn(removeCmd);
         when(removeCmd.withForce(true)).thenReturn(removeCmd);
+        when(removeCmd.withRemoveVolumes(anyBoolean())).thenReturn(removeCmd);
         doThrow(new ConflictException("Status 409: {\"message\":\"removal of container busy is already in progress\"}"))
                 .when(removeCmd)
                 .exec();
@@ -980,6 +1199,7 @@ class ReaperTest {
         RemoveContainerCmd removeCmd = mock(RemoveContainerCmd.class);
         when(mockClient.removeContainerCmd(anyString())).thenReturn(removeCmd);
         when(removeCmd.withForce(true)).thenReturn(removeCmd);
+        when(removeCmd.withRemoveVolumes(anyBoolean())).thenReturn(removeCmd);
         doThrow(new ConflictException("Status 409: {\"message\":\"conflict: unable to remove\"}"))
                 .when(removeCmd)
                 .exec();
@@ -1059,6 +1279,7 @@ class ReaperTest {
         RemoveContainerCmd removeCmd = mock(RemoveContainerCmd.class);
         when(mockClient.removeContainerCmd(anyString())).thenReturn(removeCmd);
         when(removeCmd.withForce(true)).thenReturn(removeCmd);
+        when(removeCmd.withRemoveVolumes(anyBoolean())).thenReturn(removeCmd);
         doNothing().when(removeCmd).exec();
 
         RemoveNetworkCmd removeNetworkCmd = mock(RemoveNetworkCmd.class);

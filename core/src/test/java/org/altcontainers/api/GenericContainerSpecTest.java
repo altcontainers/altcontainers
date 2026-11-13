@@ -270,4 +270,39 @@ class GenericContainerSpecTest {
                 .build();
         assertThat(spec.environment()).containsEntry("KEY", "");
     }
+
+    @Test
+    void bindDirectoryShouldDefaultToReadWriteAndSupportReadOnly() {
+        ContainerSpec spec = ContainerSpec.builder("alpine:latest")
+                .bindDirectory("/host/rw", "/rw")
+                .bindDirectory("/host/ro", "/ro", true)
+                .bindDirectory("/host/explicit-rw", "/explicit-rw", false)
+                .build();
+
+        assertThat(spec.bindMounts())
+                .containsExactly(
+                        new BindMount("/host/rw", "/rw", false),
+                        new BindMount("/host/ro", "/ro", true),
+                        new BindMount("/host/explicit-rw", "/explicit-rw", false));
+    }
+
+    @Test
+    void toBuilderShouldPreserveReadOnlyBindMounts() {
+        ContainerSpec original = ContainerSpec.builder("alpine:latest")
+                .bindDirectory("/host", "/container", true)
+                .build();
+
+        assertThat(original.toBuilder().build().bindMounts())
+                .containsExactly(new BindMount("/host", "/container", true));
+    }
+
+    @Test
+    void readOnlyBindDirectoryShouldRejectBlankPaths() {
+        assertThatThrownBy(() -> ContainerSpec.builder("alpine:latest").bindDirectory(" ", "/container", true))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("hostPath");
+        assertThatThrownBy(() -> ContainerSpec.builder("alpine:latest").bindDirectory("/host", "", true))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("containerPath");
+    }
 }

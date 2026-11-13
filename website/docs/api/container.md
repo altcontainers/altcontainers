@@ -35,7 +35,7 @@ try (Container container = Container.create(spec)) {
 ```
 
 `create(spec)`:
-- Validates the specification (`startupAttempts >= 1`, `startupTimeout` is positive)
+- Validates the specification before any Docker work begins (`startupAttempts >= 1`, `startupTimeout` is positive)
 - Pulls the Docker image if not cached
 - Creates and starts the container
 - Attaches a log stream
@@ -43,7 +43,7 @@ try (Container container = Container.create(spec)) {
 - Retries on failure if `startupAttempts > 1`
 
 **Throws:**
-- `IllegalArgumentException` if `startupAttempts < 1` or `startupTimeout` is not positive
+- `IllegalArgumentException` if `startupAttempts < 1` or `startupTimeout` is not positive — thrown before the image pull, so a misconfigured spec fails fast
 - `NullPointerException` if `spec` is `null`
 - `ContainerException` if the container cannot be started or does not become ready
 
@@ -63,7 +63,7 @@ try (Container container = Container.create(spec)) {
 
 `close(container)`:
 - Stops and removes the container
-- Blocks until Docker confirms removal
+- Blocks until Docker confirms removal; if the stop or the removal times out or fails, the container is handed to the reaper for asynchronous cleanup and `close()` returns
 - Idempotent — safe to call multiple times
 - No-op if `container` is `null`
 

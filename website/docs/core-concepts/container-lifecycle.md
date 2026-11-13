@@ -29,11 +29,6 @@ The container is started. Altcontainers immediately attaches a log stream to cap
 
 After Docker reports the container started, a `StartupCheckStrategy` (by default, "container is still running") confirms the container process reached an acceptable lifecycle state. If a `prepare(Consumer<Container>)` hook is configured, it runs here — after port mappings are available, before readiness checks begin.
 
-Altcontainers blocks until all configured wait conditions are satisfied, or the startup timeout elapses. Wait conditions include:
-- **Port wait** — TCP connection accepted on the mapped host port
-- **HTTP wait** — HTTP/HTTPS response status in an acceptable range
-- **Log wait** — a log message matching a regex appears the required number of times
-
 ### 5. Wait for readiness
 
 Altcontainers blocks until all configured wait conditions are satisfied, or the startup timeout elapses. Wait conditions include:
@@ -55,7 +50,7 @@ The returned `Container` handle provides:
 
 The container is stopped and removed. Destruction is:
 - **Idempotent** — safe to call multiple times
-- **Blocking** — returns only when Docker confirms removal
+- **Blocking** — returns once Docker confirms removal, or hands the container to the reaper and returns if the stop or removal times out
 - **Available via try-with-resources** — `Container` implements `AutoCloseable`
 
 ## Example

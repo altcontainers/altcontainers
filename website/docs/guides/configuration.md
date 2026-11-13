@@ -9,7 +9,7 @@ Altcontainers is highly configurable. This page documents every configuration ke
 
 ## Configuration precedence
 
-Configuration values are resolved from multiple sources. For each value, the first non-empty source wins:
+Configuration values are resolved from multiple sources. For each value, the first source that supplies a value wins (an empty system property or environment variable counts as not set):
 
 | Priority | Source | Description |
 |---|---|---|
@@ -80,7 +80,7 @@ The reaper is a separate per-session process that cleans up Docker resources whe
 | `altcontainers.reaper.disabled` | boolean | `false` | System property, Environment, Properties file | Disable the reaper process entirely |
 | `altcontainers.reaper.connection.timeout.ms` | Duration (ms) | `10000` | System property, Environment, Properties file | TCP connection/handshake timeout between core and reaper |
 | `altcontainers.reaper.startup.timeout.ms` | Duration (ms) | `10000` | System property, Environment, Properties file | How long the core module waits for the reaper process to bind its port |
-| `altcontainers.reaper.stop.timeout.ms` | Duration (ms) | `5000` | System property, Environment, Properties file | Timeout when stopping containers during cleanup |
+| `altcontainers.reaper.stop.timeout.ms` | Duration (ms) | `30000` | System property, Environment, Properties file | Timeout when stopping containers during cleanup |
 
 #### `altcontainers.reaper.disabled`
 
@@ -352,7 +352,7 @@ The bundled `altcontainers.properties` file contains all defaults:
 altcontainers.reaper.disabled=false
 altcontainers.reaper.connection.timeout.ms=10000
 altcontainers.reaper.startup.timeout.ms=10000
-altcontainers.reaper.stop.timeout.ms=5000
+altcontainers.reaper.stop.timeout.ms=30000
 
 # --- Container lifecycle defaults ---
 altcontainers.container.startup.timeout.ms=60000
@@ -396,7 +396,7 @@ All configuration values are validated eagerly when first accessed. Invalid valu
 
 - **Duration values** must be positive (greater than zero)
 - **Boolean values** must be `true` or `false`
-- **Integer values** must be positive (greater than zero)
+- **Integer values** must be positive (greater than zero), with the exception of `altcontainers.networks.parallelism`, which must be zero or greater
 - **Docker host** must be a valid URI with a supported scheme (validated when the Docker client is created)
 
 Malformed properties files or invalid values throw `ContainerException` immediately, not at container creation time.

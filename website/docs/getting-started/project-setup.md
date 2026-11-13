@@ -19,7 +19,7 @@ Add the Altcontainers dependency to your `pom.xml`:
 <dependency>
   <groupId>org.altcontainers</groupId>
   <artifactId>core</artifactId>
-  <version>0.4.0</version>
+  <version>0.4.1</version>
   <scope>test</scope>
 </dependency>
 ```
@@ -63,14 +63,16 @@ import org.altcontainers.api.ContainerSpec;
 class SetupVerification {
     public static void main(String[] args) {
         try (var container = Container.create(
-                ContainerSpec.builder("hello-world:latest").build())) {
+                ContainerSpec.builder("alpine:latest").command("sleep", "30").build())) {
             System.out.println("Container started: " + container.id());
         }
     }
 }
 ```
 
-If this runs without errors, your setup is correct.
+The default startup check requires the container to still be running after Docker starts it, so
+the sample keeps the container alive with `sleep 30`. A one-shot image such as `hello-world`
+exits immediately and fails that check. If this sample runs without errors, your setup is correct.
 
 ## Learn next
 

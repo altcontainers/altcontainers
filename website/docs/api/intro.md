@@ -39,7 +39,7 @@ The Altcontainers public API lives in the `org.altcontainers.api` package.
 ```
 org.altcontainers.api          — public API (Container, ContainerSpec, Network, ...)
 nonapi.org.altcontainers       — internal implementation (DockerClient, ContainerManager, NetworkManager, ...)
-nonapi.org.altcontainers.reaper — automatic cleanup infrastructure
+org.altcontainers.reaper       — automatic cleanup infrastructure (the reaper process)
 ```
 
 The `nonapi` prefix signals that these packages are internal and subject to change without notice.

@@ -61,16 +61,17 @@ cd altcontainers
 ### Project Structure
 
 - `core/` - Main library (public API + implementation)
-- `maven-plugin/` - Maven plugin for test execution
-- `examples/` - Test classes and examples using Altcontainers's own framework
+- `reaper/` - Standalone cleanup process launched by `core`
+- `examples/` - Example container specs and integration tests driven by [Paramixel](https://www.paramixel.org)
 - `assets/` - License header template and shared resources
+- `scripts/` - Build, documentation, stress-test, and release scripts
 - `website/` - Docusaurus documentation site
 
 ## Coding Standards
 
 ### Javadoc
 
-See `AGENTS.md` (## Javadoc) for guidelines on writing Javadoc comments.
+Add Javadoc for every public API element, including `@param`, `@return`, and `@throws` where they apply. Follow the existing style in `core/src/main/java` and the engineering standards in `AGENTS.md`.
 
 ### Code Formatting
 
@@ -107,8 +108,8 @@ All commits must be signed off to satisfy the [Developer Certificate of Origin (
 
 - Follow existing code style and patterns
 - Write clear, self-documenting code with meaningful variable names
-- Add Javadoc for public APIs
-- Follow `AGENTS.md` (## Javadoc) for Javadoc conventions
+- Add Javadoc for public APIs, following the existing style in `core/src/main/java`
+- Follow the engineering standards in `AGENTS.md`
 - Keep methods focused and reasonably sized
 - Write unit tests for new functionality
 
@@ -123,14 +124,15 @@ All commits must be signed off to satisfy the [Developer Certificate of Origin (
 # Build + PMD analysis
 ./mvnw verify
 
-# Build without Altcontainers tests
-./mvnw clean install -Daltcontainers.skipTests
+# Build without running tests
+./mvnw clean install -DskipTests
 ```
 
 ### Writing Tests
 
-- Place tests in the `examples/` module under `src/main/java/`
-- Use the `@Altcontainers.Factory` annotation on static methods that return `Action` trees
+- Place library unit tests in the module's `src/test/java/` (JUnit 5 + AssertJ)
+- Place runnable examples and their Paramixel-driven integration tests in `examples/src/main/java/`
+- Use the `@Paramixel.Factory` annotation on static methods that return `Action` trees
 - Use descriptive test names and argument names
 - Test edge cases and error conditions
 

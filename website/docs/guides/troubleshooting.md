@@ -7,9 +7,13 @@ description: Common issues and solutions when using Altcontainers.
 
 ## Container fails to start
 
-### "Container not ready after \<timeout\>"
+### "Container did not become ready: ..."
 
-The container started but the wait conditions were not satisfied within the `startupTimeout`.
+The container started but the wait conditions were not satisfied within the `startupTimeout`. The message lists each unsatisfied strategy's target, its last observed result, and the timeout, for example:
+
+```
+Container did not become ready: HttpWaitStrategy failed for image nginx:1.27, container <id>, URL http://localhost:32768/, expected status 200..399, last status none within 60s; last error: ConnectException: Connection refused
+```
 
 **Causes:**
 - The service inside the container is slower than expected

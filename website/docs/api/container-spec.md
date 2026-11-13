@@ -65,7 +65,10 @@ builder.waitStrategy(Wait.allOf(
 ));
 
 // Custom lambda
-builder.waitStrategy(container -> container.hostPort(8080) > 0);
+builder.waitStrategy(container -> {
+    Integer port = container.hostPort(8080);
+    return port != null && port > 0;
+});
 ```
 
 ## Defaults
