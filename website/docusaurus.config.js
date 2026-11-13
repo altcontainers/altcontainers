@@ -47,7 +47,7 @@ const config = {
           routeBasePath: '/',
           sidebarPath: require.resolve('./sidebars.js'),
           editUrl: 'https://github.com/altcontainers/altcontainers/tree/main/website/',
-          lastVersion: '0.4.2',
+          lastVersion: '0.5.0',
           versions: {
             current: {
               label: 'Unreleased',
@@ -56,10 +56,12 @@ const config = {
               badge: true,
             },
             '0.5.0': {
-              banner: 'unreleased',
+              banner: 'none',
             },
             '0.4.2': {
-              banner: 'none',
+              banner: 'unmaintained',
+              label: '0.4.2 (Unmaintained)',
+              className: 'notice-unmaintained',
             },
             '0.4.1': {
               banner: 'unmaintained',
