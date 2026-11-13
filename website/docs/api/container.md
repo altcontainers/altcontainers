@@ -36,9 +36,9 @@ try (Container container = Container.create(spec)) {
 
 `create(spec)`:
 - Validates the specification before any Docker work begins (`startupAttempts >= 1`, `startupTimeout` is positive)
-- Pulls the Docker image if not cached
+- Pulls the Docker image if it is not available locally (an image without a tag or digest is pulled as `latest`)
 - Creates and starts the container
-- Attaches a log stream
+- Attaches a log stream when an output listener or a log-based wait strategy is configured
 - Waits for all configured wait conditions
 - Retries on failure if `startupAttempts > 1`
 
@@ -119,7 +119,7 @@ if (hostPort != null) {
 Copies a file into the container.
 
 ```java
-copyFileToContainer("/tmp", "config.json", content, 0644);
+container.copyFileToContainer("/tmp", "config.json", content, 0644);
 ```
 
 ### `spec()`

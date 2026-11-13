@@ -90,8 +90,7 @@ public final class Reaper {
     private static final String JAR_EXTENSION = ".jar";
     private static final long ACCEPT_TIMEOUT_MS = 60_000L;
     static final int STOP_TIMEOUT_MS = parseStopTimeoutMsFromProperty();
-    private static final int HANDSHAKE_TIMEOUT_MILLISECONDS =
-            parsePositiveMillisecondsProperty("altcontainers.reaper.connection.timeout.ms", "10000");
+    private static final int HANDSHAKE_TIMEOUT_MILLISECONDS = parseHandshakeTimeoutMsFromProperty();
 
     static final int MAX_ATTEMPTS;
 
@@ -130,6 +129,21 @@ public final class Reaper {
         } catch (IllegalArgumentException e) {
             exitWithError(e);
             return 5000; // unreachable
+        }
+    }
+
+    /**
+     * Parses the handshake timeout from the system property, exiting the
+     * process on invalid input.
+     *
+     * @return the handshake timeout in milliseconds
+     */
+    private static int parseHandshakeTimeoutMsFromProperty() {
+        try {
+            return parsePositiveMillisecondsProperty("altcontainers.reaper.connection.timeout.ms", "10000");
+        } catch (IllegalArgumentException e) {
+            exitWithError(e);
+            return 10000; // unreachable
         }
     }
 
@@ -234,16 +248,19 @@ public final class Reaper {
         configureLogback(logFile);
         logHeader(sessionId);
 
-        DockerClient dockerClient = createDockerClient();
+        DockerClient dockerClient = null;
         try {
+            dockerClient = createDockerClient();
             System.exit(exitCode(run(sessionId, dockerClient)));
         } catch (Throwable t) {
             logger.error("Fatal error: {}", t.getMessage(), t);
             System.exit(1);
         } finally {
-            try {
-                dockerClient.close();
-            } catch (IOException ignored) {
+            if (dockerClient != null) {
+                try {
+                    dockerClient.close();
+                } catch (IOException ignored) {
+                }
             }
         }
     }

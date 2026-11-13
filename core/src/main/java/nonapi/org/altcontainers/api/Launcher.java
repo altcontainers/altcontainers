@@ -168,8 +168,9 @@ public final class Launcher {
         }
         cmd.add(javaCommand);
         cmd.add("-D" + REAPER_SESSION_ID_PROPERTY + "=" + sessionId);
-        cmd.add("-D" + AltcontainersProperties.REAPER_CONNECTION_TIMEOUT_MS + "=" + reaperConnectionTimeout.toMillis());
-        cmd.add("-D" + AltcontainersProperties.REAPER_STOP_TIMEOUT_MS + "=" + reaperStopTimeout.toMillis());
+        cmd.add("-D" + AltcontainersProperties.REAPER_CONNECTION_TIMEOUT_MS + "="
+                + reaperMillis(reaperConnectionTimeout));
+        cmd.add("-D" + AltcontainersProperties.REAPER_STOP_TIMEOUT_MS + "=" + reaperMillis(reaperStopTimeout));
         if (dockerHost != null && !dockerHost.isBlank()) {
             cmd.add("-D" + ALTCONTAINERS_DOCKER_HOST_PROPERTY + "=" + dockerHost);
         }
@@ -182,6 +183,18 @@ public final class Launcher {
         cmd.add("-jar");
         cmd.add(jarPath.toString());
         return cmd;
+    }
+
+    /**
+     * Converts a timeout to the millisecond value passed to the reaper. The reaper parses its
+     * timeouts as {@code int} milliseconds and exits on larger values, so longer timeouts are
+     * clamped to {@link Integer#MAX_VALUE} (about 24.8 days).
+     *
+     * @param timeout the timeout
+     * @return the timeout in milliseconds, at most {@link Integer#MAX_VALUE}
+     */
+    private static long reaperMillis(Duration timeout) {
+        return Math.min(timeout.toMillis(), Integer.MAX_VALUE);
     }
 
     /**

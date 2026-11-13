@@ -54,7 +54,7 @@ Container did not become ready: HttpWaitStrategy failed for image nginx:1.27, co
 **Solutions:**
 - Verify the image exists: `docker pull <image>`
 - Check network connectivity
-- For private registries, authenticate with `docker login` first
+- Private registry authentication is not currently supported; pull the image beforehand with `docker pull <image>` so Altcontainers finds it locally
 
 ## Container destroyed unexpectedly
 

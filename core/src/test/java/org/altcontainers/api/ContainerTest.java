@@ -25,6 +25,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import nonapi.org.altcontainers.api.ConcreteContainer;
 import nonapi.org.altcontainers.api.ContainerMetadata;
 import nonapi.org.altcontainers.api.DockerClientFactory;
@@ -179,6 +180,42 @@ class ContainerTest {
                 // Container may already be removed by reaper; that's fine.
             } catch (RuntimeException ignored) {
                 // Best-effort cleanup.
+            }
+        }
+    }
+
+    @Test
+    @EnabledIf("dockerAndReaperAvailable")
+    void errorFromPrepareHookShouldDestroyAttemptAndPropagateUnchanged() {
+        // An Error (for example a failed test assertion) thrown during startup must not
+        // leave the started container behind until the JVM exits.
+        AtomicReference<String> containerId = new AtomicReference<>();
+        AssertionError failure = new AssertionError("prepare failed");
+        ContainerSpec spec = ContainerSpec.builder("alpine:latest")
+                .command("sh", "-c", "trap 'exit 0' TERM; sleep 60 & wait")
+                .prepare(container -> {
+                    containerId.set(container.id());
+                    throw failure;
+                })
+                .build();
+        try {
+            assertThatThrownBy(() -> Container.create(spec)).isSameAs(failure);
+            assertThat(containerId.get()).isNotNull();
+            assertThatThrownBy(() -> DockerClientFactory.client()
+                            .inspectContainerCmd(containerId.get())
+                            .exec())
+                    .as("container from the failed attempt should have been removed")
+                    .isInstanceOf(NotFoundException.class);
+        } finally {
+            if (containerId.get() != null) {
+                try {
+                    DockerClientFactory.client()
+                            .removeContainerCmd(containerId.get())
+                            .withForce(true)
+                            .exec();
+                } catch (RuntimeException ignored) {
+                    // Already removed, which is the expected outcome.
+                }
             }
         }
     }

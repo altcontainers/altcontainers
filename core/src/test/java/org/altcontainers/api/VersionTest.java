@@ -22,8 +22,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Tests for {@link Version}.
@@ -102,5 +107,27 @@ class VersionTest {
         InputStream stream = new ByteArrayInputStream(props.getBytes(StandardCharsets.UTF_8));
         String result = Version.loadVersion(name -> stream);
         assertThat(result).isEqualTo("0.1.0-SNAPSHOT");
+    }
+
+    @Test
+    void versionShouldBeLoadedFromBundledResource() {
+        assertThat(Version.version()).isNotEqualTo(Version.UNKNOWN);
+    }
+
+    @Test
+    void openResourceShouldIgnoreForeignRootVersionResource(@TempDir Path dir) throws IOException {
+        // An application commonly ships its own root-level version.properties; it must
+        // not be reported as the Altcontainers version.
+        Files.writeString(dir.resolve("version.properties"), "version=0.0.0-foreign\n", StandardCharsets.UTF_8);
+        Thread thread = Thread.currentThread();
+        ClassLoader previous = thread.getContextClassLoader();
+        try (URLClassLoader foreign = new URLClassLoader(new URL[] {dir.toUri().toURL()}, null)) {
+            thread.setContextClassLoader(foreign);
+            assertThat(Version.loadVersion(Version::openResource))
+                    .isNotEqualTo("0.0.0-foreign")
+                    .isEqualTo(Version.version());
+        } finally {
+            thread.setContextClassLoader(previous);
+        }
     }
 }

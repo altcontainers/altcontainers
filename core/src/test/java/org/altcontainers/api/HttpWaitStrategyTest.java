@@ -22,10 +22,12 @@ import com.sun.net.httpserver.HttpServer;
 import com.sun.net.httpserver.HttpsConfigurator;
 import com.sun.net.httpserver.HttpsServer;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyStore;
+import java.time.Duration;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import nonapi.org.altcontainers.api.AltcontainersProperties;
@@ -267,6 +269,83 @@ class HttpWaitStrategyTest {
     }
 
     @Test
+    void shouldIgnoreHostnameMismatchWithInsecureProtocol() throws Exception {
+        // The certificate names only "localhost"; probing it through the IP literal is a
+        // hostname mismatch that HTTPS_INSECURE documents as not verified.
+        HttpsServer server = createSelfSignedHttpsServer(new InetSocketAddress("127.0.0.1", 0));
+        server.createContext("/health", exchange -> {
+            exchange.sendResponseHeaders(200, -1);
+            exchange.close();
+        });
+        server.start();
+        try {
+            int port = server.getAddress().getPort();
+            HttpWaitStrategy strategy =
+                    new HttpWaitStrategy(HttpWaitStrategy.Protocol.HTTPS_INSECURE, 8080, "/health", 200, 399);
+
+            Container container =
+                    new ConcreteContainer(
+                            "test-id",
+                            "test-image",
+                            ContainerSpec.builder("test-image").build(),
+                            null) {
+                        @Override
+                        public String host() {
+                            return "127.0.0.1";
+                        }
+
+                        @Override
+                        public Integer hostPort(int containerPort) {
+                            return port;
+                        }
+                    };
+
+            boolean result = strategy.check(container);
+            assertThat(result)
+                    .as(strategy.timeoutDiagnostic(container, Duration.ofSeconds(1)))
+                    .isTrue();
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void shouldRejectHostnameMismatchWithVerifyProtocol() throws Exception {
+        HttpsServer server = createSelfSignedHttpsServer(new InetSocketAddress("127.0.0.1", 0));
+        server.createContext("/health", exchange -> {
+            exchange.sendResponseHeaders(200, -1);
+            exchange.close();
+        });
+        server.start();
+        try {
+            int port = server.getAddress().getPort();
+            HttpWaitStrategy strategy =
+                    new HttpWaitStrategy(HttpWaitStrategy.Protocol.HTTPS_VERIFY, 8080, "/health", 200, 399);
+
+            Container container =
+                    new ConcreteContainer(
+                            "test-id",
+                            "test-image",
+                            ContainerSpec.builder("test-image").build(),
+                            null) {
+                        @Override
+                        public String host() {
+                            return "127.0.0.1";
+                        }
+
+                        @Override
+                        public Integer hostPort(int containerPort) {
+                            return port;
+                        }
+                    };
+
+            assertThat(strategy.check(container)).isFalse();
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void shouldReturnFalseForSelfSignedHttpsWithVerifyProtocol() throws Exception {
         HttpsServer server = createSelfSignedHttpsServer();
         server.createContext("/health", exchange -> {
@@ -328,8 +407,14 @@ class HttpWaitStrategyTest {
     }
 
     private static HttpsServer createSelfSignedHttpsServer() throws Exception {
+        return createSelfSignedHttpsServer(new InetSocketAddress("localhost", 0));
+    }
+
+    private static HttpsServer createSelfSignedHttpsServer(InetSocketAddress address) throws Exception {
         KeyStore keyStore = KeyStore.getInstance("PKCS12");
-        keyStore.load(Files.newInputStream(keystorePath), KEYSTORE_PASSWORD.toCharArray());
+        try (InputStream in = Files.newInputStream(keystorePath)) {
+            keyStore.load(in, KEYSTORE_PASSWORD.toCharArray());
+        }
 
         KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
         kmf.init(keyStore, KEYSTORE_PASSWORD.toCharArray());
@@ -337,7 +422,7 @@ class HttpWaitStrategyTest {
         SSLContext sslContext = SSLContext.getInstance("TLS");
         sslContext.init(kmf.getKeyManagers(), null, null);
 
-        HttpsServer server = HttpsServer.create(new InetSocketAddress("localhost", 0), 0);
+        HttpsServer server = HttpsServer.create(address, 0);
         server.setHttpsConfigurator(new HttpsConfigurator(sslContext));
         return server;
     }

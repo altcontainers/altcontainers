@@ -165,4 +165,24 @@ class ContainerManagerTest {
         assertThat(bind.getPath()).isEqualTo("/host/a:b");
         assertThat(bind.getVolume().getPath()).isEqualTo("/container");
     }
+
+    @Test
+    void pullTagShouldDefaultTaglessReferenceToLatest() {
+        // The Docker pull API pulls every tag of a repository when the reference
+        // has neither a tag nor a digest; container creation resolves it to latest.
+        assertThat(ContainerManager.pullTag("busybox")).isEqualTo("latest");
+        assertThat(ContainerManager.pullTag("library/busybox")).isEqualTo("latest");
+        assertThat(ContainerManager.pullTag("docker.io/library/busybox")).isEqualTo("latest");
+        assertThat(ContainerManager.pullTag("localhost:5000/busybox")).isEqualTo("latest");
+    }
+
+    @Test
+    void pullTagShouldKeepExplicitTagOrDigest() {
+        assertThat(ContainerManager.pullTag("busybox:1.36")).isNull();
+        assertThat(ContainerManager.pullTag("library/busybox:1.36")).isNull();
+        assertThat(ContainerManager.pullTag("localhost:5000/busybox:1.36")).isNull();
+        assertThat(ContainerManager.pullTag("busybox@sha256:" + "0".repeat(64))).isNull();
+        assertThat(ContainerManager.pullTag("busybox:1.36@sha256:" + "0".repeat(64)))
+                .isNull();
+    }
 }

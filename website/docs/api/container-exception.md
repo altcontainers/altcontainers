@@ -22,8 +22,10 @@ public class ContainerException extends RuntimeException {
 - Container startup times out (wait conditions not satisfied)
 - Container readiness waiting is interrupted
 - Network creation fails
-- Container or network destruction fails
 - Docker daemon communication errors
+
+Closing a container or network does not throw `ContainerException`: if Docker fails or times out
+removing it, the resource is handed to the reaper for asynchronous cleanup instead.
 
 It is an **unchecked exception** — callers are not required to catch it, but should be prepared for it in integration test cleanup (`@AfterEach`, `finally` blocks).
 

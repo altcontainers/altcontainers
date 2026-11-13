@@ -33,6 +33,7 @@ public interface Container extends AutoCloseable {
      *
      * @param containerSpec the container spec
      * @return a container handle
+     * @throws NullPointerException if {@code containerSpec} is {@code null}
      * @throws IllegalArgumentException if the spec has a non-positive {@code startupTimeout}
      *     or fewer than one startup attempt
      * @throws ContainerException if creation fails
@@ -80,8 +81,9 @@ public interface Container extends AutoCloseable {
 
     /**
      * Returns the Docker host.
-     * Uses cached metadata when available, falling back to a
-     * live daemon query when the cache is absent or {@code null}.
+     * Uses cached metadata when available, falling back to the host
+     * derived from the configured Docker host URI when the cache is
+     * absent or {@code null}.
      *
      * @return the host
      */

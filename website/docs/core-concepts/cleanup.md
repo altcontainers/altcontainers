@@ -67,7 +67,7 @@ Altcontainers launches a separate **reaper process** for each JVM session. The r
 
 6. **Cleanup trigger**: When the JVM exits (including `System.exit()`), the JVM shutdown hook sends a `TERMINATE` message to the reaper and closes the TCP connection. The reaper then cleans up all Docker resources labeled with the session ID.
 
-7. **Grace period**: If the connection drops unexpectedly (without `TERMINATE`), the reaper waits 30 seconds before cleanup, allowing for transient reconnections.
+7. **Grace period**: If the connection drops unexpectedly (without `TERMINATE`), the reaper waits 30 seconds before cleanup. The reaper accepts only one connection, so the session cannot reconnect during this period.
 
 ### Key characteristics
 

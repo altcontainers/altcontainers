@@ -47,7 +47,7 @@ abstract class CompositeWaitStrategy implements ManagedWaitStrategy {
     CompositeWaitStrategy(WaitStrategy... strategies) {
         Objects.requireNonNull(strategies, "strategies must not be null");
         for (WaitStrategy s : strategies) {
-            Objects.requireNonNull(s, "s must not be null");
+            Objects.requireNonNull(s, "strategies must not contain null");
         }
         this.strategies = List.copyOf(Arrays.asList(strategies));
     }

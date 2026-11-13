@@ -30,9 +30,14 @@ public final class Version {
     /** Fallback version returned when the version resource is missing or unreadable. */
     public static final String UNKNOWN = "UNKNOWN";
 
+    /**
+     * Resource name, resolved relative to this class's package so another library's or the
+     * application's root-level {@code version.properties} is never picked up.
+     */
     private static final String RESOURCE_NAME = "version.properties";
+
     private static final String VERSION_PROPERTY = "version";
-    private static final String VERSION = loadVersion(Version::getResourceAsStream);
+    private static final String VERSION = loadVersion(Version::openResource);
 
     private Version() {
         // Intentionally empty
@@ -48,7 +53,8 @@ public final class Version {
     }
 
     /**
-     * Loads the version from {@code version.properties} on the classpath.
+     * Loads the version from the {@code version.properties} resource bundled in the
+     * {@code org/altcontainers/api} package.
      *
      * @param resourceProvider a function that opens a classpath resource by name
      * @return the loaded version string, or {@link #UNKNOWN} if the resource is missing or unreadable
@@ -72,21 +78,13 @@ public final class Version {
         return version;
     }
 
-    private static InputStream getResourceAsStream(String name) {
-        ClassLoader ctx = Thread.currentThread().getContextClassLoader();
-        if (ctx != null) {
-            InputStream is = ctx.getResourceAsStream(name);
-            if (is != null) {
-                return is;
-            }
-        }
-        ClassLoader def = Version.class.getClassLoader();
-        if (def != null) {
-            InputStream is = def.getResourceAsStream(name);
-            if (is != null) {
-                return is;
-            }
-        }
-        return ClassLoader.getSystemResourceAsStream(name);
+    /**
+     * Opens a resource bundled next to this class, in the {@code org/altcontainers/api} package.
+     *
+     * @param name the resource name relative to this class's package
+     * @return the resource stream, or {@code null} if the resource is missing
+     */
+    static InputStream openResource(String name) {
+        return Version.class.getResourceAsStream(name);
     }
 }

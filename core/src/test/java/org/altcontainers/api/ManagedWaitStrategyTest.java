@@ -17,6 +17,7 @@
 package org.altcontainers.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Duration;
 import java.util.Map;
@@ -161,5 +162,41 @@ class ManagedWaitStrategyTest {
         String diagnostic = composite.timeoutDiagnostic(c, Duration.ofSeconds(30));
         assertThat(diagnostic).contains("PortWaitStrategy");
         assertThat(diagnostic).contains("LogWaitStrategy");
+    }
+
+    @Test
+    void compositeShouldNameStrategiesArgumentForNullElement() {
+        WaitStrategy port = Wait.forListeningPort(8080);
+        assertThatThrownBy(() -> Wait.allOf(port, null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("strategies must not contain null");
+        assertThatThrownBy(() -> Wait.anyOf(null, port))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("strategies must not contain null");
+    }
+
+    @Test
+    void compositeShouldRejectNullArray() {
+        assertThatThrownBy(() -> Wait.allOf((WaitStrategy[]) null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("strategies must not be null");
+    }
+
+    @Test
+    void documentedLambdaWaitStrategySampleShouldCompileAndEvaluate() {
+        // Mirrors the example in the WaitStrategy Javadoc.
+        WaitStrategy portMapped = container -> {
+            Integer port = container.hostPort(8080);
+            // probe the container and return true/false
+            return port != null;
+        };
+        Container unmapped = dummyContainer("test7");
+        Container mapped = new ConcreteContainer(
+                "test8",
+                "test-image",
+                ContainerSpec.builder("test-image").build(),
+                new ContainerMetadata("localhost", true, Map.of(8080, 32768)));
+        assertThat(portMapped.check(unmapped)).isFalse();
+        assertThat(portMapped.check(mapped)).isTrue();
     }
 }

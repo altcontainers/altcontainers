@@ -84,7 +84,7 @@ The reaper is a separate per-session process that cleans up Docker resources whe
 
 #### `altcontainers.reaper.disabled`
 
-Disables the reaper process. When `true`, no reaper is launched and cleanup depends entirely on explicit `close()` calls or the JVM shutdown hook.
+Disables the reaper process. When `true`, no reaper is launched and cleanup depends entirely on explicit `close()` calls; no shutdown hook removes containers or networks that are still open when the JVM exits, so they remain on the Docker host.
 
 **Values:** `true`, `false`
 

@@ -75,6 +75,18 @@ class LauncherTest {
     }
 
     @Test
+    void shouldClampReaperTimeoutsToIntegerMilliseconds() {
+        // The reaper parses its timeouts as int milliseconds and exits on anything larger,
+        // while the core accepts any positive long; an oversized value must not stop the
+        // reaper from starting.
+        Duration oversized = Duration.ofMillis(Integer.MAX_VALUE + 1L);
+        List<String> cmd =
+                Launcher.buildCommand("session-123", Path.of("reaper.jar"), "java", false, oversized, oversized, null);
+        assertThat(cmd).contains("-Daltcontainers.reaper.connection.timeout.ms=" + Integer.MAX_VALUE);
+        assertThat(cmd).contains("-Daltcontainers.reaper.stop.timeout.ms=" + Integer.MAX_VALUE);
+    }
+
+    @Test
     void shouldNotForwardTimeoutKeysFromSystemProperties() {
         System.setProperty("altcontainers.reaper.connection.timeout.ms", "999");
         assertThat(Launcher.shouldForwardSystemProperty("altcontainers.reaper.connection.timeout.ms"))

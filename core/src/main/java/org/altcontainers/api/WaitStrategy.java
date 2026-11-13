@@ -36,9 +36,10 @@ package org.altcontainers.api;
  * reference:
  *
  * <pre>{@code
- * WaitStrategy fileExists = container -> {
- *     int port = container.hostPort(8080);
+ * WaitStrategy portMapped = container -> {
+ *     Integer port = container.hostPort(8080);
  *     // probe the container and return true/false
+ *     return port != null;
  * };
  * }</pre>
  *

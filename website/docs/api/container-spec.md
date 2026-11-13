@@ -27,7 +27,7 @@ ContainerSpec containerSpec = ContainerSpec.builder("nginx:1.27")
 `ContainerSpec.Builder` supports output streaming and startup hooks:
 
 - `outputListener(Consumer<OutputFrame>)` — receives raw output frames throughout the container's lifetime (frames are unfiltered, undecoded chunks with stream-type metadata; Altcontainers does not line-buffer them)
-- `prepare(Consumer<Container>)` — invoked after the container starts and port mappings are available, but before readiness checks begin; throwing from this hook cancels the current startup attempt
+- `prepare(Consumer<Container>)` — invoked after the container starts and port mappings are available, but before readiness checks begin; throwing from this hook cancels the current startup attempt (an `Error`, such as a failed assertion, destroys the attempt's container and propagates without further attempts)
 - `startupCheckStrategy(StartupCheckStrategy)` — strategy evaluated after Docker starts the container and before readiness wait strategies run (default: container must still be running)
 
 ## Environment variables

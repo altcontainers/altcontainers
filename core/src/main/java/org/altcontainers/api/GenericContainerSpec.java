@@ -554,8 +554,10 @@ public class GenericContainerSpec implements ContainerSpec {
          * previously set hook.
          *
          * <p>Throwing from the hook cancels startup for the current
-         * attempt; the exception is wrapped in {@link ContainerException}
-         * and follows the usual retry/destroy-on-failure behavior.
+         * attempt; a {@link RuntimeException} is wrapped in {@link ContainerException}
+         * and follows the usual retry/destroy-on-failure behavior. An {@link Error}
+         * (such as a failed assertion) destroys the attempt's container and
+         * propagates unchanged, without further attempts.
          *
          * @param prepare the prepare hook; must not be {@code null}
          * @return this builder

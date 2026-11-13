@@ -273,12 +273,36 @@ public final class ContainerManager {
             }
         };
         try {
-            dockerClient().pullImageCmd(image).exec(adapter);
+            var pullCmd = dockerClient().pullImageCmd(image);
+            String tag = pullTag(image);
+            if (tag != null) {
+                pullCmd = pullCmd.withTag(tag);
+            }
+            pullCmd.exec(adapter);
         } catch (RuntimeException e) {
             completion.completeExceptionally(e);
             inflightPulls.remove(image, completion);
             throw e instanceof ContainerException ce ? ce : new ContainerException("Image pull failed: " + image, e);
         }
+    }
+
+    /**
+     * Returns the tag to request explicitly when pulling the given image reference.
+     *
+     * <p>The Docker pull API pulls <em>every</em> tag of a repository when the reference names
+     * neither a tag nor a digest, whereas container creation (like {@code docker run}) resolves
+     * such a reference to {@code latest}. A reference without a tag or digest is therefore
+     * pulled as {@code latest}. A {@code ':'} before the last {@code '/'} belongs to a registry
+     * host port, not a tag.
+     *
+     * @param image the image reference
+     * @return {@code "latest"} if the reference has no tag or digest, otherwise {@code null}
+     */
+    static String pullTag(String image) {
+        if (image.indexOf('@') >= 0) {
+            return null;
+        }
+        return image.lastIndexOf(':') > image.lastIndexOf('/') ? null : "latest";
     }
 
     /**
@@ -399,6 +423,11 @@ public final class ContainerManager {
                         e.getMessage() != null ? e.getMessage() : e.getClass().getName();
                 lastFailure = new ContainerException("Container startup failed: " + message, e);
                 destroyAttempt(container, containerId);
+            } catch (Error e) {
+                // An Error (for example a failed assertion in a prepare hook) is not retried or
+                // wrapped, but the attempt's container must not outlive the failed startup.
+                destroyAttempt(container, containerId);
+                throw e;
             }
             if (attempt < spec.startupAttempts()) {
                 sleepBeforeRetry(attempt);

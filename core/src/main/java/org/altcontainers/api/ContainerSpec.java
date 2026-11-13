@@ -120,8 +120,10 @@ public interface ContainerSpec {
      * is valid at this point.
      *
      * <p>Throwing from the hook cancels startup for the current
-     * attempt; the exception is wrapped in {@link ContainerException}
-     * and follows the usual retry/destroy-on-failure behavior.
+     * attempt; a {@link RuntimeException} is wrapped in {@link ContainerException}
+     * and follows the usual retry/destroy-on-failure behavior. An {@link Error}
+     * (such as a failed assertion) destroys the attempt's container and
+     * propagates unchanged, without further attempts.
      *
      * @return the prepare hook, or {@code null} if none is configured
      */

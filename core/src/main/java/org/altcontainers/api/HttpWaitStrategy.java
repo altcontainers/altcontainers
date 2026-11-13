@@ -17,6 +17,7 @@
 package org.altcontainers.api;
 
 import java.io.IOException;
+import java.net.Socket;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.http.HttpClient;
@@ -31,9 +32,10 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLParameters;
 import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
+import javax.net.ssl.X509ExtendedTrustManager;
 import nonapi.org.altcontainers.api.AltcontainersProperties;
 import nonapi.org.altcontainers.api.Durations;
 import nonapi.org.altcontainers.api.ManagedWaitStrategy;
@@ -174,7 +176,8 @@ public final class HttpWaitStrategy implements ManagedWaitStrategy {
      *     must be in {@code 100..599}
      * @param maxStatus inclusive upper bound for an acceptable status;
      *     must be in {@code 100..599}, and {@code >= minStatus}
-     * @throws IllegalArgumentException if any parameter is invalid
+     * @throws NullPointerException if {@code protocol} is {@code null}
+     * @throws IllegalArgumentException if any other parameter is invalid
      */
     public HttpWaitStrategy(Protocol protocol, int containerPort, String path, int minStatus, int maxStatus) {
         if (!ContainerPorts.isValid(containerPort)) {
@@ -328,8 +331,11 @@ public final class HttpWaitStrategy implements ManagedWaitStrategy {
         }
         try {
             SSLContext sslContext = SSLContext.getInstance("TLS");
+            // An X509ExtendedTrustManager is required: JSSE wraps a plain X509TrustManager and
+            // performs endpoint (hostname) identification itself, and the JDK HttpClient enables
+            // that identification regardless of the SSLParameters supplied below.
             TrustManager[] trustAll = new TrustManager[] {
-                new X509TrustManager() {
+                new X509ExtendedTrustManager() {
                     @Override
                     public X509Certificate[] getAcceptedIssuers() {
                         return new X509Certificate[0];
@@ -343,6 +349,26 @@ public final class HttpWaitStrategy implements ManagedWaitStrategy {
                     @Override
                     public void checkServerTrusted(X509Certificate[] certs, String authType) {
                         // trust all
+                    }
+
+                    @Override
+                    public void checkClientTrusted(X509Certificate[] certs, String authType, Socket socket) {
+                        // trust all
+                    }
+
+                    @Override
+                    public void checkServerTrusted(X509Certificate[] certs, String authType, Socket socket) {
+                        // trust all, without hostname verification
+                    }
+
+                    @Override
+                    public void checkClientTrusted(X509Certificate[] certs, String authType, SSLEngine engine) {
+                        // trust all
+                    }
+
+                    @Override
+                    public void checkServerTrusted(X509Certificate[] certs, String authType, SSLEngine engine) {
+                        // trust all, without hostname verification
                     }
                 }
             };

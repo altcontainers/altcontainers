@@ -42,7 +42,7 @@ import org.slf4j.LoggerFactory;
 /**
  * Asynchronous cleanup executor with retry, backoff, and escalation.
  *
- * <p>Owns two thread pools: a {@link ScheduledThreadPoolExecutor} for the
+ * <p>Owns two thread pools: a {@link java.util.concurrent.ScheduledThreadPoolExecutor} for the
  * process ladder, and a cached daemon-thread pool for
  * {@link CompletableFuture#runAsync} Docker command execution. This
  * separation prevents deadlock when per-tier {@code Future.get(timeout)}
