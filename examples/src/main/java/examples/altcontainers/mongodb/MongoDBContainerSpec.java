@@ -27,9 +27,15 @@ import org.altcontainers.api.OutputFrame;
  * A {@link ContainerSpec} pre-configured for a {@code mongo} image.
  *
  * <p>The spec pre-fills MongoDB-specific configuration: exposed port 27017, a
- * port-wait condition for readiness, a 1-minute startup timeout, and 3 startup
+ * log-wait condition for readiness, a 1-minute startup timeout, and 3 startup
  * attempts. No environment variables or custom commands are set — MongoDB image
  * defaults are used.
+ *
+ * <p>Readiness waits for {@code mongod} to log that it is waiting for connections
+ * rather than for port 27017 to accept a TCP connection. {@code mongod} binds the
+ * port well before it can serve commands, so a port-based condition hands out a
+ * container that resets connections issued against it. Waiting for the log line
+ * means clients can issue commands as soon as the container is ready.
  *
  * <p>Use {@link #builder(String)} to create a {@code MongoDBContainerSpec}:
  *
@@ -51,6 +57,11 @@ public final class MongoDBContainerSpec extends GenericContainerSpec {
     private static final Duration STARTUP_TIMEOUT = Duration.ofMinutes(1);
     private static final int STARTUP_ATTEMPTS = 3;
 
+    /**
+     * Matches the {@code mongod} log line emitted once the server accepts commands.
+     */
+    private static final String READY_LOG_REGEX = ".*\"msg\":\"Waiting for connections\".*";
+
     private MongoDBContainerSpec(GenericContainerSpec genericContainerSpec) {
         super(genericContainerSpec);
     }
@@ -68,7 +79,7 @@ public final class MongoDBContainerSpec extends GenericContainerSpec {
     /**
      * Mutable builder for configuring a {@link MongoDBContainerSpec}.
      *
-     * <p>The builder pre-fills MongoDB defaults: port 27017, port-wait readiness
+     * <p>The builder pre-fills MongoDB defaults: port 27017, log-wait readiness
      * condition, 1-minute startup timeout, 3 startup attempts. Callers specify
      * only image, network, and optionally an output consumer.
      *
@@ -83,7 +94,7 @@ public final class MongoDBContainerSpec extends GenericContainerSpec {
                     .exposePorts(MONGODB_PORT)
                     .startupTimeout(STARTUP_TIMEOUT)
                     .startupAttempts(STARTUP_ATTEMPTS)
-                    .waitForContainerPort(MONGODB_PORT);
+                    .waitForLogMessage(READY_LOG_REGEX);
         }
 
         /**

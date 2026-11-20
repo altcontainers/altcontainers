@@ -24,9 +24,9 @@ import nonapi.org.altcontainers.api.ConcreteContainer;
 import nonapi.org.altcontainers.api.ConcreteNetwork;
 import org.altcontainers.api.Container;
 import org.altcontainers.api.ContainerSpec;
+import org.altcontainers.api.LogWaitStrategy;
 import org.altcontainers.api.Network;
 import org.altcontainers.api.OutputFrame;
-import org.altcontainers.api.PortWaitStrategy;
 import org.junit.jupiter.api.Test;
 
 class MongoDBContainerSpecTest {
@@ -57,11 +57,11 @@ class MongoDBContainerSpecTest {
     }
 
     @Test
-    void shouldHavePortWaitCondition() {
+    void shouldHaveLogWaitCondition() {
         var spec =
                 MongoDBContainerSpec.builder(IMAGE).network(NETWORK, "mongodb").build();
         assertThat(spec.waitConditions()).hasSize(1);
-        assertThat(spec.waitConditions().get(0)).isInstanceOf(PortWaitStrategy.class);
+        assertThat(spec.waitConditions().get(0)).isInstanceOf(LogWaitStrategy.class);
     }
 
     @Test
