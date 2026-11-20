@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
@@ -45,7 +46,8 @@ import org.apache.kafka.common.errors.TopicExistsException;
  * the network.
  *
  * <p>After the container starts, the broker is polled until it accepts API
- * requests, or the startup timeout elapses.
+ * requests, and the internal consumer-offsets topic is created so the group
+ * coordinator is serving before any client joins a consumer group.
  *
  * <p>The container is stopped silently on failure during initialization.
  */
@@ -54,6 +56,18 @@ public class KafkaTestEnvironment implements AutoCloseable {
     private static final String ADMIN_REQUEST_TIMEOUT_MS = "5000";
     private static final int TOPIC_CREATE_TIMEOUT_SECONDS = 8;
     private static final long TOPIC_VISIBILITY_POLL_MILLIS = 50L;
+
+    /**
+     * Topic holding group coordination state. Kafka creates it lazily on the first
+     * group-coordinator request.
+     */
+    private static final String CONSUMER_OFFSETS_TOPIC = "__consumer_offsets";
+
+    /**
+     * Topic configuration applied by the broker when it creates the consumer-offsets
+     * topic itself; supplied here so the pre-created topic is equivalent.
+     */
+    private static final Map<String, String> CONSUMER_OFFSETS_CONFIG = Map.of("cleanup.policy", "compact");
 
     private final String dockerImageName;
 
@@ -104,6 +118,7 @@ public class KafkaTestEnvironment implements AutoCloseable {
             throw e;
         }
         awaitBrokerReady();
+        awaitGroupCoordinatorReady();
     }
 
     private static final String PROBE_TOPIC = "_altcontainers_readiness_probe";
@@ -129,6 +144,29 @@ public class KafkaTestEnvironment implements AutoCloseable {
         }
         stopQuietly();
         throw new ContainerException("Kafka broker not ready within startup timeout");
+    }
+
+    /**
+     * Creates the consumer-offsets topic so the broker's group coordinator is serving
+     * before any client joins a consumer group.
+     *
+     * <p>The broker creates this topic lazily when the first coordinator request
+     * arrives. A client that joins while that creation is still in flight receives
+     * {@code NOT_COORDINATOR} and has to rediscover the coordinator; creating the
+     * topic up front removes the race. Topics are created with one partition, matching
+     * {@code KAFKA_OFFSETS_TOPIC_NUM_PARTITIONS} in {@link KafkaContainerSpec}.
+     */
+    private void awaitGroupCoordinatorReady() {
+        try {
+            createTopic(CONSUMER_OFFSETS_TOPIC, CONSUMER_OFFSETS_CONFIG);
+        } catch (ExecutionException e) {
+            stopQuietly();
+            throw new IllegalStateException("Failed to create " + CONSUMER_OFFSETS_TOPIC, e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            stopQuietly();
+            throw new ContainerException("Interrupted while preparing the Kafka group coordinator", e);
+        }
     }
 
     private void deleteProbeTopic() {
@@ -205,6 +243,22 @@ public class KafkaTestEnvironment implements AutoCloseable {
      * @throws IllegalStateException if the create operation times out, or the topic never becomes available
      */
     public void createTopic(final String topic) throws ExecutionException, InterruptedException {
+        createTopic(topic, Map.of());
+    }
+
+    /**
+     * Creates a Kafka topic with a single partition, replication factor of 1, and the
+     * supplied topic configuration, then waits until clients can use it. Silently
+     * succeeds if the topic already exists.
+     *
+     * @param topic the topic name to create
+     * @param configs topic configuration entries; empty for broker defaults
+     * @throws ExecutionException if an asynchronous admin operation fails (other than topic-exists)
+     * @throws InterruptedException if the calling thread is interrupted; the interrupt flag is restored
+     * @throws IllegalStateException if the create operation times out, or the topic never becomes available
+     */
+    private void createTopic(final String topic, final Map<String, String> configs)
+            throws ExecutionException, InterruptedException {
         var properties = new Properties();
         properties.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, getBootstrapServers());
         properties.put(AdminClientConfig.REQUEST_TIMEOUT_MS_CONFIG, ADMIN_REQUEST_TIMEOUT_MS);
@@ -213,7 +267,7 @@ public class KafkaTestEnvironment implements AutoCloseable {
         try (var adminClient = AdminClient.create(properties)) {
             try {
                 adminClient
-                        .createTopics(List.of(new NewTopic(topic, 1, (short) 1)))
+                        .createTopics(List.of(new NewTopic(topic, 1, (short) 1).configs(configs)))
                         .all()
                         .get(TOPIC_CREATE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             } catch (TimeoutException e) {
