@@ -26,6 +26,14 @@ try (Network network = Network.create()) {
 
 Resources are destroyed in reverse order (container first, then network).
 
+Closing a container first asks Docker to stop it gracefully, waiting up to
+`altcontainers.reaper.stop.timeout.ms` for the process to exit (plus a short buffer for daemon
+latency). If the stop times out or fails, the container is force-removed before `close()` returns,
+so it no longer holds its network endpoints and the network can then be removed. The timeout is
+logged at `INFO`; a container whose main process ignores `SIGTERM` (for example a shell script
+that starts `java` without `exec`) waits for the full stop timeout on every close. Only if the
+force-remove also fails is the container handed to the [reaper](#automatic-cleanup-reaper).
+
 ## Manual cleanup
 
 If try-with-resources is not suitable:
@@ -138,7 +146,7 @@ If a container fails to start (timeout, pull error, Docker error):
 
 1. The partially created container is destroyed immediately.
 2. If `startupAttempts > 1`, the next attempt begins after a backoff delay.
-3. Cleanup failures do not replace the startup failure: they are logged, and a stop or removal that times out is delegated to the reaper. The exception reported to the caller is always the startup failure.
+3. Cleanup failures do not replace the startup failure: they are logged, a stop that times out or fails is followed by a force-remove, and a removal that still cannot complete is delegated to the reaper. The exception reported to the caller is always the startup failure.
 
 ## Learn next
 

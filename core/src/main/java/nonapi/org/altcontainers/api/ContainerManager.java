@@ -91,6 +91,13 @@ public final class ContainerManager {
 
     private static final long CONTAINER_REMOVE_RETRY_BASE_DELAY_MS = 200L;
 
+    /**
+     * Upper bound for the synchronous force-remove that follows a failed or timed-out stop. A
+     * force-remove kills the container immediately, so it normally completes quickly; the bound
+     * keeps {@code close()} from blocking indefinitely on an unresponsive daemon.
+     */
+    private static final long FORCE_REMOVE_TIMEOUT_SECONDS = 10L;
+
     private static final int INSPECT_AFTER_START_ATTEMPTS = 3;
 
     private static final long INSPECT_AFTER_START_RETRY_DELAY_MS = 100L;
@@ -117,6 +124,7 @@ public final class ContainerManager {
     private final Map<String, LogHandle> logHandles = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CompletableFuture<Void>> inflightPulls = new ConcurrentHashMap<>();
     private volatile Function<String, ContainerMetadata> metadataInspector = this::inspectAfterStart;
+    private volatile ContainerStopper containerStopper = this::stopWithTimeout;
     private final Set<String> localImageCache = ConcurrentHashMap.newKeySet();
 
     private ContainerManager() {
@@ -163,6 +171,43 @@ public final class ContainerManager {
      */
     void resetMetadataInspectorForTesting() {
         metadataInspector = this::inspectAfterStart;
+    }
+
+    /**
+     * Performs the bounded Docker stop that precedes container removal.
+     */
+    @FunctionalInterface
+    interface ContainerStopper {
+
+        /**
+         * Stops a container, waiting at most {@code futureTimeoutSeconds}.
+         *
+         * @param containerId the Docker container id
+         * @param dockerStopTimeoutSeconds the timeout passed to the Docker stop API
+         * @param futureTimeoutSeconds how long to wait for the stop call to return
+         * @throws InterruptedException if interrupted while waiting
+         * @throws ExecutionException if the stop call fails
+         * @throws TimeoutException if the stop call does not return in time
+         */
+        void stop(String containerId, int dockerStopTimeoutSeconds, long futureTimeoutSeconds)
+                throws InterruptedException, ExecutionException, TimeoutException;
+    }
+
+    /**
+     * Installs a container stopper for internal lifecycle tests, so stop timeouts and failures
+     * can be simulated without waiting for the real stop timeout.
+     *
+     * @param stopper the container stopper
+     */
+    void setContainerStopperForTesting(ContainerStopper stopper) {
+        containerStopper = Objects.requireNonNull(stopper, "stopper must not be null");
+    }
+
+    /**
+     * Restores the production container stopper.
+     */
+    void resetContainerStopperForTesting() {
+        containerStopper = this::stopWithTimeout;
     }
 
     /**
@@ -1321,9 +1366,10 @@ public final class ContainerManager {
     }
 
     /**
-     * Stops and removes a container via Docker, delegating cleanup to the
-     * reaper process only when the stop times out or the remove fails after
-     * retries.
+     * Stops and removes a container via Docker. If the stop times out or fails, the container is
+     * force-removed synchronously so that it is gone (and detached from its networks) when this
+     * method returns. Cleanup is delegated to the reaper process only when the force-remove also
+     * fails, or when the caller is shutting down or interrupted.
      *
      * @param containerId the Docker container ID
      */
@@ -1337,26 +1383,22 @@ public final class ContainerManager {
                 ReaperController.instance().configuration().reaperStopTimeout().toSeconds();
         int stopTimeoutForDocker = dockerStopTimeoutSeconds(stopTimeoutSeconds);
         // Future timeout includes a buffer so Docker's own stop timeout doesn't race
-        // the Java timeout, avoiding unnecessary delegation to the reaper.
+        // the Java timeout, avoiding an unnecessary force-remove.
         long futureTimeoutSeconds = Math.addExact(stopTimeoutSeconds, 10L);
         try {
-            CompletableFuture<Void> future = CompletableFuture.runAsync(
-                    () -> dockerClient()
-                            .stopContainerCmd(containerId)
-                            .withTimeout(stopTimeoutForDocker)
-                            .exec(),
-                    STOP_EXECUTOR);
-            future.get(futureTimeoutSeconds, TimeUnit.SECONDS);
+            containerStopper.stop(containerId, stopTimeoutForDocker, futureTimeoutSeconds);
         } catch (RejectedExecutionException e) {
             logger.debug("Executor shut down, delegating container {} stop to reaper", containerId);
             delegateTerminateContainerToReaper(containerId);
             return;
         } catch (TimeoutException e) {
-            logger.debug(
-                    "Stop timed out for container {} after {}s, delegating to reaper",
+            logger.info(
+                    "Stop timed out for container {} after {}s (Docker stop timeout {}s; the container"
+                            + " process may not handle SIGTERM), force-removing",
                     containerId,
-                    futureTimeoutSeconds);
-            delegateTerminateContainerToReaper(containerId);
+                    futureTimeoutSeconds,
+                    stopTimeoutForDocker);
+            forceRemoveAfterFailedStop(containerId);
             return;
         } catch (ExecutionException e) {
             Throwable cause = e.getCause();
@@ -1368,11 +1410,11 @@ public final class ContainerManager {
                 logger.debug("Stop: container {} already stopped (Status 304)", containerId);
                 // Container is already stopped — fall through to remove.
             } else {
-                logger.debug(
-                        "Stop failed for container {}, delegating to reaper: {}",
+                logger.info(
+                        "Stop failed for container {}, force-removing: {}",
                         containerId,
                         cause != null ? cause.getMessage() : "unknown");
-                delegateTerminateContainerToReaper(containerId);
+                forceRemoveAfterFailedStop(containerId);
                 return;
             }
         } catch (InterruptedException e) {
@@ -1383,6 +1425,63 @@ public final class ContainerManager {
         }
         // Stop succeeded — remove synchronously with retry for transient failures.
         removeContainerWithRetry(containerId);
+    }
+
+    /**
+     * Production {@link ContainerStopper}: issues the Docker stop on the stop executor and waits
+     * for it with a bounded timeout.
+     *
+     * @param containerId the Docker container ID
+     * @param dockerStopTimeoutSeconds the timeout passed to the Docker stop API
+     * @param futureTimeoutSeconds how long to wait for the stop call to return
+     * @throws InterruptedException if interrupted while waiting
+     * @throws ExecutionException if the stop call fails
+     * @throws TimeoutException if the stop call does not return in time
+     */
+    private void stopWithTimeout(String containerId, int dockerStopTimeoutSeconds, long futureTimeoutSeconds)
+            throws InterruptedException, ExecutionException, TimeoutException {
+        CompletableFuture<Void> future = CompletableFuture.runAsync(
+                () -> dockerClient()
+                        .stopContainerCmd(containerId)
+                        .withTimeout(dockerStopTimeoutSeconds)
+                        .exec(),
+                STOP_EXECUTOR);
+        future.get(futureTimeoutSeconds, TimeUnit.SECONDS);
+    }
+
+    /**
+     * Force-removes a container whose graceful stop timed out or failed. The force-remove runs
+     * synchronously (bounded by {@link #FORCE_REMOVE_TIMEOUT_SECONDS}) so the container is no
+     * longer attached to its networks when {@code close()} returns, which lets a subsequent
+     * network removal succeed. Delegates to the reaper if the force-remove cannot complete.
+     *
+     * @param containerId the Docker container ID
+     */
+    private void forceRemoveAfterFailedStop(String containerId) {
+        try {
+            CompletableFuture.runAsync(() -> removeContainerWithRetry(containerId), STOP_EXECUTOR)
+                    .get(FORCE_REMOVE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (RejectedExecutionException e) {
+            logger.debug("Executor shut down, delegating container {} remove to reaper", containerId);
+            delegateTerminateContainerToReaper(containerId);
+        } catch (TimeoutException e) {
+            logger.info(
+                    "Force-remove timed out for container {} after {}s, delegating to reaper",
+                    containerId,
+                    FORCE_REMOVE_TIMEOUT_SECONDS);
+            delegateTerminateContainerToReaper(containerId);
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            logger.info(
+                    "Force-remove failed for container {}, delegating to reaper: {}",
+                    containerId,
+                    cause != null ? cause.getMessage() : "unknown");
+            delegateTerminateContainerToReaper(containerId);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            logger.debug("Interrupted during force-remove for container {}, delegating to reaper", containerId);
+            delegateTerminateContainerToReaper(containerId);
+        }
     }
 
     /**
@@ -1420,7 +1519,7 @@ public final class ContainerManager {
                 }
             }
         }
-        logger.debug(
+        logger.info(
                 "Remove failed after {} retries for container {}, delegating to reaper: {}",
                 CONTAINER_REMOVE_RETRY_COUNT,
                 containerId,

@@ -182,6 +182,17 @@ public final class NetworkManager {
         } catch (ExecutionException e) {
             if (e.getCause() instanceof com.github.dockerjava.api.exception.NotFoundException) {
                 LOGGER.debug("Network {} not found during remove (already removed)", network.id());
+            } else if (isActiveEndpointsFailure(e.getCause())) {
+                // ContainerManager force-removes a container whose stop fails, so a container that
+                // is still attached here was either not closed before its network, was attached
+                // outside altcontainers, or could not be removed (already logged at INFO). The
+                // reaper retries the removal and force-disconnects remaining endpoints.
+                LOGGER.info(
+                        "Network {} still has attached containers (close containers before their"
+                                + " network), delegating to reaper: {}",
+                        network.id(),
+                        e.getCause().getMessage());
+                delegateTerminateNetworkToReaper(network.id());
             } else {
                 LOGGER.info(
                         "Remove failed for network {}, delegating to reaper: {}",
@@ -198,6 +209,20 @@ public final class NetworkManager {
                 networkSemaphore.release();
             }
         }
+    }
+
+    /**
+     * Returns whether a network removal failed because containers are still attached to the
+     * network. Docker reports this as {@code error while removing network: network ... has active
+     * endpoints} (HTTP 403 on current daemons).
+     *
+     * @param cause the failure cause; may be {@code null}
+     * @return {@code true} if the failure is the active-endpoints error
+     */
+    static boolean isActiveEndpointsFailure(Throwable cause) {
+        return cause instanceof com.github.dockerjava.api.exception.DockerException
+                && cause.getMessage() != null
+                && cause.getMessage().contains("has active endpoints");
     }
 
     /**

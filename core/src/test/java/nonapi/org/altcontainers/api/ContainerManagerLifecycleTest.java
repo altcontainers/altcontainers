@@ -20,15 +20,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.github.dockerjava.api.exception.NotFoundException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import org.altcontainers.api.Container;
 import org.altcontainers.api.ContainerException;
 import org.altcontainers.api.ContainerSpec;
+import org.altcontainers.api.Network;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
 
-/** Tests cleanup when startup metadata construction fails. */
+/** Tests container cleanup when startup or stop fails. */
 @Tag("docker")
 class ContainerManagerLifecycleTest {
 
@@ -71,6 +74,77 @@ class ContainerManagerLifecycleTest {
                     // Best-effort cleanup for a failed reproduction.
                 }
             }
+        }
+    }
+
+    @Test
+    @EnabledIf("dockerAndReaperAvailable")
+    void shouldForceRemoveContainerSynchronouslyWhenStopTimesOut() {
+        assertContainerForceRemovedSynchronously((id, dockerTimeout, futureTimeout) -> {
+            throw new TimeoutException("synthetic stop timeout");
+        });
+    }
+
+    @Test
+    @EnabledIf("dockerAndReaperAvailable")
+    void shouldForceRemoveContainerSynchronouslyWhenStopFails() {
+        assertContainerForceRemovedSynchronously((id, dockerTimeout, futureTimeout) -> {
+            throw new ExecutionException(new RuntimeException("synthetic stop failure"));
+        });
+    }
+
+    /**
+     * Closes a running container attached to a network while the stop step fails, then verifies
+     * that the container is already gone when {@code close()} returns and that the network can be
+     * removed immediately afterwards (no "has active endpoints" failure).
+     *
+     * <p>{@code sleep} runs as PID 1 and ignores SIGTERM, matching the real-world case where a
+     * graceful stop waits for the full Docker stop timeout.
+     *
+     * @param failingStopper the stopper that simulates the stop failure
+     */
+    private static void assertContainerForceRemovedSynchronously(ContainerManager.ContainerStopper failingStopper) {
+        ContainerManager manager = ContainerManager.getInstance();
+        Network network = Network.create();
+        Container container = null;
+        try {
+            container = Container.create(ContainerSpec.builder("alpine:latest")
+                    .command("sleep", "300")
+                    .network(network, "sleeper")
+                    .startupAttempts(1)
+                    .build());
+            String containerId = container.id();
+
+            manager.setContainerStopperForTesting(failingStopper);
+            container.close();
+
+            assertThatThrownBy(() -> DockerClientFactory.client()
+                            .inspectContainerCmd(containerId)
+                            .exec())
+                    .as("container must be removed before close() returns")
+                    .isInstanceOf(NotFoundException.class);
+
+            network.close();
+
+            assertThatThrownBy(() -> DockerClientFactory.client()
+                            .inspectNetworkCmd()
+                            .withNetworkId(network.id())
+                            .exec())
+                    .as("network must be removed by close(), not delegated to the reaper")
+                    .isInstanceOf(NotFoundException.class);
+        } finally {
+            manager.resetContainerStopperForTesting();
+            if (container != null) {
+                try {
+                    DockerClientFactory.client()
+                            .removeContainerCmd(container.id())
+                            .withForce(true)
+                            .exec();
+                } catch (RuntimeException ignored) {
+                    // Best-effort cleanup for a failed reproduction.
+                }
+            }
+            network.close();
         }
     }
 }

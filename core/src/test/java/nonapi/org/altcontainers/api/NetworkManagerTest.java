@@ -18,6 +18,8 @@ package nonapi.org.altcontainers.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.github.dockerjava.api.exception.DockerException;
+import com.github.dockerjava.api.exception.NotFoundException;
 import org.altcontainers.api.Network;
 import org.junit.jupiter.api.Test;
 
@@ -38,5 +40,30 @@ class NetworkManagerTest {
         assertThat(manager.availableNetworkPermitsForTesting())
                 .as("closing the same network twice must release exactly one permit")
                 .isEqualTo(permitsBefore + 1);
+    }
+
+    @Test
+    void activeEndpointsFailureShouldBeRecognized() {
+        DockerException activeEndpoints = new DockerException(
+                "Status 403: {\"message\":\"error while removing network: network altcontainers-0928f72f-43fb5315"
+                        + " has active endpoints (name:\\\"lucid_shtern\\\" id:\\\"cf4f241cd6b6\\\")\"}",
+                403);
+
+        assertThat(NetworkManager.isActiveEndpointsFailure(activeEndpoints)).isTrue();
+    }
+
+    @Test
+    void otherNetworkRemovalFailuresShouldNotBeTreatedAsActiveEndpoints() {
+        assertThat(NetworkManager.isActiveEndpointsFailure(
+                        new DockerException("Status 500: {\"message\":\"internal error\"}", 500)))
+                .isFalse();
+        assertThat(NetworkManager.isActiveEndpointsFailure(new NotFoundException("network not found")))
+                .isFalse();
+        assertThat(NetworkManager.isActiveEndpointsFailure(new IllegalStateException("has active endpoints")))
+                .as("only Docker API failures qualify")
+                .isFalse();
+        assertThat(NetworkManager.isActiveEndpointsFailure(new DockerException(null, 403)))
+                .isFalse();
+        assertThat(NetworkManager.isActiveEndpointsFailure(null)).isFalse();
     }
 }
