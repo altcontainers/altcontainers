@@ -61,8 +61,8 @@ public final class PortWaitStrategy implements ManagedWaitStrategy {
                     "containerPort must be in " + ContainerPorts.range() + ", was " + containerPort);
         }
         this.containerPort = containerPort;
-        this.portProbeTimeoutMillis =
-                (int) AltcontainersProperties.instance().portProbeTimeout().toMillis();
+        this.portProbeTimeoutMillis = (int)
+                Math.min(AltcontainersProperties.instance().portProbeTimeout().toMillis(), Integer.MAX_VALUE);
     }
 
     /**

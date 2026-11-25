@@ -21,6 +21,7 @@ import com.github.dockerjava.api.async.ResultCallback;
 import com.github.dockerjava.api.command.CreateContainerCmd;
 import com.github.dockerjava.api.command.CreateContainerResponse;
 import com.github.dockerjava.api.command.InspectContainerResponse;
+import com.github.dockerjava.api.exception.DockerClientException;
 import com.github.dockerjava.api.exception.NotFoundException;
 import com.github.dockerjava.api.exception.NotModifiedException;
 import com.github.dockerjava.api.model.AccessMode;
@@ -302,8 +303,27 @@ public final class ContainerManager {
      */
     private void startPull(String image, CompletableFuture<Void> completion) {
         ResultCallback.Adapter<PullResponseItem> adapter = new ResultCallback.Adapter<>() {
+            private DockerClientException responseFailure;
+
+            @Override
+            public void onNext(PullResponseItem item) {
+                if (responseFailure == null && item.isErrorIndicated()) {
+                    var detail = item.getErrorDetail();
+                    String message = detail != null ? detail.getMessage() : null;
+                    if (message == null) {
+                        message = item.getError();
+                    }
+                    responseFailure =
+                            new DockerClientException(message != null ? message : "Docker reported a pull error");
+                }
+            }
+
             @Override
             public void onComplete() {
+                if (responseFailure != null) {
+                    onError(responseFailure);
+                    return;
+                }
                 localImageCache.add(image);
                 completion.complete(null);
                 inflightPulls.remove(image, completion);

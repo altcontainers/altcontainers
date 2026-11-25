@@ -17,29 +17,61 @@
 package nonapi.org.altcontainers.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.github.dockerjava.api.exception.DockerException;
 import com.github.dockerjava.api.exception.NotFoundException;
 import org.altcontainers.api.Network;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIf;
 
 /**
  * Tests for {@link NetworkManager}.
  */
 class NetworkManagerTest {
 
+    static boolean dockerAndReaperAvailable() {
+        return ContainerManagerPullTest.dockerAndReaperAvailable();
+    }
+
     @Test
+    @EnabledIf("dockerAndReaperAvailable")
     void doubleCloseShouldReleasePermitOnlyOnce() {
         NetworkManager manager = new NetworkManager(1);
-        int permitsBefore = manager.availableNetworkPermitsForTesting();
-        // A network id that does not exist in the daemon: closeNetwork handles the
-        // not-found result and must still release at most one semaphore permit.
-        Network network = new ConcreteNetwork("test-net", "nonexistent-network-id");
-        manager.closeNetwork(network);
+        Network network = manager.createNetwork();
+        try {
+            assertThat(manager.availableNetworkPermitsForTesting()).isZero();
+        } finally {
+            manager.closeNetwork(network);
+        }
+        assertThat(manager.availableNetworkPermitsForTesting()).isOne();
+
         manager.closeNetwork(network);
         assertThat(manager.availableNetworkPermitsForTesting())
                 .as("closing the same network twice must release exactly one permit")
-                .isEqualTo(permitsBefore + 1);
+                .isOne();
+    }
+
+    @Test
+    @EnabledIf("dockerAndReaperAvailable")
+    void closingAnUnmanagedNetworkShouldNotReleaseAPermit() {
+        NetworkManager owner = new NetworkManager(1);
+        NetworkManager manager = new NetworkManager(1);
+        Network network = owner.createNetwork();
+        try {
+            manager.closeNetwork(network);
+            assertThatThrownBy(() -> DockerClientFactory.client()
+                            .inspectNetworkCmd()
+                            .withNetworkId(network.id())
+                            .exec())
+                    .as("the manager must still remove the unmanaged network")
+                    .isInstanceOf(NotFoundException.class);
+            assertThat(manager.availableNetworkPermitsForTesting()).isOne();
+            assertThat(owner.availableNetworkPermitsForTesting()).isZero();
+        } finally {
+            owner.closeNetwork(network);
+        }
+        assertThat(owner.availableNetworkPermitsForTesting()).isOne();
     }
 
     @Test

@@ -28,10 +28,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyStore;
 import java.time.Duration;
+import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import nonapi.org.altcontainers.api.AltcontainersProperties;
 import nonapi.org.altcontainers.api.ConcreteContainer;
+import nonapi.org.altcontainers.api.ContainerMetadata;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -190,6 +195,108 @@ class HttpWaitStrategyTest {
             assertThat(result).isFalse();
             // With 500ms timeout, should complete well under 2 seconds
             assertThat(duration).isLessThan(2000);
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void shouldReturnStatusWithoutWaitingForResponseBody() throws Exception {
+        CountDownLatch headersSent = new CountDownLatch(1);
+        CountDownLatch finishBody = new CountDownLatch(1);
+        HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        server.createContext("/health", exchange -> {
+            try (exchange) {
+                exchange.sendResponseHeaders(200, 2);
+                exchange.getResponseBody().write('x');
+                exchange.getResponseBody().flush();
+                headersSent.countDown();
+                if (finishBody.await(10, TimeUnit.SECONDS)) {
+                    exchange.getResponseBody().write('x');
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        var executor = Executors.newSingleThreadExecutor();
+        server.start();
+        try {
+            HttpWaitStrategy strategy = new HttpWaitStrategy(HttpWaitStrategy.Protocol.HTTP, 8080, "/health", 200, 200);
+            Container container = new ConcreteContainer(
+                    "test-id",
+                    "test-image",
+                    ContainerSpec.builder("test-image").build(),
+                    new ContainerMetadata(
+                            "localhost", true, Map.of(8080, server.getAddress().getPort())));
+            var result = executor.submit(() -> strategy.check(container));
+            assertThat(headersSent.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(result.get(3, TimeUnit.SECONDS))
+                    .as(strategy.timeoutDiagnostic(container, Duration.ofSeconds(3)))
+                    .isTrue();
+        } finally {
+            finishBody.countDown();
+            executor.shutdownNow();
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void shouldApplyStatusRangeToRedirectResponseWithoutFollowingIt() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        server.createContext("/health", exchange -> {
+            try (exchange) {
+                exchange.getResponseHeaders().set("Location", "/ready");
+                exchange.sendResponseHeaders(302, -1);
+            }
+        });
+        server.createContext("/ready", exchange -> {
+            try (exchange) {
+                exchange.sendResponseHeaders(200, -1);
+            }
+        });
+        server.start();
+        try {
+            HttpWaitStrategy strategy = new HttpWaitStrategy(HttpWaitStrategy.Protocol.HTTP, 8080, "/health", 200, 200);
+            Container container = new ConcreteContainer(
+                    "test-id",
+                    "test-image",
+                    ContainerSpec.builder("test-image").build(),
+                    new ContainerMetadata(
+                            "localhost", true, Map.of(8080, server.getAddress().getPort())));
+            assertThat(strategy.check(container)).isFalse();
+            assertThat(strategy.timeoutDiagnostic(container, Duration.ofSeconds(1)))
+                    .contains("last status 302");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void shouldSendQuestionMarkAsPartOfRequestPathNotAsQuery() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        server.createContext("/", exchange -> {
+            try (exchange) {
+                var requestUri = exchange.getRequestURI();
+                boolean pathMatches =
+                        "/health%3Fdeep=true".equals(requestUri.getRawPath()) && requestUri.getRawQuery() == null;
+                exchange.sendResponseHeaders(pathMatches ? 200 : 400, -1);
+            }
+        });
+        server.start();
+        try {
+            HttpWaitStrategy strategy = HttpWaitStrategy.builder()
+                    .port(8080)
+                    .path("/health?deep=true")
+                    .build();
+            Container container = new ConcreteContainer(
+                    "test-id",
+                    "test-image",
+                    ContainerSpec.builder("test-image").build(),
+                    new ContainerMetadata(
+                            "localhost", true, Map.of(8080, server.getAddress().getPort())));
+            assertThat(strategy.check(container))
+                    .as(strategy.timeoutDiagnostic(container, Duration.ofSeconds(1)))
+                    .isTrue();
         } finally {
             server.stop(0);
         }

@@ -84,7 +84,7 @@ public final class Wait {
      * @param protocol the protocol; see {@link HttpWaitStrategy.Protocol}
      * @param containerPort the container port whose mapped host port is
      *     probed; must be in {@code 1..65535}
-     * @param path the request path; normalized to begin with {@code /}
+     * @param path the literal request path (not a query string); normalized to begin with {@code /}
      * @param minStatus inclusive lower bound for acceptable status
      * @param maxStatus inclusive upper bound for acceptable status
      * @return an HTTP-response wait strategy

@@ -27,7 +27,7 @@ Key differences:
 - **Explicit lifecycle.** You control when containers are created and destroyed.
 - **Reaper-based cleanup.** Altcontainers launches a separate Java reaper process for each JVM session. The reaper watches a persistent TCP connection for liveness. When the JVM exits (including `System.exit()`), the shutdown hook sends a `TERMINATE` message to the reaper, which then destroys all containers and networks labeled with the session ID. Unlike [Testcontainers' Ryuk](https://java.testcontainers.org), the reaper is a plain Java process, not a Docker container — no privileged sidecar required.
 
-- **Parallelism control.** The `altcontainers.networks.parallelism` property (system property, environment variable, or properties file) bounds concurrent network creation, preventing Docker daemon overload under heavy parallel test execution.
+- **Parallelism control.** The `altcontainers.networks.parallelism` property (system property, environment variable, or properties file) limits how many networks can be in creation or awaiting close at once.
 
 ## When to use Altcontainers
 

@@ -92,7 +92,7 @@ ContainerSpec.builder("my-image")
     .build();
 ```
 
-For a custom path or status range, construct `HttpWaitStrategy` directly:
+For a custom path or status range, construct `HttpWaitStrategy` directly. The `path` argument is a literal URI path, not a path plus query string. For example, `/health?deep=true` is sent as `/health%3Fdeep=true`, with no query.
 
 ```java
 ContainerSpec.builder("my-image")

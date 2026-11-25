@@ -287,7 +287,7 @@ public final class AltcontainersProperties {
     }
 
     /**
-     * Returns the maximum number of concurrent network creations.
+     * Returns the maximum number of networks being created or awaiting close.
      * A value of 0 means no limit.
      *
      * @return the network parallelism

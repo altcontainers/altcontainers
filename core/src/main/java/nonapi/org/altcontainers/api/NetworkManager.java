@@ -17,6 +17,7 @@
 package nonapi.org.altcontainers.api;
 
 import java.io.IOException;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -35,13 +36,12 @@ import org.slf4j.LoggerFactory;
 /**
  * Network lifecycle facade — uses docker-java directly.
  *
- * <p>A semaphore permit is acquired in {@link #createNetwork()} and released
- * in {@link #closeNetwork(Network)}'s {@code finally} block. Each live network
- * created through this manager holds one permit. Networks that are never
- * closed (relying on the reaper for Docker-side cleanup) leak their permit
- * in-JVM, eventually causing {@code createNetwork()} to block forever when
- * a parallelism limit is configured. Use try-with-resources on
- * {@link Network} to ensure permits are released.
+ * <p>When a parallelism limit is configured, {@link #createNetwork()} acquires a
+ * semaphore permit and each successfully created network holds it until
+ * {@link #closeNetwork(Network)} releases it. Closing a network that did not acquire
+ * a permit through this manager does not affect the limit. Use try-with-resources on
+ * {@link Network} rather than relying solely on the reaper for Docker-side cleanup,
+ * which does not release permits in this JVM.
  */
 public final class NetworkManager {
 
@@ -57,7 +57,7 @@ public final class NetworkManager {
     private static volatile boolean shuttingDown;
 
     private final Semaphore networkSemaphore;
-    private final ConcurrentHashMap<String, Boolean> releasedIds = new ConcurrentHashMap<>();
+    private final Set<String> networkIdsWithPermits = ConcurrentHashMap.newKeySet();
 
     private NetworkManager() {
         this(AltcontainersProperties.instance().networksParallelism());
@@ -130,7 +130,11 @@ public final class NetworkManager {
                         .withDriver("bridge")
                         .withLabels(labels)
                         .exec();
-                return new ConcreteNetwork(name, response.getId());
+                Network network = new ConcreteNetwork(name, response.getId());
+                if (networkSemaphore != null) {
+                    networkIdsWithPermits.add(network.id());
+                }
+                return network;
             } catch (RuntimeException e) {
                 throw new ContainerException("Failed to create network: " + name, e);
             }
@@ -153,11 +157,22 @@ public final class NetworkManager {
         if (network == null) {
             return;
         }
-        if (shuttingDown) {
-            LOGGER.debug("Shutdown in progress, delegating network {} remove to reaper", network.id());
-            delegateTerminateNetworkToReaper(network.id());
-            return;
+        String networkId = network.id();
+        try {
+            if (shuttingDown) {
+                LOGGER.debug("Shutdown in progress, delegating network {} remove to reaper", networkId);
+                delegateTerminateNetworkToReaper(networkId);
+                return;
+            }
+            removeNetwork(networkId);
+        } finally {
+            if (networkSemaphore != null && networkIdsWithPermits.remove(networkId)) {
+                networkSemaphore.release();
+            }
         }
+    }
+
+    private void removeNetwork(String networkId) {
         long stopTimeoutSeconds =
                 ReaperController.instance().configuration().reaperStopTimeout().toSeconds();
         // Future timeout includes a buffer so Docker daemon latency doesn't
@@ -166,22 +181,20 @@ public final class NetworkManager {
         try {
             CompletableFuture<Void> future = CompletableFuture.runAsync(
                     () -> DockerClientFactory.client()
-                            .removeNetworkCmd(network.id())
+                            .removeNetworkCmd(networkId)
                             .exec(),
                     STOP_EXECUTOR);
             future.get(futureTimeoutSeconds, TimeUnit.SECONDS);
         } catch (RejectedExecutionException e) {
-            LOGGER.debug("Executor shut down, delegating network {} remove to reaper", network.id());
-            delegateTerminateNetworkToReaper(network.id());
+            LOGGER.debug("Executor shut down, delegating network {} remove to reaper", networkId);
+            delegateTerminateNetworkToReaper(networkId);
         } catch (TimeoutException e) {
             LOGGER.info(
-                    "Remove timed out for network {} after {}s, delegating to reaper",
-                    network.id(),
-                    futureTimeoutSeconds);
-            delegateTerminateNetworkToReaper(network.id());
+                    "Remove timed out for network {} after {}s, delegating to reaper", networkId, futureTimeoutSeconds);
+            delegateTerminateNetworkToReaper(networkId);
         } catch (ExecutionException e) {
             if (e.getCause() instanceof com.github.dockerjava.api.exception.NotFoundException) {
-                LOGGER.debug("Network {} not found during remove (already removed)", network.id());
+                LOGGER.debug("Network {} not found during remove (already removed)", networkId);
             } else if (isActiveEndpointsFailure(e.getCause())) {
                 // ContainerManager force-removes a container whose stop fails, so a container that
                 // is still attached here was either not closed before its network, was attached
@@ -190,24 +203,20 @@ public final class NetworkManager {
                 LOGGER.info(
                         "Network {} still has attached containers (close containers before their"
                                 + " network), delegating to reaper: {}",
-                        network.id(),
+                        networkId,
                         e.getCause().getMessage());
-                delegateTerminateNetworkToReaper(network.id());
+                delegateTerminateNetworkToReaper(networkId);
             } else {
                 LOGGER.info(
                         "Remove failed for network {}, delegating to reaper: {}",
-                        network.id(),
+                        networkId,
                         e.getCause() != null ? e.getCause().getMessage() : "unknown");
-                delegateTerminateNetworkToReaper(network.id());
+                delegateTerminateNetworkToReaper(networkId);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            LOGGER.info("Interrupted during remove for network {}, delegating to reaper", network.id());
-            delegateTerminateNetworkToReaper(network.id());
-        } finally {
-            if (networkSemaphore != null && releasedIds.putIfAbsent(network.id(), Boolean.TRUE) == null) {
-                networkSemaphore.release();
-            }
+            LOGGER.info("Interrupted during remove for network {}, delegating to reaper", networkId);
+            delegateTerminateNetworkToReaper(networkId);
         }
     }
 

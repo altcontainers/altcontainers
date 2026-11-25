@@ -100,7 +100,7 @@ ALTCONTAINERS_REAPER_DISABLED=true
 
 #### `altcontainers.reaper.connection.timeout.ms`
 
-Timeout for the TCP connection and session ID handshake between the core module and the reaper process.
+Timeout for the TCP connection and session ID handshake between the core module and the reaper process. If the reaper times out waiting for the session ID, it treats that as a failed handshake rather than a disconnected session.
 
 **Values:** Positive integer (milliseconds)
 
@@ -254,7 +254,7 @@ ALTCONTAINERS_IMAGE_PULL_TIMEOUT_MS=600000
 
 #### `altcontainers.wait.port.probe.timeout.ms`
 
-Socket connect timeout for `PortWaitStrategy` TCP probes. Controls how long each probe waits for the port to accept a connection.
+Socket connect timeout for `PortWaitStrategy` TCP probes. Controls how long each probe waits for the port to accept a connection. Values above `2147483647` milliseconds are capped at that limit by the Java socket API.
 
 **Values:** Positive integer (milliseconds)
 
@@ -265,7 +265,7 @@ altcontainers.wait.port.probe.timeout.ms=1000
 
 #### `altcontainers.wait.http.probe.timeout.ms`
 
-Request timeout for `HttpWaitStrategy` HTTP/HTTPS probes. Controls how long each probe waits for an HTTP response.
+Request timeout for `HttpWaitStrategy` HTTP/HTTPS probes. Controls how long each probe waits for the response status and headers; the probe does not wait for the response body.
 
 **Values:** Positive integer (milliseconds)
 
@@ -280,11 +280,11 @@ altcontainers.wait.http.probe.timeout.ms=5000
 
 | Property Key | Type | Default | Configuration Methods | Purpose |
 |---|---|---|---|---|
-| `altcontainers.networks.parallelism` | int | `0` (unlimited) | System property, Environment, Properties file | Maximum concurrent network creation operations |
+| `altcontainers.networks.parallelism` | int | `0` (unlimited) | System property, Environment, Properties file | Maximum number of networks being created or awaiting close |
 
 #### `altcontainers.networks.parallelism`
 
-Bounds concurrent network creation to prevent Docker daemon overload under heavy parallel test execution. A value of `0` means no limit.
+A network takes a slot when creation begins and holds it until creation fails or the network is closed. Closing a network that did not take a slot does not increase the available slots. Use try-with-resources to release slots even if a test fails. A value of `0` means no limit.
 
 **Values:** Non-negative integer
 

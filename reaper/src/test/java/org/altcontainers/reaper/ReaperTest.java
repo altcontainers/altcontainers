@@ -62,6 +62,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Tests for the reaper I/O lifecycle and async cleanup executor.
@@ -256,6 +257,51 @@ class ReaperTest {
 
             String response = reader.readLine();
             assertThat(response).isEqualTo("ERROR");
+        }
+    }
+
+    @Test
+    void shouldExitAndRemoveDiscoveryFilesWhenHandshakeTimesOut(@TempDir Path directory) throws Exception {
+        String sessionId = UUID.randomUUID().toString();
+        Path portFile = directory.resolve(portFilePath(sessionId).getFileName());
+        Path jarFile = Files.createFile(directory.resolve(jarFilePath(sessionId).getFileName()));
+        Process reaper = new ProcessBuilder(
+                        Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                        "-cp",
+                        System.getProperty("surefire.test.class.path", System.getProperty("java.class.path")),
+                        "-Djava.io.tmpdir=" + directory,
+                        "-Daltcontainers.reaper.session.id=" + sessionId,
+                        "-Daltcontainers.reaper.connection.timeout.ms=100",
+                        Reaper.class.getName())
+                .redirectErrorStream(true)
+                .redirectOutput(directory.resolve("process.log").toFile())
+                .start();
+        try {
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+            String port = "";
+            while (System.nanoTime() < deadline && reaper.isAlive()) {
+                if (Files.exists(portFile)) {
+                    port = Files.readString(portFile).trim();
+                    if (!port.isEmpty()) {
+                        break;
+                    }
+                }
+                Thread.sleep(25);
+            }
+            assertThat(port).as("reaper published its listening port").isNotEmpty();
+            try (Socket client = new Socket("localhost", Integer.parseInt(port))) {
+                // Keep the connection open without supplying the session ID.
+                assertThat(reaper.waitFor(5, TimeUnit.SECONDS))
+                        .as("a failed handshake must not wait for the disconnect grace period")
+                        .isTrue();
+            }
+            assertThat(reaper.exitValue()).isEqualTo(1);
+            assertThat(portFile).doesNotExist();
+            assertThat(jarFile).doesNotExist();
+        } finally {
+            if (reaper.isAlive()) {
+                reaper.destroyForcibly().waitFor(5, TimeUnit.SECONDS);
+            }
         }
     }
 
@@ -648,6 +694,22 @@ class ReaperTest {
         } finally {
             scheduler.shutdownNow();
         }
+    }
+
+    @Test
+    void shouldReportLeftoversWhenDrainEndsBeforeQueuedRemovalRuns() {
+        DockerClient mockClient = mock(DockerClient.class);
+        stubListContainers(mockClient, "still-present");
+        stubSessionNetworks(mockClient);
+        // This scheduler accepts the removal, but never runs it before the drain expires.
+        ScheduledExecutorService scheduler = mock(ScheduledExecutorService.class);
+        CleanupExecutor executor = new CleanupExecutor(mockClient, 5, 500L, 500L, scheduler, Clock.systemUTC());
+
+        Reaper.CleanupResult result = Reaper.cleanup(mockClient, "session", executor, 0L, 0L);
+
+        org.mockito.Mockito.verify(scheduler).shutdownNow();
+        assertThat(result.containerIds()).containsExactly("still-present");
+        assertThat(Reaper.exitCode(result)).isEqualTo(Reaper.EXIT_LEFTOVERS);
     }
 
     @Test

@@ -19,14 +19,20 @@ package nonapi.org.altcontainers.api;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.sun.net.httpserver.HttpServer;
 import java.lang.reflect.Field;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.altcontainers.api.Container;
+import org.altcontainers.api.ContainerException;
 import org.altcontainers.api.ContainerSpec;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
@@ -55,6 +61,63 @@ class ContainerManagerPullTest {
 
     static boolean dockerAndReaperAvailable() {
         return dockerAvailable() && reaperJarAvailable();
+    }
+
+    @Test
+    void shouldReportErrorDeliveredInSuccessfulHttpPullResponse() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        byte[] response = """
+                {"status":"Pulling fs layer"}
+                {"errorDetail":{"message":"layer download failed"},"error":"layer download failed"}
+                """.getBytes(StandardCharsets.UTF_8);
+        server.createContext("/", exchange -> {
+            try (exchange) {
+                if (!exchange.getRequestURI().getPath().endsWith("/images/create")) {
+                    exchange.sendResponseHeaders(404, -1);
+                    return;
+                }
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, response.length);
+                exchange.getResponseBody().write(response);
+            }
+        });
+        server.start();
+        try {
+            // Isolate the process-wide Docker client and its host configuration.
+            Process worker = new ProcessBuilder(
+                            Path.of(System.getProperty("java.home"), "bin", "java")
+                                    .toString(),
+                            "-cp",
+                            System.getProperty("surefire.test.class.path", System.getProperty("java.class.path")),
+                            "-Daltcontainers.docker.host=tcp://127.0.0.1:"
+                                    + server.getAddress().getPort(),
+                            "-Daltcontainers.image.pull.timeout.ms=5000",
+                            PullFailureProbe.class.getName())
+                    .redirectErrorStream(true)
+                    .start();
+            try {
+                assertThat(worker.waitFor(15, TimeUnit.SECONDS)).isTrue();
+                String output = new String(worker.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+                assertThat(worker.exitValue())
+                        .as("pull probe output: %s", output)
+                        .isZero();
+            } finally {
+                if (worker.isAlive()) {
+                    worker.destroyForcibly();
+                }
+            }
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    public static class PullFailureProbe {
+        public static void main(String[] args) {
+            assertThatThrownBy(() -> ContainerManager.getInstance().triggerPullImage("test-image:latest"))
+                    .isInstanceOf(ContainerException.class)
+                    .hasMessageContaining("Image pull failed")
+                    .hasRootCauseMessage("layer download failed");
+        }
     }
 
     @Test

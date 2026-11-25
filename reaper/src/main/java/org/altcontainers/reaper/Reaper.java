@@ -449,7 +449,12 @@ public final class Reaper {
         var writer = new OutputStreamWriter(clientSocket.getOutputStream(), StandardCharsets.UTF_8);
         var reader = new BufferedReader(new InputStreamReader(clientSocket.getInputStream(), StandardCharsets.UTF_8));
 
-        String handshakeLine = reader.readLine();
+        String handshakeLine;
+        try {
+            handshakeLine = reader.readLine();
+        } catch (SocketTimeoutException e) {
+            throw new HandshakeException("Handshake timed out for session " + sessionId, e);
+        }
         if (!sessionId.equals(handshakeLine)) {
             throw new HandshakeException(
                     "Handshake mismatch: expected session " + sessionId + ", got '" + handshakeLine + "'");
@@ -551,10 +556,10 @@ public final class Reaper {
         }
 
         executor.shutdown();
+        boolean drained = false;
         try {
-            boolean completed =
-                    executor.awaitTermination(Math.max(0L, deadlineNanos - System.nanoTime()), TimeUnit.NANOSECONDS);
-            if (!completed) {
+            drained = executor.awaitTermination(Math.max(0L, deadlineNanos - System.nanoTime()), TimeUnit.NANOSECONDS);
+            if (!drained) {
                 logger.warn("drain incomplete; {} tasks abandoned", executor.getQueueSize());
                 executor.shutdownNow();
             }
@@ -564,7 +569,7 @@ public final class Reaper {
             executor.shutdownNow();
         }
 
-        return verify(client, sessionId, executor, sweeps, lastDiscoveryComplete);
+        return verify(client, sessionId, executor, sweeps, lastDiscoveryComplete, drained);
     }
 
     /**
@@ -737,19 +742,25 @@ public final class Reaper {
     }
 
     /**
-     * Produces the cleanup result, paying for an authoritative listing only when something is still
-     * unresolved.
+     * Produces the cleanup result, checking the daemon when work is unresolved or was abandoned
+     * before it could finish.
      *
      * @param client the Docker client
      * @param sessionId the session UUID
      * @param executor the cleanup executor
      * @param sweeps the number of sweeps that ran
      * @param discoveryComplete whether every discovery in this run succeeded
+     * @param drained whether all queued work finished before the drain ended
      * @return the cleanup result
      */
     private static CleanupResult verify(
-            DockerClient client, String sessionId, CleanupExecutor executor, int sweeps, boolean discoveryComplete) {
-        if (executor.unresolvedCount() == 0) {
+            DockerClient client,
+            String sessionId,
+            CleanupExecutor executor,
+            int sweeps,
+            boolean discoveryComplete,
+            boolean drained) {
+        if (drained && executor.unresolvedCount() == 0) {
             return new CleanupResult(sweeps, discoveryComplete, List.of(), List.of());
         }
         Map<String, String> filter = ResourceLabels.filterForSession(sessionId);
@@ -825,7 +836,7 @@ public final class Reaper {
     }
 
     /**
-     * Thrown when the reaper handshake fails due to session ID mismatch.
+     * Thrown when the reaper handshake times out or the session ID does not match.
      */
     private static final class HandshakeException extends IOException {
 
@@ -836,6 +847,10 @@ public final class Reaper {
          */
         private HandshakeException(String message) {
             super(message);
+        }
+
+        private HandshakeException(String message, IOException cause) {
+            super(message, cause);
         }
     }
 

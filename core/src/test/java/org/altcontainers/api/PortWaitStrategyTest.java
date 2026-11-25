@@ -18,9 +18,13 @@ package org.altcontainers.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.net.InetAddress;
 import java.net.ServerSocket;
+import java.time.Duration;
+import java.util.Map;
 import nonapi.org.altcontainers.api.AltcontainersProperties;
 import nonapi.org.altcontainers.api.ConcreteContainer;
+import nonapi.org.altcontainers.api.ContainerMetadata;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -76,6 +80,24 @@ class PortWaitStrategyTest {
         // With 100ms timeout, should complete quickly
         // (allow generous margin for CI initialization overhead)
         assertThat(duration).isLessThan(2000);
+    }
+
+    @Test
+    void shouldProbeListeningPortWhenConfiguredTimeoutExceedsSocketRange() throws Exception {
+        System.setProperty("altcontainers.wait.port.probe.timeout.ms", Long.toString((long) Integer.MAX_VALUE + 1));
+        AltcontainersProperties.reset();
+        try (ServerSocket server = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            PortWaitStrategy strategy = PortWaitStrategy.builder().port(8080).build();
+            Container container = new ConcreteContainer(
+                    "test-id",
+                    "test-image",
+                    ContainerSpec.builder("test-image").build(),
+                    new ContainerMetadata(
+                            server.getInetAddress().getHostAddress(), true, Map.of(8080, server.getLocalPort())));
+            assertThat(strategy.check(container))
+                    .as(strategy.timeoutDiagnostic(container, Duration.ofSeconds(1)))
+                    .isTrue();
+        }
     }
 
     @Test

@@ -162,7 +162,9 @@ public final class HttpWaitStrategy implements ManagedWaitStrategy {
      * {@code [minStatus, maxStatus]}.
      *
      * <p>The path is normalized to begin with {@code /} if it does not
-     * already. Inputs are validated; callers can also validate via
+     * already. It is treated as a literal URI path, not a request target with
+     * a query string: for example, {@code /health?deep=true} is sent as
+     * {@code /health%3Fdeep=true}, with no query. Inputs are validated; callers can also validate via
      * {@code ContainerSpec.Builder#waitForHttpResponse(int)} or
      * equivalent.
      *
@@ -275,11 +277,14 @@ public final class HttpWaitStrategy implements ManagedWaitStrategy {
         HttpRequest request =
                 HttpRequest.newBuilder().uri(uri).timeout(requestTimeout).GET().build();
         try {
-            HttpResponse<Void> response = httpClient.send(request, HttpResponse.BodyHandlers.discarding());
-            int status = response.statusCode();
-            lastStatus = status;
-            lastError = null;
-            return status >= minStatus && status <= maxStatus;
+            // Readiness depends on the status, not on downloading an arbitrarily long body.
+            var response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            try (var body = response.body()) {
+                int status = response.statusCode();
+                lastStatus = status;
+                lastError = null;
+                return status >= minStatus && status <= maxStatus;
+            }
         } catch (IOException e) {
             // Connect refused, connection reset, or read timeout: not ready — retry on next poll.
             lastStatus = null;
@@ -430,7 +435,8 @@ public final class HttpWaitStrategy implements ManagedWaitStrategy {
         }
 
         /**
-         * Sets the request path, normalized to begin with {@code /}.
+         * Sets the literal request path, normalized to begin with {@code /}.
+         * A {@code ?} in the path is encoded as {@code %3F}, not used to start a query.
          *
          * @param path the request path; must not be {@code null} or blank
          * @return this builder
