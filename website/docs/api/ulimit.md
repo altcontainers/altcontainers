@@ -20,7 +20,7 @@ public record Ulimit(String name, long soft, long hard) {
 
 ## Usage
 
-Configured through `ContainerSpec.Builder`:
+Configured through `GenericContainerSpec.Builder`:
 
 ```java
 import org.altcontainers.api.Ulimit;
@@ -29,6 +29,9 @@ ContainerSpec containerSpec = ContainerSpec.builder("my-image")
     .ulimit("nofile", 65536, 65536)   // max open files
     .ulimit("nproc", 4096, 4096)      // max processes
     .build();
+
+// Remove all configured ulimits from a derived spec
+ContainerSpec withoutUlimits = containerSpec.toBuilder().clearUlimits().build();
 ```
 
 Or create instances directly:
@@ -45,7 +48,8 @@ Ulimit nofile = new Ulimit("nofile", 65536, 65536);
 | `nproc` | Maximum number of processes |
 | `memlock` | Maximum locked-in-memory address space |
 
-Ulimits are OCI-standard and apply identically across Docker, Podman, and other OCI-compatible runtimes.
+Ulimits are passed to Docker through `HostConfig.withUlimits()`. The builder allows duplicate
+ulimit names. Values are available through the record accessors `name()`, `soft()`, and `hard()`.
 
 ## Validation
 

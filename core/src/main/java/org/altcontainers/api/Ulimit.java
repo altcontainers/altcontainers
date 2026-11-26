@@ -22,8 +22,7 @@ import java.util.Objects;
  * Immutable description of a Linux resource limit (ulimit).
  *
  * <p>{@code Ulimit} captures a single ulimit entry with a name, soft limit, and hard limit.
- * Ulimits are OCI-standard and apply identically across Docker, Podman, and other
- * OCI-compatible container runtimes.
+ * Ulimits are passed to Docker through {@code HostConfig.withUlimits()}.
  *
  * <p>Common ulimit names include:
  *

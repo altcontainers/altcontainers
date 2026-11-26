@@ -46,6 +46,7 @@ We welcome feature suggestions! Please create an issue with:
 
 - Java 17 or higher
 - Maven 3.9+
+- A running Docker daemon (the test suite creates real containers and networks)
 
 ### Building the Project
 
@@ -62,10 +63,32 @@ cd altcontainers
 
 - `core/` - Main library (public API + implementation)
 - `reaper/` - Standalone cleanup process launched by `core`
-- `examples/` - Example container specs and integration tests driven by [Paramixel](https://www.paramixel.org)
-- `assets/` - License header template and shared resources
+- `examples/` - Example container specs and integration tests driven by [Paramixel](https://www.paramixel.org); see `examples/README.md`
+- `assets/` - License header template and PMD ruleset
 - `scripts/` - Build, documentation, stress-test, and release scripts
 - `website/` - Docusaurus documentation site
+
+### Documentation
+
+The documentation site is a Docusaurus project in `website/`. Building it requires Node.js 20+
+(the version declared in `website/package.json`) and npm; the validation scripts also require `jq`.
+
+```bash
+cd website
+npm ci
+npm start          # local development server
+npm run build      # production build
+```
+
+From the repository root, the build script validates documentation versions, sidebar
+references, frontmatter, and internal links before building every version:
+
+```bash
+./scripts/build-documentation.sh
+./scripts/serve-documentation.sh   # build and serve the result locally
+```
+
+Documentation publishing is described in [RELEASING.md](RELEASING.md).
 
 ## Coding Standards
 
@@ -121,16 +144,22 @@ All commits must be signed off to satisfy the [Developer Certificate of Origin (
 # Run all tests
 ./mvnw test
 
-# Build + PMD analysis
+# Tests plus Spotless, PMD, and JaCoCo checks
 ./mvnw verify
 
 # Build without running tests
 ./mvnw clean install -DskipTests
+
+# Repeat the test suite to look for flaky tests
+./scripts/stress-test.sh 5
 ```
+
+The test commands (`./mvnw test`, `./mvnw verify`, `./mvnw clean install`, and the stress test)
+require a running Docker daemon. `-DskipTests` skips them.
 
 ### Writing Tests
 
-- Place library unit tests in the module's `src/test/java/` (JUnit 5 + AssertJ)
+- Place library unit tests in the module's `src/test/java/` (JUnit Jupiter + AssertJ)
 - Place runnable examples and their Paramixel-driven integration tests in `examples/src/main/java/`
 - Use the `@Paramixel.Factory` annotation on static methods that return `Action` trees
 - Use descriptive test names and argument names

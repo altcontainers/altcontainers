@@ -35,8 +35,9 @@ import java.util.regex.Pattern;
  * WaitStrategy log = Wait.forLogMessage(".*started.*", 1);
  * }</pre>
  *
- * <p>Composition is only available through factories — the composite
- * strategy classes are internal implementation details.
+ * <p>Composite strategies are created through {@link #allOf(WaitStrategy...)} and
+ * {@link #anyOf(WaitStrategy...)}. The concrete composite classes are public, but their
+ * constructors are package-private.
  *
  * <p>The builder convenience methods on {@link GenericContainerSpec.Builder}
  * delegate to these factories.

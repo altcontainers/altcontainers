@@ -5,6 +5,66 @@ description: Altcontainers release history and changelog.
 
 # Release Notes
 
+## 0.5.0
+
+### New Features
+
+- **Read-only bind mounts** — `bindDirectory(hostPath, containerPath, true)` and
+  `new BindMount(hostPath, containerPath, true)` mount a host directory read-only;
+  `BindMount.readOnly()` exposes the mode.
+
+### Improvements
+
+- **Verified reaper cleanup** — session teardown runs up to four sweeps within a five-minute drain
+  deadline, re-discovers leftover resources, retries resource listings, and exits with status `2`
+  when labeled resources remain instead of silently abandoning them.
+- **Bounded container close** — a graceful stop is followed by a synchronous force-remove bounded
+  at 10 seconds; the reaper is used only when that also fails, or during shutdown/interrupt.
+- **Image pull robustness** — untagged image references pull `latest`, concurrent pulls of the same
+  image are deduplicated, an in-flight pull survives a caller timeout, and a cached image that was
+  removed from the daemon is pulled again before creation is retried.
+- **Correct HTTPS trust-all probes** — `HTTPS_INSECURE` now disables hostname verification as
+  documented.
+- **Version resource isolation** — `Version` loads `version.properties` from its own package rather
+  than an arbitrary root-level resource.
+- **Earlier spec validation** — `Container.create(spec)` validates `startupTimeout` and
+  `startupAttempts` before any Docker work; an `Error` from a `prepare` hook destroys the attempt's
+  container and propagates without retry.
+- **Reaper property forwarding** — `altcontainers.reaper.*` system properties (including
+  `altcontainers.reaper.cleanup.max.attempts` and log settings) are forwarded to the reaper process.
+- **Shutdown handling** — container and network stop executors are drained during JVM shutdown,
+  and in-flight removals delegate to the reaper instead of racing it.
+
+### Bug Fixes
+
+- Various lifecycle, cleanup, and edge-case hardening, including null network settings and
+  stale cached images.
+
+### Notes
+
+- Dependency updates across Maven plugins and runtime libraries.
+
+## 0.4.2
+
+### Bug Fixes
+
+- Pinned the Maven Wrapper to Maven 3.9.x for Central publishing compatibility.
+
+### Notes
+
+- Dependency updates across Maven plugins and runtime libraries.
+
+## 0.4.1
+
+### Improvements
+
+- Miscellaneous lifecycle, wait-strategy, and reaper hardening.
+- Updated documentation and added versioned documentation for 0.4.1.
+
+### Notes
+
+- Dependency updates across Maven plugins and runtime libraries.
+
 ## 0.4.0
 
 ### Breaking Changes
@@ -30,7 +90,7 @@ description: Altcontainers release history and changelog.
 
 ### Notes
 
-- Dependency updates across Maven plugins and runtime libraries (Spotless 3.9.0, docker-java 3.7.1 / 6.1.3 line, logback 1.6.1, and more).
+- Dependency updates across Maven plugins and runtime libraries.
 
 ## 0.3.0
 
@@ -62,5 +122,5 @@ Initial release of Altcontainers as a standalone library.
 - **Resource limits** — CPU shares, memory limits, shm size, and ulimits
 - **Retry with backoff** — configurable startup attempts with linear backoff
 - **Automatic cleanup** — reaper-based resource reclamation on JVM exit
-- **Shaded uber-JAR** — relocated dependencies to prevent classpath conflicts
-- **Java 17+** — records, sealed classes, and modern Java features
+- **Shaded uber-JAR** — relocated dependencies to isolate internal copies from application dependencies
+- **Java 17+** — records and modern Java features

@@ -16,7 +16,7 @@ Configuration values are resolved from multiple sources. For each value, the fir
 | 1 (highest) | System property | `-D` JVM flags |
 | 2 | Environment variable | `ALTCONTAINERS_*` prefixed, derived from property key |
 | 3 | User properties file | `~/.altcontainers.properties` |
-| 4 | Classpath properties | Bundled `altcontainers.properties` in the JAR |
+| 4 | Classpath properties | Bundled `altcontainers.properties` in the JAR (internal defaults) |
 | 5 (lowest) | Hardcoded default | Built into the code |
 
 ### Environment variable naming
@@ -58,16 +58,21 @@ altcontainers.wait.http.probe.timeout.ms=5000
 |---|---|---|---|---|
 | `altcontainers.docker.host` | String | empty (use Docker daemon defaults) | System property, Environment, Properties file | Docker daemon connection URI |
 
-**Supported schemes:** `unix://`, `tcp://`, `http://`, `https://` (with JVM default SSL)
+**Supported schemes:** `unix://`, `tcp://`, `http://`, `https://`, and `npipe://` (handled by
+docker-java; Altcontainers is tested on Linux). The reaper's detached launch uses
+`setsid`/`nohup`, which is not supported on Windows; on Windows, set
+`altcontainers.reaper.disabled=true` and close resources explicitly.
 
 **System property:** `-Daltcontainers.docker.host=tcp://localhost:2375`
 
 **Environment variable:** `ALTCONTAINERS_DOCKER_HOST`
 
-When unset, the value defaults to empty and Altcontainers delegates to the Docker
-client's default configuration, which honors the standard `DOCKER_HOST`
-environment variable and falls back to `unix:///var/run/docker.sock`. The
-resolved value is forwarded to the reaper process automatically.
+When unset, the value defaults to empty and Altcontainers delegates to the Docker client's
+default configuration. In addition to `DOCKER_HOST`, docker-java reads `DOCKER_TLS_VERIFY`,
+`DOCKER_CERT_PATH`, `DOCKER_CONFIG`, and `DOCKER_CONTEXT`, and falls back to
+`unix:///var/run/docker.sock`. Registry credentials for image pulls come from the standard
+Docker configuration (`~/.docker/config.json` or `DOCKER_CONFIG`). A resolved
+`altcontainers.docker.host` value is forwarded to the reaper process automatically.
 
 ---
 
@@ -80,8 +85,7 @@ The reaper is a separate per-session process that cleans up Docker resources whe
 | `altcontainers.reaper.disabled` | boolean | `false` | System property, Environment, Properties file | Disable the reaper process entirely |
 | `altcontainers.reaper.connection.timeout.ms` | Duration (ms) | `10000` | System property, Environment, Properties file | TCP connection/handshake timeout between core and reaper |
 | `altcontainers.reaper.startup.timeout.ms` | Duration (ms) | `10000` | System property, Environment, Properties file | How long the core module waits for the reaper process to bind its port |
-| `altcontainers.reaper.stop.timeout.ms` | Duration (ms) | `30000` | System property, Environment, Properties file | Timeout when stopping containers during cleanup |
-| `altcontainers.reaper.cleanup.max.attempts` | int | `5` | System property, forwarded to the reaper | Maximum cleanup attempts per resource per teardown sweep |
+| `altcontainers.reaper.stop.timeout.ms` | Duration (ms) | `30000` | System property, Environment, Properties file | Timeout for container stop and network removal during close/cleanup |
 
 #### `altcontainers.reaper.disabled`
 
@@ -123,7 +127,9 @@ altcontainers.reaper.startup.timeout.ms=15000
 
 #### `altcontainers.reaper.stop.timeout.ms`
 
-Timeout passed to Docker when stopping containers during cleanup. Controls how long Docker waits for the container process to exit gracefully before killing it.
+Timeout used for the bounded container stop and network removal performed by `close()`, and
+passed to Docker's stop API during reaper cleanup. Controls how long Docker waits for the container
+process to exit gracefully before killing it.
 
 **Values:** Positive integer (milliseconds)
 
@@ -132,33 +138,13 @@ Timeout passed to Docker when stopping containers during cleanup. Controls how l
 altcontainers.reaper.stop.timeout.ms=10000
 ```
 
-#### `altcontainers.reaper.cleanup.max.attempts`
-
-Maximum number of cleanup attempts per resource within one teardown sweep before the sweep gives up
-on that resource and leaves it for the next sweep. Must be at least `1`.
-
-See [Cleanup](../core-concepts/cleanup#retry-behavior) for the per-resource attempt ladder and the
-verified sweep behavior.
-
-**Values:** Integer greater than or equal to `1`
-
-**System property:**
-```bash
--Daltcontainers.reaper.cleanup.max.attempts=10
-```
-
-**Note:** The value is forwarded to the reaper process, but only from the application JVM's system
-properties; environment variables and properties files are not read for this key. It is also the one
-key in this section that is not part of the bundled `altcontainers.properties`, because the reaper
-applies its own default.
-
 ---
 
 ### Container lifecycle
 
 | Property Key | Type | Default | Configuration Methods | Purpose |
 |---|---|---|---|---|
-| `altcontainers.container.startup.timeout.ms` | Duration (ms) | `60000` | System property, Environment, Properties file | Default per-attempt readiness timeout |
+| `altcontainers.container.startup.timeout.ms` | Duration (ms) | `60000` | System property, Environment, Properties file | Default timeout for the startup check and readiness wait |
 | `altcontainers.container.startup.readiness.poll.initial.ms` | Duration (ms) | `10` | System property, Environment, Properties file | Initial readiness poll interval |
 | `altcontainers.container.startup.readiness.poll.max.ms` | Duration (ms) | `500` | System property, Environment, Properties file | Maximum readiness poll interval |
 | `altcontainers.container.startup.retry.backoff.multiplier.ms` | Duration (ms) | `1000` | System property, Environment, Properties file | Startup retry backoff multiplier |
@@ -167,7 +153,8 @@ applies its own default.
 
 #### `altcontainers.container.startup.timeout.ms`
 
-Default per-attempt readiness timeout. Can be overridden per-container via `ContainerSpec.Builder.startupTimeout()`.
+Default timeout used for the startup check and for the readiness wait (each phase separately).
+Can be overridden per-container via `GenericContainerSpec.Builder.startupTimeout()`.
 
 **Values:** Positive integer (milliseconds)
 
@@ -248,9 +235,13 @@ altcontainers.container.put.archive.pipe.buffer.bytes=131072
 
 #### `altcontainers.image.pull.timeout.ms`
 
-Maximum time the library waits for a Docker image pull to complete. If a pull exceeds this timeout, the pull is treated as failed and all threads waiting for the same image receive a `ContainerException`.
+Maximum time the library waits for a Docker image pull to complete. If the initiating caller's
+pull exceeds this timeout, that caller receives a `ContainerException`. The pull continues in the
+background and remains registered, so later callers still deduplicate against it.
 
-Concurrent callers that request the same image while a pull is in progress wait for the in-flight pull (rather than starting a duplicate pull). Their wait is bounded by this timeout plus a small slack (10 seconds).
+Concurrent callers that request the same image while a pull is in progress wait for the in-flight
+pull rather than starting a duplicate pull. Their wait is bounded by this timeout plus a small
+slack (10 seconds).
 
 **Values:** Positive integer (milliseconds)
 
@@ -325,12 +316,29 @@ The legacy key `altcontainers.reaper.networks.parallelism` is still honored as a
 
 ### Reaper internal (advanced)
 
-These properties are used internally by the reaper process. They are automatically set by the core module when launching the reaper. Override only for advanced debugging.
+These properties are read by the reaper process. When set as system properties on the application
+JVM, the core module forwards them to the reaper. They are not read from environment variables or
+properties files. Override them only for advanced debugging.
 
 | Property Key | Type | Default | Configuration Methods | Purpose |
 |---|---|---|---|---|
-| `altcontainers.reaper.log.directory` | String | `$(java.io.tmpdir)` | System property (reaper process) | Directory for reaper log files |
-| `altcontainers.reaper.log.level` | String | `INFO` | System property (reaper process) | Reaper log level |
+| `altcontainers.reaper.cleanup.max.attempts` | int | `5` | System property (forwarded) | Maximum cleanup attempts per resource per sweep |
+| `altcontainers.reaper.log.directory` | String | `java.io.tmpdir` | System property (forwarded) | Directory for reaper log files |
+| `altcontainers.reaper.log.level` | String | `INFO` | System property (forwarded) | Reaper log level |
+
+#### `altcontainers.reaper.cleanup.max.attempts`
+
+Maximum cleanup attempts per resource per sweep before the reaper gives up on that resource for
+the current sweep. A resource that is still unresolved is retried in the next sweep, so the
+effective ceiling is `attempts × sweeps`, bounded by the drain deadline. See
+[Cleanup](../core-concepts/cleanup#retry-behavior) for the escalation ladder.
+
+**Values:** Integer greater than or equal to `1`
+
+**System property (forwarded):**
+```bash
+-Daltcontainers.reaper.cleanup.max.attempts=10
+```
 
 #### `altcontainers.reaper.log.directory`
 
@@ -349,7 +357,7 @@ Directory where the reaper writes its log files. The reaper writes rolling log f
 
 Log level for the reaper process.
 
-**Values:** `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`
+**Values:** `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`. Invalid values fall back to `INFO`.
 
 **System property (reaper process):**
 ```bash
@@ -362,7 +370,8 @@ Log level for the reaper process.
 
 ## Complete default configuration
 
-The bundled `altcontainers.properties` file contains all defaults:
+The bundled `altcontainers.properties` file contains all core defaults (the reaper-only settings
+above are read directly by the reaper process):
 
 ```properties
 # Altcontainers default configuration (classpath). Lowest precedence.
@@ -404,23 +413,29 @@ altcontainers.networks.parallelism=0
 
 | Method | Scope | When to use |
 |---|---|---|
-| **System property** | Per-JVM | `-D` flags; Docker host, network parallelism |
+| **System property** | Per-JVM | `-D` flags for any core key; Docker host, network parallelism |
 | **Environment variable** | Process-wide | CI/CD pipelines, Docker environments, shell scripts |
 | **User properties file** | Per-user | Developer workstation defaults (`~/.altcontainers.properties`) |
-| **Classpath properties** | Per-project | Project-specific defaults bundled in the JAR |
+| **Classpath properties** | Altcontainers JAR | Bundled defaults; not intended for application overrides |
+| **Reaper system property** | Per-JVM (forwarded) | `altcontainers.reaper.cleanup.max.attempts` and reaper log settings |
 
 ---
 
 ## Validation
 
-All configuration values are validated eagerly when first accessed. Invalid values fail fast with a `ContainerException`:
+All `AltcontainersProperties` keys are validated eagerly the first time
+`AltcontainersProperties.instance()` is used (for example, when the first spec is built). Invalid
+values fail with a `ContainerException`:
 
 - **Duration values** must be positive (greater than zero)
 - **Boolean values** must be `true` or `false`
 - **Integer values** must be positive (greater than zero), with the exception of `altcontainers.networks.parallelism`, which must be zero or greater
 - **Docker host** must be a valid URI with a supported scheme (validated when the Docker client is created)
 
-Malformed properties files or invalid values throw `ContainerException` immediately, not at container creation time.
+Malformed properties files or invalid values throw `ContainerException` on first access, not
+mid-startup. Reaper-only settings are validated by the reaper process at startup; an invalid
+`altcontainers.reaper.cleanup.max.attempts` makes the reaper exit with status `1`, while an
+unrecognized `altcontainers.reaper.log.level` falls back to `INFO`.
 
 ---
 

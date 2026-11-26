@@ -29,10 +29,11 @@ Resources are destroyed in reverse order (container first, then network).
 Closing a container first asks Docker to stop it gracefully, waiting up to
 `altcontainers.reaper.stop.timeout.ms` for the process to exit (plus a short buffer for daemon
 latency). If the stop times out or fails, the container is force-removed before `close()` returns,
-so it no longer holds its network endpoints and the network can then be removed. The timeout is
-logged at `INFO`; a container whose main process ignores `SIGTERM` (for example a shell script
-that starts `java` without `exec`) waits for the full stop timeout on every close. Only if the
-force-remove also fails is the container handed to the [reaper](#automatic-cleanup-reaper).
+so it no longer holds its network endpoints and the network can then be removed. The force-remove
+is bounded at 10 seconds. The timeout is logged at `INFO`; a container whose main process ignores
+`SIGTERM` (for example a shell script that starts `java` without `exec`) waits for the full stop
+timeout on every close. If the force-remove also fails, or the JVM is shutting down or the close is
+interrupted, the container is handed to the [reaper](#automatic-cleanup-reaper).
 
 ## Manual cleanup
 
@@ -59,13 +60,13 @@ Destroying an already-destroyed container or network is safe. Passing `null` is 
 
 ## Automatic cleanup (Reaper)
 
-Altcontainers launches a separate **reaper process** for each JVM session. The reaper is a standalone Java process that watches a persistent TCP connection for liveness. When the connection drops, the reaper cleans up all Docker resources labeled with the session ID.
+Altcontainers launches a separate **reaper process** for each JVM session. The reaper is a standalone Java process that watches a persistent TCP connection for liveness. When the connection drops, the reaper cleans up all Docker resources labeled with the session ID. Set `altcontainers.reaper.disabled=true` to disable the reaper; explicit `close()` calls are then the only cleanup.
 
 ### How the reaper works
 
 1. **Session creation**: When the first container or network is created, the core module generates a unique session UUID.
 
-2. **Reaper launch**: The core module extracts the reaper JAR from its classpath and launches it as a detached process (using `setsid` on Linux, `nohup` on other platforms). The reaper process receives the session ID via a system property.
+2. **Reaper launch**: The core module extracts the reaper JAR from its classpath and launches it as a detached process (using `setsid` on Linux, `nohup` on other Unix platforms; Windows is not supported). The reaper process receives the session ID via a system property.
 
 3. **Port discovery**: The reaper binds a server socket on localhost (random port) and writes the port to a discovery file in the temp directory.
 
@@ -89,12 +90,18 @@ The reaper is a safety net. You should still explicitly clean up resources when 
 
 ### Retry behavior
 
-When a cleanup operation fails (e.g., a network has active endpoints), the reaper retries with exponential backoff. Each resource follows an escalation ladder:
+When a cleanup operation fails (e.g., a network has active endpoints), the reaper retries with
+exponential backoff. For a single resource delegated during normal operation (a `close()` that
+hands a container or network to the reaper), the escalation ladder is:
 
 1. **Graceful stop + remove** (containers): Attempts a graceful stop with a timeout, then removes the container. Anonymous volumes created by the container are removed with it; named volumes and bind mounts are never touched.
 2. **Force remove** (containers): If the graceful path fails, force-removes the container (including its anonymous volumes).
 3. **Network remove**: Attempts to remove the network.
 4. **Network force-remove** (after threshold): If the network cannot be removed after several attempts (e.g., due to active endpoints), disconnects all endpoints with force and then removes the network.
+
+During session teardown after the JVM exits, the owning process is gone, so the reaper skips the
+graceful container tier and force-removes each session container before removing networks. The
+network tiers are unchanged.
 
 ### Verified sweeps
 
@@ -118,9 +125,9 @@ ERROR … Session <id> cleanup incomplete after 4 sweep(s) (discoveryComplete=tr
 containers=[<id>] networks=[]; resources remain labeled with altcontainers-containers.session-id=<id>
 ```
 
-and exits with status `2` (`0` = session torn down, `1` = reaper failure). Resources are reported only
-after every sweep and the whole drain deadline have been exhausted, so a non-zero status means the
-daemon was persistently unable to remove them, not that a single attempt failed. They can be removed
+and exits with status `2` (`0` = session torn down, `1` = reaper failure). Resources are reported
+after the sweep limit or drain deadline is reached, so a non-zero status means the daemon was
+persistently unable to remove them, not that a single attempt failed. They can be removed
 manually with `docker ps -a --filter label=altcontainers-containers.session-id=<id>` and
 `docker network ls --filter label=altcontainers-containers.session-id=<id>`.
 
@@ -138,7 +145,8 @@ Example:
 java -Daltcontainers.reaper.cleanup.max.attempts=10 -jar myapp.jar
 ```
 
-This property is automatically forwarded to the reaper process.
+This property is a system property only; environment variables and properties files are not read
+for it. The core module automatically forwards it to the reaper process.
 
 ## Cleanup after startup failure
 

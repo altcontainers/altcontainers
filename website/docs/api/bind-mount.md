@@ -22,7 +22,7 @@ bind mount does not depend on how much data the directory holds, unlike `Contain
 
 ## Usage
 
-Bind mounts are configured through `ContainerSpec.Builder.bindDirectory()`:
+Bind mounts are configured through `GenericContainerSpec.Builder.bindDirectory()`:
 
 ```java
 ContainerSpec containerSpec = ContainerSpec.builder("my-image:latest")
@@ -48,16 +48,17 @@ for (BindMount mount : mounts) {
 
 ### `hostPath`
 
-The absolute host directory path to mount into the container. Must not be `null` or blank.
+The host directory path to mount into the container. Must not be `null` or blank. The library does
+not verify that the path is absolute or that it exists; the Docker daemon resolves it.
 
 ### `containerPath`
 
-The absolute in-container mount target path. Must not be `null` or blank.
+The in-container mount target path. Must not be `null` or blank; it should be absolute.
 
 ### `readOnly`
 
 `true` to mount read-only; `false` (the default for the two-argument constructor and
-`bindDirectory(hostPath, containerPath)`) to mount read-write.
+`bindDirectory(hostPath, containerPath)`) to mount read-write. Access it with `readOnly()`.
 
 ## Host path location
 

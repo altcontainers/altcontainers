@@ -7,19 +7,49 @@
 
 Altcontainers is a lightweight Java 17+ Docker container lifecycle management library.
 
+## Requirements
+
+- Java 17 or newer
+- A reachable Docker daemon (Docker is required to build and test the project)
+
+## Installation
+
+```xml
+<dependency>
+  <groupId>org.altcontainers</groupId>
+  <artifactId>core</artifactId>
+  <version>0.5.0</version>
+  <scope>test</scope>
+</dependency>
+```
+
+See the [documentation](https://www.altcontainers.org/) for installation, configuration,
+and usage guides.
+
 ## Docker Host Configuration
 
-Altcontainers connects to Docker using the following precedence:
+Altcontainers uses docker-java's standard Docker configuration. For the Docker host,
+the first value found wins:
 
 1. Java system property `altcontainers.docker.host` (e.g., `-Daltcontainers.docker.host=tcp://localhost:2375`)
-2. Environment variable `DOCKER_HOST`
-3. Default `unix:///var/run/docker.sock`
+2. Environment variable `ALTCONTAINERS_DOCKER_HOST`
+3. `altcontainers.docker.host` in `~/.altcontainers.properties`
+4. `altcontainers.docker.host` in the bundled classpath `altcontainers.properties` (empty by default)
+5. Environment variable `DOCKER_HOST` (read by docker-java)
+6. docker-java's default, `unix:///var/run/docker.sock`
 
-Supported schemes: `unix://`, `tcp://`, `http://`, `https://` (with JVM default SSL).
+At the Docker client level, docker-java supports `unix://`, `tcp://`, `http://`, `https://`,
+and `npipe://` hosts. Altcontainers is tested on Linux; Windows/named-pipe setups are not
+covered by CI, and the reaper's detached launch uses `setsid`/`nohup`, which is not supported on
+Windows. On Windows, set `altcontainers.reaper.disabled=true` and close resources explicitly.
 
-Docker is required on the machine to build and test the project. Windows/named pipes,
-Docker context discovery, Docker TLS cert envs, and private registry auth are
-not currently supported.
+When `altcontainers.docker.host` is not set, docker-java also honors the standard
+`DOCKER_TLS_VERIFY`, `DOCKER_CERT_PATH`, `DOCKER_CONFIG`, and `DOCKER_CONTEXT` settings.
+Registry credentials for image pulls come from the standard Docker configuration
+(`~/.docker/config.json` or `DOCKER_CONFIG`).
+
+See [Configuration](https://www.altcontainers.org/guides/configuration) for the complete
+key reference.
 
 ## Quick Start
 
@@ -37,10 +67,13 @@ try (Container container = Container.create(containerSpec)) {
 
 ## Features
 
-- **Shaded uber-JAR** — docker-java, Jackson, Guava, Apache Commons, Bouncy Castle, and JNA are relocated under `nonapi.shaded.*` to prevent classpath conflicts; SLF4J is left unrelocated so applications can provide their own binding
+- **Shaded uber-JAR** — docker-java, Jackson, Guava, Apache Commons, Bouncy Castle, and JNA are relocated under `nonapi.shaded.*` to isolate Altcontainers' internal copies from application dependencies; SLF4J is left unrelocated so applications can provide their own binding
 - **Automatic cleanup** — integrated reaper destroys containers and networks when the JVM exits
-- **Readiness waiting** — port probes, HTTP response checks, log message matching, and custom conditions
+- **Readiness waiting** — port probes, HTTP response checks, log message matching, and custom strategies
 - **Network management** — create and destroy Docker bridge networks
+- **Bind mounts** — read-write or read-only host directory mounts
+- **Resource limits** — memory, CPU, `/dev/shm`, and Linux ulimits
+- **Image pulling** — local image reuse, concurrent pull deduplication, and a configurable pull timeout
 - **Retry with backoff** — configurable startup attempts with linear backoff
 
 ## Contributing

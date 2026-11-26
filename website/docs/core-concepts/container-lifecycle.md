@@ -27,30 +27,35 @@ The container is started. When an output listener or a log-message wait strategy
 
 ### 4. Startup check and prepare
 
-After Docker reports the container started, a `StartupCheckStrategy` (by default, "container is still running") confirms the container process reached an acceptable lifecycle state. If a `prepare(Consumer<Container>)` hook is configured, it runs here — after port mappings are available, before readiness checks begin.
+After Docker reports the container started, a `StartupCheckStrategy` (by default, "container is still running") confirms the container process reached an acceptable lifecycle state. If a `prepare(Consumer<Container>)` hook is configured, it runs here — after port mappings are available, before readiness checks begin. The `startupTimeout` bounds the startup check and the readiness wait separately.
 
 ### 5. Wait for readiness
 
-Altcontainers blocks until all configured wait conditions are satisfied, or the startup timeout elapses. Wait conditions include:
+Altcontainers blocks until all configured wait conditions are satisfied, or the readiness timeout
+(the configured `startupTimeout`) elapses. Wait conditions include:
 - **Port wait** — TCP connection accepted on the mapped host port
 - **HTTP wait** — HTTP/HTTPS response status in an acceptable range
 - **Log wait** — a log message matching a regex appears the required number of times
 
-If the container fails to become ready, it is destroyed and the startup is retried (if `startupAttempts > 1`).
+If the container fails to become ready, it is destroyed and the startup is retried (if
+`startupAttempts > 1`). A `RuntimeException` from the `prepare` hook is wrapped in
+`ContainerException` and retried; an `Error` (such as a failed assertion) destroys the attempt's
+container and propagates without further attempts.
 
 ### 6. Use container
 
 The returned `Container` handle provides:
 - `id()` — Docker container ID
 - `image()` — Docker image name
-- `isRunning()` — whether the container is running
-- `hostPort(containerPort)` — the mapped host port
+- `isRunning()` — whether the container is running (live Docker query)
+- `host()` — the host clients should use for published ports
+- `hostPort(containerPort)` — the mapped host port cached from post-start inspection
 
 ### 7. Close container
 
 The container is stopped and removed. Destruction is:
 - **Idempotent** — safe to call multiple times
-- **Blocking** — returns once Docker confirms removal, or hands the container to the reaper and returns if the stop or removal times out
+- **Blocking** — returns once Docker confirms removal, or after a bounded force-remove; if that also fails, the container is handed to the reaper
 - **Available via try-with-resources** — `Container` implements `AutoCloseable`
 
 ## Example
@@ -71,12 +76,14 @@ try (Container container = Container.create(containerSpec)) {
 
 ## Startup retries
 
-By default, `startupAttempts` is `1` (no retries). Set to `2` or higher to retry on `ContainerException` with linear backoff:
+By default, `startupAttempts` is `1` (no retries). Set to `2` or higher to retry a failed attempt
+with linear backoff. Attempts are numbered from 1; the sleep happens after a failure and before
+the next attempt:
 
 ```
-attempt 0: immediate
-attempt 1: sleep 1s, then retry
-attempt 2: sleep 2s, then retry
+attempt 1: immediate
+attempt 2: sleep 1 second after attempt 1 fails, then retry
+attempt 3: sleep 2 seconds after attempt 2 fails, then retry
 ...
 ```
 

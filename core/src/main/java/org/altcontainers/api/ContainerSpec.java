@@ -36,7 +36,7 @@ import java.util.function.Consumer;
  * ContainerSpec containerSpec = ContainerSpec.builder("my-image:latest")
  *         .exposePorts(8080)
  *         .waitForContainerPort(8080)
- *         .waitForLogMessage("started")
+ *         .waitForLogMessage(".*started.*")
  *         .build();
  * try (Container container = Container.create(containerSpec)) {
  *     // ... use container ...
@@ -46,7 +46,8 @@ import java.util.function.Consumer;
 public interface ContainerSpec {
 
     /**
-     * Default startup timeout of 60 seconds.
+     * Default startup timeout of 60 seconds, used when
+     * {@code altcontainers.container.startup.timeout.ms} is not configured.
      */
     Duration DEFAULT_STARTUP_TIMEOUT = Duration.ofSeconds(60);
 
@@ -58,9 +59,10 @@ public interface ContainerSpec {
     String image();
 
     /**
-     * Returns the container entrypoint arguments.
+     * Returns the container command arguments (Docker {@code CMD}). The image
+     * {@code ENTRYPOINT} is not changed.
      *
-     * @return the container entrypoint arguments (unmodifiable)
+     * @return the container command arguments (unmodifiable)
      */
     List<String> command();
 
@@ -146,9 +148,10 @@ public interface ContainerSpec {
     }
 
     /**
-     * Returns the startup timeout.
+     * Returns the timeout used for the startup check and for readiness waiting.
+     * Each phase is bounded separately by this value.
      *
-     * @return the startup timeout
+     * @return the startup/readiness timeout
      */
     Duration startupTimeout();
 

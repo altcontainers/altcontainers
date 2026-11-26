@@ -9,7 +9,7 @@ Wait strategies tell Altcontainers when a container is ready. They implement the
 
 ## Builder convenience methods
 
-The simplest path: use `ContainerSpec.Builder` methods.
+The simplest path: use the `ContainerSpec` builder (`GenericContainerSpec.Builder`) methods.
 
 ```java
 ContainerSpec.builder("my-image")
@@ -18,17 +18,23 @@ ContainerSpec.builder("my-image")
     .build();
 ```
 
-## Direct construction
+## Builders and constructors
 
-The three probe strategies are public classes with public constructors:
+The port, HTTP, and log strategies are public classes with public builders and public
+constructors:
 
 ```java
 WaitStrategy port = PortWaitStrategy.builder().port(8080).build();
 WaitStrategy log = LogWaitStrategy.builder().pattern(".*started.*").build();
 WaitStrategy http = HttpWaitStrategy.builder().port(8080).path("/health").build();
+
+WaitStrategy port2 = new PortWaitStrategy(8080);
+WaitStrategy log2 = new LogWaitStrategy(".*started.*", 1);
+WaitStrategy http2 = new HttpWaitStrategy(HttpWaitStrategy.Protocol.HTTP, 8080, "/health", 200, 399);
 ```
 
-The composite strategy types are internal; create them with `Wait.allOf()` / `Wait.anyOf()`.
+The composite strategy classes are package-private; create them with `Wait.allOf(...)` and
+`Wait.anyOf(...)`.
 
 ## Factory convenience
 
@@ -61,13 +67,19 @@ ContainerSpec.builder("my-image")
 Implement `WaitStrategy` directly for custom readiness logic:
 
 ```java
-WaitStrategy fileReady = container -> {
+WaitStrategy portReady = container -> {
     Integer port = container.hostPort(8080);
     return port != null && port > 0;
 };
 ```
 
-Strategies that observe logs are fed raw log lines by the framework; the built-in `LogWaitStrategy` matches newline-terminated raw lines using whole-string (`Matcher.matches()`) semantics.
+Custom implementations should be thread-safe, idempotent for the same container state, and must
+not mutate the container or start threads. A strategy that throws a `RuntimeException` fails the
+current startup attempt.
+
+Strategies that observe logs are fed raw log lines by the framework; the built-in `LogWaitStrategy`
+matches newline-terminated raw lines using whole-string (`Matcher.matches()`) semantics. Use
+`.*pattern.*` for a substring match.
 
 ## Built-in types
 
@@ -88,13 +100,16 @@ Satisfied when an HTTP/HTTPS GET returns a status in the acceptable range. State
 
 ```java
 ContainerSpec.builder("my-image")
-    .exposePorts(8080)
+    .exposePorts(8080, 8443)
     .waitForHttpResponse(8080)       // HTTP GET /, status 200..399
     .waitForHttpsResponse(8443)      // HTTPS GET /, 200..399 (trust-all)
     .build();
 ```
 
-For a custom path or status range, construct `HttpWaitStrategy` directly. The `path` argument is a literal URI path, not a path plus query string. For example, `/health?deep=true` is sent as `/health%3Fdeep=true`, with no query.
+For a custom path or status range, construct `HttpWaitStrategy` directly. The `path` argument is a
+literal URI path, not a path plus query string. For example, `/health?deep=true` is sent as
+`/health%3Fdeep=true`, with no query. The builder requires a non-blank path; the default status
+range is `200..399`, and explicit status values must be in `100..599`.
 
 ```java
 ContainerSpec.builder("my-image")
@@ -120,9 +135,9 @@ ContainerSpec.builder("my-image")
 
 ## Evaluation
 
-- Strategies are polled repeatedly; the poll interval starts at 10 ms and doubles up to a 500 ms maximum (configurable via `altcontainers.container.startup.readiness.poll.*`)
+- Strategies are polled repeatedly; the poll interval starts at 10 ms and doubles up to a 500 ms maximum (configurable via `altcontainers.container.startup.readiness.poll.initial.ms` and `altcontainers.container.startup.readiness.poll.max.ms`)
 - Each poll evaluates the strategies in configuration order and stops at the first unsatisfied one; satisfied strategies are rechecked on later polls
-- All strategies must be satisfied before the `startupTimeout` elapses
+- All strategies must be satisfied before the readiness timeout (`startupTimeout`) elapses
 - Stateful strategies (log matching) reset between startup attempts
 
 ## Learn next
