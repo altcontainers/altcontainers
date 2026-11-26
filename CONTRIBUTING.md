@@ -4,7 +4,7 @@ Thank you for your interest in contributing to Altcontainers! This document prov
 
 ## Code of Conduct
 
-By participating in this project, you agree to maintain a respectful and inclusive environment for all contributors.
+By participating in this project, you agree to maintain a respectful and inclusive environment for all contributors. See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## How to Contribute
 

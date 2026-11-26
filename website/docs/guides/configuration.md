@@ -81,6 +81,7 @@ The reaper is a separate per-session process that cleans up Docker resources whe
 | `altcontainers.reaper.connection.timeout.ms` | Duration (ms) | `10000` | System property, Environment, Properties file | TCP connection/handshake timeout between core and reaper |
 | `altcontainers.reaper.startup.timeout.ms` | Duration (ms) | `10000` | System property, Environment, Properties file | How long the core module waits for the reaper process to bind its port |
 | `altcontainers.reaper.stop.timeout.ms` | Duration (ms) | `30000` | System property, Environment, Properties file | Timeout when stopping containers during cleanup |
+| `altcontainers.reaper.cleanup.max.attempts` | int | `5` | System property, forwarded to the reaper | Maximum cleanup attempts per resource per teardown sweep |
 
 #### `altcontainers.reaper.disabled`
 
@@ -130,6 +131,26 @@ Timeout passed to Docker when stopping containers during cleanup. Controls how l
 ```properties
 altcontainers.reaper.stop.timeout.ms=10000
 ```
+
+#### `altcontainers.reaper.cleanup.max.attempts`
+
+Maximum number of cleanup attempts per resource within one teardown sweep before the sweep gives up
+on that resource and leaves it for the next sweep. Must be at least `1`.
+
+See [Cleanup](../core-concepts/cleanup#retry-behavior) for the per-resource attempt ladder and the
+verified sweep behavior.
+
+**Values:** Integer greater than or equal to `1`
+
+**System property:**
+```bash
+-Daltcontainers.reaper.cleanup.max.attempts=10
+```
+
+**Note:** The value is forwarded to the reaper process, but only from the application JVM's system
+properties; environment variables and properties files are not read for this key. It is also the one
+key in this section that is not part of the bundled `altcontainers.properties`, because the reaper
+applies its own default.
 
 ---
 

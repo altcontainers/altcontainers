@@ -46,6 +46,27 @@ Map container ports to specific host ports:
 builder.exposePorts(8080).portBindings(Map.of(8080, 9090))
 ```
 
+## Other container settings
+
+```java
+builder.workingDirectory("/app");   // in-container working directory
+builder.clearUlimits();             // remove all ulimits added so far
+```
+
+## Deriving specs
+
+`toBuilder()` returns a builder pre-filled from an existing spec, and `with(...)` applies a
+customization on top of a copy. The original spec is unchanged.
+
+```java
+ContainerSpec base = ContainerSpec.builder("nginx:1.27")
+    .exposePorts(80)
+    .waitForHttpResponse(80)
+    .build();
+
+ContainerSpec slower = base.with(builder -> builder.startupTimeout(Duration.ofSeconds(120)));
+```
+
 ## Custom wait strategies
 
 `waitStrategy` accepts any `WaitStrategy` implementation: lambdas, directly constructed

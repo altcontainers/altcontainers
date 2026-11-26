@@ -32,7 +32,12 @@ Container did not become ready: HttpWaitStrategy failed for image nginx:1.27, co
   ```
 - Verify the wait condition matches the service behavior
 
-### "Cannot connect to Docker daemon"
+### Docker daemon unreachable
+
+Container creation fails before the container exists because the Docker daemon cannot be reached.
+The exception message, or its cause chain, names the connection problem — for example
+`ConnectException: Connection refused`, or `No such file or directory` when the socket path does not
+exist.
 
 **Causes:**
 - Docker daemon is not running
@@ -56,11 +61,29 @@ Container did not become ready: HttpWaitStrategy failed for image nginx:1.27, co
 - Check network connectivity
 - Private registry authentication is not currently supported; pull the image beforehand with `docker pull <image>` so Altcontainers finds it locally
 
+### "Reaper failed to start"
+
+Container creation aborts before the container is created because the reaper process could not be
+launched, or did not publish its port within `altcontainers.reaper.startup.timeout.ms`. A failed
+reaper handshake is reported as `Reaper unavailable: ...` instead.
+
+**Causes:**
+- The reaper process could not be spawned (for example the `java` executable that started the
+  application cannot be executed)
+- The reaper JAR could not be extracted into the Java temp directory (`java.io.tmpdir`)
+
+**Solutions:**
+- Make sure the Java temp directory exists and is writable
+- Inspect the reaper log `altcontainers-reaper-<sessionId>.log` in `java.io.tmpdir`, or in
+  `altcontainers.reaper.log.directory` when that property is set
+- Raise `altcontainers.reaper.startup.timeout.ms` on a slow or heavily loaded host
+- Set `altcontainers.reaper.disabled=true` to run without the reaper. Every container and network must
+  then be closed explicitly, because nothing cleans up resources that are still open when the JVM exits
+
 ## Container destroyed unexpectedly
 
-### "Container no longer running"
-
-The container was destroyed between creation and use.
+A container that was running earlier is gone, or `isRunning()` returns `false`, while the test is
+still using it.
 
 **Causes:**
 - The try-with-resources block ended before use

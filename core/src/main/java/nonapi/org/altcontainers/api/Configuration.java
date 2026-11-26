@@ -54,7 +54,7 @@ public record Configuration(
 
     /**
      * Loads configuration from {@link AltcontainersProperties}, which applies
-     * programmatic configuration, environment variables, properties files, and
+     * system properties, environment variables, properties files, and
      * defaults in precedence order.
      *
      * @return the loaded configuration

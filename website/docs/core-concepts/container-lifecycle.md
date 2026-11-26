@@ -23,7 +23,7 @@ A Docker container is created from the image with the configuration in `Containe
 
 ### 3. Start container
 
-The container is started. Altcontainers immediately attaches a log stream to capture container output.
+The container is started. When an output listener or a log-message wait strategy is configured, Altcontainers attaches a log stream to capture container output.
 
 ### 4. Startup check and prepare
 

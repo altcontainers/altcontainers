@@ -9,9 +9,9 @@ Complete API documentation is available as generated Javadoc.
 
 ## Online Javadoc
 
-Javadoc for the latest release is published at:
+Javadoc for the published releases is served by javadoc.io:
 
-[https://www.altcontainers.org/javadoc/](https://www.altcontainers.org/javadoc/)
+[org.altcontainers:core](https://javadoc.io/doc/org.altcontainers/core/latest/index.html)
 
 ## Generating locally
 

@@ -26,7 +26,7 @@ not currently supported.
 ```java
 ContainerSpec containerSpec = ContainerSpec.builder("nginx:1.27")
     .exposePorts(80)
-    .waitForHttpResponse(80, "/")
+    .waitForHttpResponse(80)
     .build();
 
 try (Container container = Container.create(containerSpec)) {
@@ -51,7 +51,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 This project is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.
 
-# Support
+## Support
 
 ![YourKit logo](https://www.yourkit.com/images/yklogo.png)
 

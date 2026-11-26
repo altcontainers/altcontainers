@@ -20,13 +20,15 @@ ContainerSpec.builder("my-image")
 
 ## Direct construction
 
-All built-in strategies are public classes with public constructors:
+The three probe strategies are public classes with public constructors:
 
 ```java
 WaitStrategy port = PortWaitStrategy.builder().port(8080).build();
 WaitStrategy log = LogWaitStrategy.builder().pattern(".*started.*").build();
 WaitStrategy http = HttpWaitStrategy.builder().port(8080).path("/health").build();
 ```
+
+The composite strategy types are internal; create them with `Wait.allOf()` / `Wait.anyOf()`.
 
 ## Factory convenience
 

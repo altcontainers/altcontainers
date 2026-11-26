@@ -38,6 +38,27 @@ ContainerSpec containerSpec = ContainerSpec.builder("my-image")
     .build();
 ```
 
+## Stream type
+
+`OutputFrame.type()` reports which Docker stream produced the chunk:
+
+| Value | Meaning |
+|---|---|
+| `OutputFrame.Type.STDOUT` | Container standard output |
+| `OutputFrame.Type.STDERR` | Container standard error |
+| `OutputFrame.Type.RAW` | Raw stream with no stdout/stderr distinction |
+| `OutputFrame.Type.UNKNOWN` | Stream type Docker did not report |
+
+```java
+ContainerSpec containerSpec = ContainerSpec.builder("my-image")
+    .outputListener(frame -> {
+        if (frame.type() == OutputFrame.Type.STDERR) {
+            System.err.println(frame.safeUtf8StringWithoutLineEnding());
+        }
+    })
+    .build();
+```
+
 ## Safe vs. raw output
 
 `OutputFrame` provides two families of text conversion methods:
@@ -61,7 +82,10 @@ complete lines.
 
 ## Log stream lifecycle
 
-The log stream is attached immediately after the container starts and disconnected when the container is destroyed. It runs on a daemon thread managed internally by `DockerClient`.
+The log stream is attached after the container starts, and only when a log-based wait strategy or
+an output listener is configured. Without an output listener the stream is closed as soon as startup
+completes, so container output stops being captured after readiness. With an output listener the
+stream stays attached until the container is destroyed.
 
 ## Learn next
 

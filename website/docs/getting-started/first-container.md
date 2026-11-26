@@ -56,7 +56,7 @@ ContainerSpec containerSpec = ContainerSpec.builder("nginx:1.27")
     .build();
 ```
 
-The `.command()` method appends arguments to the container's entrypoint.
+The `.command()` method sets the container's command arguments (Docker `CMD`). For an image with an `ENTRYPOINT`, such as nginx, they become that entrypoint's arguments; for an image without one they replace the image's default command.
 
 ## Learn next
 
