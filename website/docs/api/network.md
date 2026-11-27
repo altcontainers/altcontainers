@@ -29,9 +29,13 @@ try (Network network = Network.create()) {
 }
 ```
 
-Creates a new Docker bridge network with a unique name (`altcontainers-<session-prefix>-<random>`, where each suffix is an 8-character prefix of the session UUID and a random UUID). The network is registered with the reaper for automatic cleanup.
+Creates a new Docker bridge network with a unique name of the form
+`altcontainers-<session-prefix>-<random>`, where `<session-prefix>` is the first 8 characters of
+the session UUID and `<random>` is the first 8 characters of a random UUID. The network is labeled
+with the session ID for reaper cleanup.
 
-**Throws:** `ContainerException` if Docker fails to create the network.
+**Throws:** `ContainerException` if Docker fails to create the network or the reaper cannot be
+started or connected.
 
 ## Closing a network
 
@@ -49,10 +53,14 @@ try (Network network = Network.create()) {
 
 `close(network)`:
 - Removes the Docker network
-- Blocks until Docker confirms removal, or delegates the removal to the reaper and returns if it times out or fails
-- Retries transient `endpoint still attached` failures (the reaper retries with backoff)
+- Blocks until Docker confirms removal or the bounded removal attempt times out
+- If the network still has active endpoints (Docker's `has active endpoints` error), or removal fails or times out, delegates the removal to the reaper, which retries with backoff and force-disconnects remaining endpoints
 - Idempotent
 - No-op if `network` is `null`
+
+Close containers before closing their network so the network has no attached endpoints. If
+containers are still attached, the close delegates cleanup to the reaper and returns without
+waiting for it.
 
 ## Using networks with containers
 

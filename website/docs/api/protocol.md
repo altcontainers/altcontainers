@@ -27,7 +27,9 @@ public enum HttpWaitStrategy.Protocol {
 
 ## Usage
 
-`HttpWaitStrategy.Protocol` is used indirectly through `ContainerSpec.Builder` wait methods or directly with `HttpWaitStrategy.Builder`:
+`HttpWaitStrategy.Protocol` is used indirectly through the `ContainerSpec` builder's wait
+methods or directly with `HttpWaitStrategy.Builder` (whose default is `HTTP` and whose default
+status range is `200..399`):
 
 ```java
 // HTTP (default)

@@ -21,11 +21,19 @@ public class ContainerException extends RuntimeException {
 - Container creation fails (Docker daemon error)
 - Container startup times out (wait conditions not satisfied)
 - Container readiness waiting is interrupted
+- Image pull fails or exceeds `altcontainers.image.pull.timeout.ms`
 - Network creation fails
+- The reaper process cannot be started or connected
+- Configuration values are malformed or invalid (for example, in `altcontainers.properties`)
 - Docker daemon communication errors
 
-Closing a container or network does not throw `ContainerException`: if Docker fails or times out
-removing it, the resource is handed to the reaper for asynchronous cleanup instead.
+Invalid builder arguments (for example, a negative memory limit or a port outside `1..65535`)
+throw `IllegalArgumentException` rather than `ContainerException`. `Container.create(spec)`
+validates `startupTimeout` and `startupAttempts` before any Docker work and throws
+`IllegalArgumentException` for invalid values.
+
+Close operations report removal failures by handing the resource to the reaper for asynchronous
+cleanup rather than throwing `ContainerException`.
 
 It is an **unchecked exception** — callers are not required to catch it, but should be prepared for it in integration test cleanup (`@AfterEach`, `finally` blocks).
 

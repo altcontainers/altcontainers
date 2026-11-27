@@ -29,7 +29,7 @@ try (Container container = Container.create(containerSpec)) {
 
 1. `ContainerSpec.builder("nginx:1.27")` creates a mutable builder for the nginx image.
 2. `.exposePorts(80)` tells Docker to publish container port 80 to an ephemeral host port.
-3. `.waitForHttpResponse(80)` tells Altcontainers to wait until an HTTP GET to `/` returns a 2xx or 3xx status.
+3. `.waitForHttpResponse(80)` tells Altcontainers to wait until an HTTP GET to `/` returns a status in `200..399`.
 4. `.build()` produces an immutable `ContainerSpec`.
 5. `Container.create(spec)` pulls the image (if needed), creates the container, starts it, and blocks until the HTTP wait condition is satisfied.
 6. The try-with-resources block ensures the container is destroyed when the block exits.
@@ -44,7 +44,9 @@ ContainerSpec containerSpec = ContainerSpec.builder("nginx:1.27")
     .build();
 ```
 
-Container output frames are printed to stdout as `[NGINX] nginx:1.27 | <output>`.
+Container output frames are printed to stdout as `[NGINX] nginx:1.27 | <output>`. Frames are
+arbitrary chunks from Docker's log stream; a frame may contain multiple lines or a partial line.
+See [Log Consumers](../guides/log-consumers) for line-oriented and safe-text handling.
 
 ## Use a custom command
 
@@ -56,7 +58,7 @@ ContainerSpec containerSpec = ContainerSpec.builder("nginx:1.27")
     .build();
 ```
 
-The `.command()` method appends arguments to the container's entrypoint.
+The `.command()` method sets the container's command arguments (Docker `CMD`). For an image with an `ENTRYPOINT`, such as nginx, they become that entrypoint's arguments; for an image without one they replace the image's default command. Calling `.command()` more than once appends the additional arguments in call order.
 
 ## Learn next
 

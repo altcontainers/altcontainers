@@ -37,7 +37,7 @@ import nonapi.org.altcontainers.api.AltcontainersProperties;
  * ContainerSpec containerSpec = ContainerSpec.builder("my-image:latest")
  *         .exposePorts(8080)
  *         .waitForContainerPort(8080)
- *         .waitForLogMessage("started")
+ *         .waitForLogMessage(".*started.*")
  *         .build();
  * try (Container container = Container.create(containerSpec)) {
  *     // ... use container ...
@@ -142,9 +142,9 @@ public class GenericContainerSpec implements ContainerSpec {
     }
 
     /**
-     * Returns the container entrypoint arguments.
+     * Returns the container command arguments (Docker {@code CMD}).
      *
-     * @return the container entrypoint arguments (unmodifiable)
+     * @return the container command arguments (unmodifiable)
      */
     @Override
     public List<String> command() {
@@ -370,7 +370,7 @@ public class GenericContainerSpec implements ContainerSpec {
      * ContainerSpec containerSpec = ContainerSpec.builder("my-image:latest")
      *         .exposePorts(8080, 9090)
      *         .network(network, "exporter")
-     *         .waitForLogMessage("started")
+     *         .waitForLogMessage(".*started.*")
      *         .startupTimeout(Duration.ofSeconds(90))
      *         .build();
      * }</pre>
@@ -444,8 +444,9 @@ public class GenericContainerSpec implements ContainerSpec {
         }
 
         /**
-         * Appends entrypoint arguments to the container command. May be called multiple times; arguments
-         * accumulate in call order. Parts become Docker {@code CMD} arguments.
+         * Appends arguments to the container command (Docker {@code CMD}), replacing the image's
+         * default command. May be called multiple times; arguments accumulate in call order. The
+         * image {@code ENTRYPOINT} is not changed.
          *
          * @param parts the command arguments; must not be {@code null} or contain {@code null} elements;
          *     empty strings are allowed because Docker command arguments may intentionally be empty
@@ -582,10 +583,11 @@ public class GenericContainerSpec implements ContainerSpec {
         }
 
         /**
-         * Sets the per-attempt readiness timeout. Validated when
+         * Sets the timeout used for the startup check and for readiness waiting. Each phase is
+         * bounded separately by this value. Validated when
          * {@link Container#create(ContainerSpec)} is called.
          *
-         * @param duration the readiness timeout per attempt
+         * @param duration the startup/readiness timeout
          * @return this builder
          */
         public Builder startupTimeout(Duration duration) {

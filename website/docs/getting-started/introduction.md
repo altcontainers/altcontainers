@@ -12,9 +12,12 @@ Altcontainers provides a programmatic Java API for Docker container lifecycle ma
 - Create, start, and destroy Docker containers from Java code
 - Wait for containers to be ready (port open, HTTP response, log message)
 - Manage Docker bridge networks for container-to-container communication
+- Mount host directories read-write or read-only
+- Configure memory, CPU, `/dev/shm`, and Linux ulimits
 - Automatic cleanup via a separate reaper process per JVM session
 - Retry failed startups with configurable backoff
-- Shaded dependencies — no classpath conflicts
+- Configure behavior with system properties, environment variables, or properties files
+- Shaded dependencies — Altcontainers' internal copies are relocated
 
 ## How Altcontainers compares to Testcontainers
 
@@ -23,16 +26,15 @@ Altcontainers is a focused container lifecycle library. It does not provide data
 Key differences:
 
 - **No module ecosystem.** Altcontainers is a single JAR with no specialized container wrappers.
-- **Shaded uber-JAR.** All dependencies are relocated; no version conflicts with your project.
+- **Shaded uber-JAR.** Altcontainers' internal copies of its dependencies are relocated under `nonapi.shaded.*` to isolate them from application dependencies.
 - **Explicit lifecycle.** You control when containers are created and destroyed.
 - **Reaper-based cleanup.** Altcontainers launches a separate Java reaper process for each JVM session. The reaper watches a persistent TCP connection for liveness. When the JVM exits (including `System.exit()`), the shutdown hook sends a `TERMINATE` message to the reaper, which then destroys all containers and networks labeled with the session ID. Unlike [Testcontainers' Ryuk](https://java.testcontainers.org), the reaper is a plain Java process, not a Docker container — no privileged sidecar required.
-
 - **Parallelism control.** The `altcontainers.networks.parallelism` property (system property, environment variable, or properties file) limits how many networks can be in creation or awaiting close at once.
 
 ## When to use Altcontainers
 
 - **Integration tests** that need Docker containers
-- **Paramixel tests** (Altcontainers is the container layer for the [Paramixel](https://www.paramixel.org) test orchestration framework)
+- **Paramixel-based tests** (the repository's `examples` module uses the [Paramixel](https://www.paramixel.org) test orchestration framework)
 - **Development scripts** that manage container lifecycles
 - **Any Java project** that needs programmatic Docker container control
 

@@ -5,7 +5,10 @@ description: Configuring readiness strategies for Altcontainers containers.
 
 # Wait Strategies
 
-Wait strategies tell Altcontainers when a container is ready to use. They are configured on `ContainerSpec.Builder` and evaluated during startup.
+Wait strategies tell Altcontainers when a container is ready to use. They are configured on the
+`ContainerSpec` builder (`GenericContainerSpec.Builder`) and evaluated during startup, after the
+`StartupCheckStrategy` has succeeded. When multiple strategies are configured, all of them must be
+satisfied.
 
 ## Available strategies
 
@@ -24,7 +27,8 @@ The port must also be exposed via `.exposePorts()`. This strategy is satisfied a
 
 ### HTTP response wait
 
-Waits until an HTTP GET returns a status in an acceptable range. This proves the service is actually serving requests.
+Waits until an HTTP GET returns a status in an acceptable range. This proves the service is
+actually serving requests. The port must also be exposed via `.exposePorts()`.
 
 ```java
 ContainerSpec.builder("nginx:1.27")
@@ -39,7 +43,9 @@ ContainerSpec.builder("my-service")
     .build();
 ```
 
-For a custom path or exact status range, construct `HttpWaitStrategy` directly:
+For a custom path or exact status range, construct `HttpWaitStrategy` directly. The default
+status range is `200..399`; `statusRange()` accepts values from `100` to `599`. The builder
+requires a non-blank `path`.
 
 ```java
 ContainerSpec.builder("my-service")
@@ -66,6 +72,11 @@ ContainerSpec.builder("my-service")
     .build();
 ```
 
+Matching uses `Matcher.matches()` against each newline-terminated raw log line, with
+`Pattern.DOTALL` enabled. Use `.*pattern.*` for a substring match. A bare `pattern` does not match
+a newline-terminated line because the trailing newline is part of the matched input; it can only
+match a final, non-newline-terminated line.
+
 ## Composing wait strategies
 
 Multiple strategies can be combined on the builder:
@@ -91,6 +102,14 @@ ContainerSpec.builder("my-service")
         LogWaitStrategy.builder().pattern(".*started.*").build()
     ))
     .build();
+
+ContainerSpec.builder("my-service")
+    .exposePorts(8080)
+    .waitStrategy(Wait.anyOf(
+        PortWaitStrategy.builder().port(8080).build(),
+        LogWaitStrategy.builder().pattern(".*fallback ready.*").build()
+    ))
+    .build();
 ```
 
 ## How wait strategies are evaluated
@@ -102,23 +121,28 @@ ContainerSpec.builder("my-service")
 
 ## Custom wait strategies
 
-`WaitStrategy` is an open interface. Implement it directly for custom strategies, or compose built-in strategies with `Wait.allOf()` / `Wait.anyOf()`.
+`WaitStrategy` is an open interface. Implement it directly for custom strategies, or compose
+built-in strategies with `Wait.allOf()` / `Wait.anyOf()`. Custom strategies should be thread-safe,
+idempotent for the same container state, and should not mutate the container or start threads.
 
 ```java
-// Lambda implementation
-builder.waitStrategy(container -> {
-    Integer port = container.hostPort(8080);
-    return port != null && port > 0;
-});
-
-// Direct construction of built-in types
-builder.waitStrategy(PortWaitStrategy.builder().port(8080).build());
-builder.waitStrategy(HttpWaitStrategy.builder().port(8080).path("/health").build());
-
-// Factory convenience
-builder.waitStrategy(Wait.forListeningPort(8080));
-builder.waitStrategy(Wait.forLogMessage(".*started.*", 1));
+ContainerSpec.builder("my-service")
+    // Lambda implementation
+    .waitStrategy(container -> {
+        Integer port = container.hostPort(8080);
+        return port != null && port > 0;
+    })
+    // Direct construction of built-in types
+    .waitStrategy(PortWaitStrategy.builder().port(8080).build())
+    .waitStrategy(HttpWaitStrategy.builder().port(8080).path("/health").build())
+    // Factory convenience
+    .waitStrategy(Wait.forListeningPort(8080))
+    .waitStrategy(Wait.forLogMessage(".*started.*", 1))
+    .build();
 ```
+
+A strategy that throws a `RuntimeException` fails the current startup attempt; the exception is
+wrapped in `ContainerException` and the usual retry/destroy behavior applies.
 
 ## Learn next
 

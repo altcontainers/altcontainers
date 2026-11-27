@@ -23,8 +23,11 @@ System.out.println("Altcontainers version: " + Version.version());
 ```
 
 Returns:
-- The version string from the `version.properties` resource bundled in the `org/altcontainers/api` package of the Altcontainers JAR (property `version`)
-- `"UNKNOWN"` if the resource is missing or unreadable
+- The version string from the `version.properties` resource bundled in the `org/altcontainers/api`
+  package of the Altcontainers JAR (property `version`). The value is the Maven project version,
+  for example `0.5.0`.
+- `Version.UNKNOWN` (`"UNKNOWN"`) if the resource is missing or unreadable, or if the `version`
+  property is absent or blank.
 
 ## Learn next
 

@@ -45,7 +45,8 @@ echo "test" | gpg --batch --clearsign >/dev/null
 ### Documentation Publishing
 
 Documentation is published independently of Maven releases; see [Publishing Documentation](#publishing-documentation).
-The `WWW_ALTCONTAINERS_ORG` environment variable must be set to your SSH host alias for documentation publishing.
+The `WWW_ALTCONTAINERS_ORG` environment variable must be set to your SSH host alias for
+documentation publishing (or pass `--ssh-host <alias>`).
 
 ## Automated Release
 
@@ -177,7 +178,8 @@ without releasing to Maven Central, and a release does not publish the site.
 ./scripts/publish-documentation.sh --skip-build --dry-run
 ```
 
-The script requires the `WWW_ALTCONTAINERS_ORG` environment variable (or `--ssh-host <alias>`), and `rsync`/`ssh`.
+Documentation publishing requires `WWW_ALTCONTAINERS_ORG` (or `--ssh-host <alias>`), `rsync`, `ssh`,
+Node.js 20+ with npm, and `jq` (used by the documentation validation script).
 It builds the whole site — the unreleased working copy in `website/docs` plus every frozen version in
 `website/versioned_docs` — validates it, and rsyncs `website/build` to the documentation host. The build fails if
 `website/versions.json` lists a version without content or without a versioned sidebar, if a
@@ -234,6 +236,8 @@ These are ordinary reviewed changes; `scripts/publish-release.sh` neither reads 
 
 ### Troubleshooting documentation publishing
 
+- **Build fails before upload:** run `./scripts/build-documentation.sh` directly to see the
+  validation or Docusaurus error. The Maven release is unaffected.
 - **Upload fails:** the Maven release is unaffected. Fix credentials/connectivity and rerun
   `./scripts/publish-documentation.sh`. Nothing is deleted.
 - **A version is missing from the dropdown:** confirm it is listed in `website/versions.json` and has both

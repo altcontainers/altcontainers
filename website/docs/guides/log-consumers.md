@@ -5,7 +5,10 @@ description: Capturing and formatting Docker container log output with Altcontai
 
 # Log Consumers
 
-Altcontainers lets you capture container output through a `Consumer<OutputFrame>` configured via `ContainerSpec.Builder.outputListener()`.
+Altcontainers lets you capture container output through a `Consumer<OutputFrame>` configured via
+`GenericContainerSpec.Builder.outputListener()`. A spec has at most one output listener; calling
+`outputListener()` again replaces the previous listener. The listener receives both stdout and
+stderr frames, distinguished by `OutputFrame.type()`.
 
 ## Prefixed log output
 
@@ -23,6 +26,9 @@ Output:
 [NGINX] nginx:1.27 | 2024/01/01 00:00:00 [notice] 1#1: start worker processes
 ```
 
+A frame may contain multiple lines or a partial line, so the prefix is applied per frame, not
+necessarily per line.
+
 ## Custom output consumers
 
 Any `Consumer<OutputFrame>` can be used:
@@ -33,6 +39,30 @@ ContainerSpec containerSpec = ContainerSpec.builder("my-image")
         String text = frame.safeUtf8StringWithoutLineEnding();
         if (text.contains("ERROR")) {
             System.err.println("Container error: " + text);
+        }
+    })
+    .build();
+```
+
+If a listener throws a `RuntimeException`, Altcontainers logs the failure and continues streaming;
+the exception does not fail container startup or close the stream.
+
+## Stream type
+
+`OutputFrame.type()` reports which Docker stream produced the chunk:
+
+| Value | Meaning |
+|---|---|
+| `OutputFrame.Type.STDOUT` | Container standard output |
+| `OutputFrame.Type.STDERR` | Container standard error |
+| `OutputFrame.Type.RAW` | Raw stream with no stdout/stderr distinction |
+| `OutputFrame.Type.UNKNOWN` | Stream type Docker did not report |
+
+```java
+ContainerSpec containerSpec = ContainerSpec.builder("my-image")
+    .outputListener(frame -> {
+        if (frame.type() == OutputFrame.Type.STDERR) {
+            System.err.println(frame.safeUtf8StringWithoutLineEnding());
         }
     })
     .build();
@@ -57,11 +87,16 @@ output — for example, when processing binary data, matching exact byte sequenc
 frames to another system.
 
 Frames are arbitrary chunks from Docker's log stream and are not guaranteed to represent
-complete lines.
+complete lines. `OutputFrame.Type` reports whether a frame came from stdout, stderr, a raw
+stream, or an unrecognized stream type.
 
 ## Log stream lifecycle
 
-The log stream is attached immediately after the container starts and disconnected when the container is destroyed. It runs on a daemon thread managed internally by `DockerClient`.
+The log stream is attached after the container starts, and only when a log-based wait strategy or
+an output listener is configured. Without an output listener the stream is closed as soon as startup
+completes, so container output stops being captured after readiness. With an output listener the
+stream stays attached until the container is destroyed. Callbacks run on a background thread
+managed by the Docker client.
 
 ## Learn next
 

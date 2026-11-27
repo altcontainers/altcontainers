@@ -39,9 +39,12 @@ try (Network network = Network.create()) {
 ```
 
 The `.network(network, alias)` method:
-- Joins the container to the Docker bridge network
+- Joins the container to the Docker bridge network at creation time
 - Assigns the given alias for DNS resolution
 - Calling it more than once replaces the previous network and aliases
+
+Containers join a network when they are created; Altcontainers does not expose separate
+attach/detach operations. Close containers before closing their network.
 
 ## Network naming
 
@@ -51,7 +54,9 @@ Networks are named with the pattern `altcontainers-<session-prefix>-<random>` (a
 
 - `network.close()` removes the network
 - Networks are also cleaned up by the reaper on JVM exit
-- Network destruction is idempotent and retries transient `endpoint still attached` failures
+- Network destruction is idempotent; if Docker reports that endpoints are still attached, `close()`
+  delegates the removal to the reaper, which retries and force-disconnects remaining endpoints
+- Closing a network blocks until Docker confirms removal or the bounded removal attempt times out
 
 ## Learn next
 
