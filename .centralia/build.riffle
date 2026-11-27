@@ -32,8 +32,8 @@ jobs : {
             MAVEN_OPTS : -Xmx2g -XX:+UseG1GC
         }
         commands : [
-            ./mvnw spotless:check
-            ./mvnw -B clean install
+            ./mvnw -B -ntp spotless:check
+            ./mvnw -B -ntp clean install
         ]
     }
     build-java-21 : {
@@ -58,8 +58,8 @@ jobs : {
             MAVEN_OPTS : -Xmx2g -XX:+UseG1GC
         }
         commands : [
-            ./mvnw spotless:check
-            ./mvnw -B clean install
+            ./mvnw -B -ntp spotless:check
+            ./mvnw -B -ntp clean install
         ]
     }
     build-java-25 : {
@@ -84,8 +84,8 @@ jobs : {
             MAVEN_OPTS : -Xmx2g -XX:+UseG1GC
         }
         commands : [
-            ./mvnw spotless:check
-            ./mvnw -B clean install -Dpmd.skip=true
+            ./mvnw -B -ntp spotless:check
+            ./mvnw -B -ntp clean install -Dpmd.skip=true
         ]
     }
 }
