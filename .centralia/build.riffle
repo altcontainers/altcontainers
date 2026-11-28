@@ -21,10 +21,6 @@ jobs : {
             linux
         ]
         timeout : 1h
-        requires : [
-            /opt/java/17/bin/java
-            /usr/bin/docker
-        ]
         paths : [
             /opt/java/17/bin
         ]
